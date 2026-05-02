@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cloudcompare-mcp"
+version = "0.1.0"
+description = "Cross-platform MCP server for CloudCompare point cloud processing"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+keywords = ["cloudcompare", "mcp", "point-cloud", "lidar", "3d"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+dependencies = [
+    "mcp[cli]>=1.3.0",
+]
+
+[project.scripts]
+cloudcompare-mcp = "cloudcompare_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/yufeioptimal/cloudcompare-mcp"
+Repository = "https://github.com/yufeioptimal/cloudcompare-mcp"
+Issues = "https://github.com/yufeioptimal/cloudcompare-mcp/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cloudcompare_mcp"]
