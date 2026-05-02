@@ -4,10 +4,19 @@ Cross-platform [Model Context Protocol (MCP)](https://modelcontextprotocol.io) s
 
 ## Features
 
+### Native tools (no CloudCompare required)
+
+| Tool | Description |
+|------|-------------|
+| `read_cloud_metadata` | Parse a cloud and return point count, bounding box, extent, density, RGB/intensity/normals presence |
+| `visualize_cloud` | **Render top / front / side views + metadata panel as a base64 PNG the model can see directly** |
+
+### CloudCompare tools (requires CloudCompare installation)
+
 | Tool | Description |
 |------|-------------|
 | `get_cloudcompare_info` | Check installation & version |
-| `load_cloud_info` | Inspect file stats (points, bounding box, scalar fields) |
+| `load_cloud_info` | Inspect file stats via CloudCompare |
 | `subsample` | Reduce density — random / spatial / octree |
 | `compute_cloud_to_cloud_distances` | C2C nearest-neighbour distances |
 | `compute_cloud_to_mesh_distances` | C2M signed distances |
@@ -19,11 +28,30 @@ Cross-platform [Model Context Protocol (MCP)](https://modelcontextprotocol.io) s
 | `convert_format` | Convert between LAS/LAZ, PLY, PCD, XYZ, E57, OBJ… |
 | `run_cloudcompare_command` | Escape hatch for arbitrary CLI commands |
 
+### How `visualize_cloud` works
+
+`visualize_cloud` reads the point cloud natively in Python, renders a 4-panel figure, and returns an `ImageContent` (base64 PNG) alongside a JSON description. The model can see the image directly — no display or CloudCompare needed.
+
+```
+┌─────────────────┬─────────────────┐
+│   Top  (XY)     │   Front  (XZ)   │
+│                 │                 │
+├─────────────────┼─────────────────┤
+│   Side  (YZ)    │  Metadata stats │
+│                 │  (pts, bbox,    │
+│                 │   density, …)   │
+└─────────────────┴─────────────────┘
+```
+
+Color modes: `height` (viridis Z gradient, default) · `rgb` (stored RGB) · `intensity` (plasma).
+
 ## Requirements
 
-- **CloudCompare ≥ 2.12** — [download](https://www.danielgm.net/cc/)
 - **Python ≥ 3.10**
 - **uv** (recommended) or pip
+- **CloudCompare ≥ 2.12** — [download](https://www.danielgm.net/cc/) *(only for CloudCompare tools)*
+
+Python dependencies installed automatically: `numpy`, `matplotlib`, `laspy[lazrs]`, `plyfile`.
 
 ## Installation
 
