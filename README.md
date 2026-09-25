@@ -2,6 +2,13 @@
 
 Cross-platform [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for [CloudCompare](https://www.danielgm.net/cc/) — lets AI assistants (Claude, etc.) process 3D point clouds and meshes via natural language.
 
+## Fusion 360 live reference-mesh workflow
+
+For safe reverse engineering from an already-open CloudCompare scene, including
+live cloning/merging, validated PLY/OBJ export, optional full-3D ball-pivoting
+reconstruction, reference-mesh simplification, and the end-to-end acceptance
+harness, see [docs/FUSION_REFERENCE_WORKFLOW.md](docs/FUSION_REFERENCE_WORKFLOW.md).
+
 ## Features
 
 ### Native tools (no CloudCompare required)
