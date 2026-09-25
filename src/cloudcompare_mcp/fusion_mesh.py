@@ -28,7 +28,13 @@ def pymeshlab_version() -> str | None:
         return None
     import pymeshlab  # type: ignore[import-not-found]
 
-    return getattr(pymeshlab, "__version__", None) or getattr(pymeshlab, "version", None)
+    value = getattr(pymeshlab, "__version__", None) or getattr(pymeshlab, "version", None)
+    if callable(value):
+        try:
+            value = value()
+        except Exception:
+            return None
+    return str(value) if value is not None else None
 
 
 def _json_value(value: Any) -> Any:
