@@ -698,6 +698,60 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="register_live_icp",
+        description=(
+            "Estimate a rigid point-cloud-to-point-cloud ICP transform inside the already-open CloudCompare scene. "
+            "Sources are never modified. By default this is preview-only and returns the transform/RMS without "
+            "adding geometry; set preview_only=false to create a transformed clone of the data cloud."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "data_id": {
+                    "type": "integer",
+                    "description": "Standalone point cloud to align/move.",
+                },
+                "model_id": {
+                    "type": "integer",
+                    "description": "Standalone reference point cloud that remains fixed.",
+                },
+                "overlap_percent": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 100,
+                    "description": "Estimated final overlap percentage.",
+                },
+                "max_iterations": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10000,
+                    "default": 20,
+                },
+                "random_sampling_limit": {
+                    "type": "integer",
+                    "minimum": 3,
+                    "default": 50000,
+                },
+                "filter_out_farthest_points": {"type": "boolean", "default": False},
+                "preview_only": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "If true, return the estimated transform without adding an aligned clone.",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Optional name for the aligned result when preview_only=false.",
+                },
+                "destination_group_id": {
+                    "type": "integer",
+                    "description": "Optional parent working group for the aligned result.",
+                },
+            },
+            "required": ["data_id", "model_id"],
+        },
+    ),
+    Tool(
         name="clone_live_entities",
         description=(
             "Deep-clone explicitly chosen live point clouds or triangle meshes without modifying the sources. "
@@ -1331,6 +1385,22 @@ def handle_compute_live_normals(args: dict) -> list[TextContent]:
     return _live_call("cloud.compute_normals", params, timeout=900.0)
 
 
+def handle_register_live_icp(args: dict) -> list[TextContent]:
+    params = {
+        "data_id": args["data_id"],
+        "model_id": args["model_id"],
+        "overlap_percent": float(args.get("overlap_percent", 100.0)),
+        "max_iterations": int(args.get("max_iterations", 20)),
+        "random_sampling_limit": int(args.get("random_sampling_limit", 50000)),
+        "filter_out_farthest_points": bool(args.get("filter_out_farthest_points", False)),
+        "preview_only": bool(args.get("preview_only", True)),
+    }
+    for key in ("name", "destination_group_id"):
+        if key in args:
+            params[key] = args[key]
+    return _live_call("cloud.register_icp", params, timeout=900.0)
+
+
 def handle_clone_live_entities(args: dict) -> list[TextContent]:
     params = {
         "ids": args["ids"],
@@ -1594,6 +1664,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageConte
         "subsample_live_cloud": handle_subsample_live_cloud,
         "filter_live_cloud_sor": handle_filter_live_cloud_sor,
         "compute_live_normals": handle_compute_live_normals,
+        "register_live_icp": handle_register_live_icp,
         "clone_live_entities": handle_clone_live_entities,
         "merge_live_clouds": handle_merge_live_clouds,
         "reconstruct_live_mesh": handle_reconstruct_live_mesh,
