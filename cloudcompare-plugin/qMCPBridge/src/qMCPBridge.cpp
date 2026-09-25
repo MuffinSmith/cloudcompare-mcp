@@ -14,6 +14,7 @@
 #include <QAbstractItemModel>
 #include <QItemSelectionModel>
 #include <QMainWindow>
+#include <QSet>
 #include <QTreeView>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -759,54 +760,8 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
 
 QJsonObject qMCPBridge::entityToJson( ccHObject* entity, bool recursive ) const
 {
-    QJsonObject result;
-    if ( !entity )
-    {
-        return result;
-    }
-
-    result[ "id" ] = static_cast<qint64>( entity->getUniqueID() );
-    result[ "name" ] = entity->getName();
-    result[ "class_id" ] = static_cast<int>( entity->getClassID() );
-    result[ "enabled" ] = entity->isEnabled();
-    result[ "visible" ] = entity->isVisible();
-    result[ "child_count" ] = static_cast<int>( entity->getChildrenNumber() );
-
-    // Local geometry bounds make transformations inspectable independently
-    // of camera position, selection decoration, and viewport screenshots.
-    const ccBBox bounds = entity->getOwnBB();
-    if ( bounds.isValid() )
-    {
-        const CCVector3& minimum = bounds.minCorner();
-        const CCVector3& maximum = bounds.maxCorner();
-        QJsonObject box;
-        box[ "min" ] = QJsonArray{ minimum.x, minimum.y, minimum.z };
-        box[ "max" ] = QJsonArray{ maximum.x, maximum.y, maximum.z };
-        result[ "bounding_box" ] = box;
-    }
-
-    QString kind = "object";
-    if ( entity->isKindOf( CC_TYPES::POINT_CLOUD ) )
-        kind = "point_cloud";
-    else if ( entity->isKindOf( CC_TYPES::MESH ) )
-        kind = "mesh";
-    else if ( entity->isKindOf( CC_TYPES::HIERARCHY_OBJECT ) )
-        kind = "group";
-    result[ "kind" ] = kind;
-
-    if ( recursive && entity->getChildrenNumber() > 0 )
-    {
-        QJsonArray children;
-        for ( unsigned i = 0; i < entity->getChildrenNumber(); ++i )
-        {
-            children.append( entityToJson( entity->getChild( i ), true ) );
-        }
-        result[ "children" ] = children;
-    }
-
-    return result;
+    return qMCPFusionWorkflow::describeEntity( entity, recursive );
 }
-
 ccHObject* qMCPBridge::findEntity( unsigned uniqueId ) const
 {
     return findEntityRecursive( m_app ? m_app->dbRootObject() : nullptr, uniqueId );
