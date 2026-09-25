@@ -617,11 +617,19 @@ TOOLS: list[Tool] = [
                 "method": {
                     "type": "string",
                     "enum": [
+                        "ball_pivoting",
                         "delaunay_2_5d_best_fit_plane",
                         "delaunay_2_5d_axis_aligned",
                     ],
                 },
                 "acknowledge_2_5d_limitations": {"type": "boolean", "default": False},
+                "ball_radius_percent": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Ball radius as a percent of the source bounding-box diagonal. Omit to let MeshLab estimate it.",
+                },
+                "clustering_percent": {"type": "number", "minimum": 0, "default": 20.0},
+                "crease_threshold_degrees": {"type": "number", "minimum": 0, "maximum": 180, "default": 90.0},
                 "max_edge_length": {
                     "type": "number",
                     "minimum": 0,
@@ -656,6 +664,13 @@ TOOLS: list[Tool] = [
                 },
                 "preserve_boundaries": {"type": "boolean", "default": True},
                 "preserve_sharp_features": {"type": "boolean", "default": True},
+                "preserve_topology": {"type": "boolean", "default": True},
+                "deviation_samples": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 1000000,
+                    "default": 100000,
+                },
             },
             "required": ["mesh_id", "target_triangles"],
         },
@@ -1118,7 +1133,14 @@ def handle_capture_live_view(_args: dict) -> list[ImageContent | TextContent]:
 
 
 def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
-    return _live_call("capabilities.get")
+    try:
+        native = live_request("capabilities.get", {})
+        from .fusion_mesh import backend_capabilities
+
+        native["python_backends"] = backend_capabilities()
+        return _ok(native)
+    except (LiveBridgeError, Exception) as exc:
+        return _err(str(exc))
 
 
 def handle_clone_live_entities(args: dict) -> list[TextContent]:
@@ -1143,6 +1165,21 @@ def handle_merge_live_clouds(args: dict) -> list[TextContent]:
 
 
 def handle_reconstruct_live_mesh(args: dict) -> list[TextContent]:
+    if args["method"] == "ball_pivoting":
+        try:
+            from .fusion_mesh import FusionMeshBackendError, reconstruct_ball_pivoting
+
+            result = reconstruct_ball_pivoting(
+                cloud_id=int(args["cloud_id"]),
+                ball_radius_percent=args.get("ball_radius_percent"),
+                clustering_percent=float(args.get("clustering_percent", 20.0)),
+                crease_threshold_degrees=float(args.get("crease_threshold_degrees", 90.0)),
+                name=args.get("name"),
+            )
+            return _ok(result)
+        except (FusionMeshBackendError, LiveBridgeError, Exception) as exc:
+            return _err(str(exc))
+
     params = {
         "cloud_id": args["cloud_id"],
         "method": args["method"],
@@ -1155,16 +1192,20 @@ def handle_reconstruct_live_mesh(args: dict) -> list[TextContent]:
 
 
 def handle_simplify_live_mesh(args: dict) -> list[TextContent]:
-    return _live_call(
-        "mesh.simplify",
-        {
-            "mesh_id": args["mesh_id"],
-            "target_triangles": args["target_triangles"],
-            "preserve_boundaries": bool(args.get("preserve_boundaries", True)),
-            "preserve_sharp_features": bool(args.get("preserve_sharp_features", True)),
-        },
-        timeout=600.0,
-    )
+    try:
+        from .fusion_mesh import FusionMeshBackendError, simplify_quadric
+
+        result = simplify_quadric(
+            mesh_id=int(args["mesh_id"]),
+            target_triangles=int(args["target_triangles"]),
+            preserve_boundaries=bool(args.get("preserve_boundaries", True)),
+            preserve_sharp_features=bool(args.get("preserve_sharp_features", True)),
+            preserve_topology=bool(args.get("preserve_topology", True)),
+            deviation_samples=int(args.get("deviation_samples", 100_000)),
+        )
+        return _ok(result)
+    except (FusionMeshBackendError, LiveBridgeError, Exception) as exc:
+        return _err(str(exc))
 
 
 def handle_export_live_entity(args: dict) -> list[TextContent]:
