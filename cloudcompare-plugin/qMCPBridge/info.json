@@ -1,0 +1,15 @@
+{
+  "type": "Standard",
+  "name": "MCP Bridge",
+  "description": "Localhost control bridge for Model Context Protocol clients. Allows an MCP server to inspect and operate on the currently open CloudCompare GUI instance.",
+  "authors": [
+    {
+      "name": "cloudcompare-mcp contributors"
+    }
+  ],
+  "maintainers": [
+    {
+      "name": "cloudcompare-mcp contributors"
+    }
+  ]
+}
