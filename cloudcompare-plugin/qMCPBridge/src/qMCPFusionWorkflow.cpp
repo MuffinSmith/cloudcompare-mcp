@@ -66,7 +66,9 @@ bool readId( const QJsonObject& object, const char* key, unsigned& id )
     }
 
     const double raw = value.toDouble();
-    if ( raw < 0.0 || raw > static_cast<double>( std::numeric_limits<unsigned>::max() ) )
+    if ( raw < 0.0
+         || raw > static_cast<double>( std::numeric_limits<unsigned>::max() )
+         || std::floor( raw ) != raw )
     {
         return false;
     }
@@ -729,7 +731,8 @@ bool mergeClouds(
                 const CCVector3* local = input->getPoint( pointIndex );
                 const CCVector3d global = input->toGlobal3d<PointCoordinateType>( *local );
                 const CCVector3d targetLocal = first->toLocal3d<double>( global );
-                *working->getPointPersistentPtr( pointIndex ) = targetLocal.toPC();
+                CCVector3* targetPoint = const_cast<CCVector3*>( working->getPointPersistentPtr( pointIndex ) );
+                *targetPoint = targetLocal.toPC();
             }
             working->setGlobalShift( first->getGlobalShift() );
             working->setGlobalScale( first->getGlobalScale() );
