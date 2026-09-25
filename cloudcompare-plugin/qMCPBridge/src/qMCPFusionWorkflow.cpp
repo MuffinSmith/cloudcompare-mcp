@@ -425,9 +425,9 @@ bool resolveDestination(
     }
 
     if ( destination != app->dbRootObject()
-         && !destination->isKindOf( CC_TYPES::HIERARCHY_OBJECT ) )
+         && !destination->isA( CC_TYPES::HIERARCHY_OBJECT ) )
     {
-        error = QString( "Entity %1 is not a hierarchy/group destination" ).arg( id );
+        error = QString( "Entity %1 is not a plain hierarchy/group destination" ).arg( id );
         return false;
     }
     return true;
