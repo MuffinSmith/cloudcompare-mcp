@@ -25,6 +25,7 @@
 
 #include "qMCPFusionWorkflow.h"
 
+#include <cmath>
 #include <limits>
 
 namespace
@@ -402,7 +403,9 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
             }
 
             const double raw = value.toDouble();
-            if ( raw < 0.0 || raw > static_cast<double>( std::numeric_limits<unsigned>::max() ) )
+            if ( raw < 0.0
+                 || raw > static_cast<double>( std::numeric_limits<unsigned>::max() )
+                 || std::floor( raw ) != raw )
             {
                 invalid.append( value );
                 continue;
