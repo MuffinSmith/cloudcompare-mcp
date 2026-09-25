@@ -1435,7 +1435,26 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageConte
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+def _prepare_native_backends_for_stdio() -> None:
+    """Initialize NumPy before Windows MCP stdio/async worker threads are active.
+
+    PyMeshLab imports NumPy as part of its native-module initialization. On the
+    tested Windows setup, first importing NumPy after the MCP stdio transport was
+    running could stall indefinitely. Importing it here reproduces the known-good
+    launcher behavior while keeping PyMeshLab itself optional and lazily loaded.
+    """
+    if platform.system() != "Windows":
+        return
+    try:
+        import numpy  # noqa: F401
+    except Exception:
+        # Capability discovery remains usable even if an optional/native backend
+        # is broken; geometry handlers will report the concrete import error.
+        pass
+
+
 def main() -> None:
+    _prepare_native_backends_for_stdio()
     import asyncio
     asyncio.run(_run())
 
