@@ -30,6 +30,27 @@ if ( PLUGIN_STANDARD_QMCP_BRIDGE )
             ${CMAKE_CURRENT_LIST_DIR}/include
     )
 
+    # CloudCompare 2.13.x does not populate QCoreApplication::applicationVersion().
+    # Record the source-tree version used to build the plugin as an explicitly
+    # build-time fallback for runtime reporting.
+    set( QMCP_CLOUDCOMPARE_BUILD_VERSION "" )
+    if ( DEFINED CloudCompare_VERSION AND NOT "${CloudCompare_VERSION}" STREQUAL "" )
+        set( QMCP_CLOUDCOMPARE_BUILD_VERSION "${CloudCompare_VERSION}" )
+    elseif ( EXISTS "${CloudCompareProjects_SOURCE_DIR}/qCC/CMakeLists.txt" )
+        file( STRINGS "${CloudCompareProjects_SOURCE_DIR}/qCC/CMakeLists.txt"
+              QMCP_CLOUDCOMPARE_PROJECT_LINE
+              REGEX "project\\( *CloudCompare +VERSION +[0-9]+\\.[0-9]+\\.[0-9]+" )
+        if ( QMCP_CLOUDCOMPARE_PROJECT_LINE )
+            string( REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+"
+                    QMCP_CLOUDCOMPARE_BUILD_VERSION
+                    "${QMCP_CLOUDCOMPARE_PROJECT_LINE}" )
+        endif()
+    endif()
+    if ( NOT "${QMCP_CLOUDCOMPARE_BUILD_VERSION}" STREQUAL "" )
+        target_compile_definitions( ${PROJECT_NAME} PRIVATE
+            QMCP_CLOUDCOMPARE_BUILD_VERSION="${QMCP_CLOUDCOMPARE_BUILD_VERSION}" )
+    endif()
+
     # AddPlugin in older releases uses the plain target_link_libraries
     # signature. Appending the dependency works with either helper version.
     set_property( TARGET ${PROJECT_NAME} APPEND PROPERTY
