@@ -4,6 +4,7 @@ import asyncio
 import json
 from unittest.mock import patch
 
+from mcp import types as mcp_types
 from mcp.types import CallToolResult
 
 from cloudcompare_mcp import server
@@ -60,3 +61,22 @@ def test_unknown_tool_is_reported_as_mcp_tool_error() -> None:
     assert isinstance(result, CallToolResult)
     assert result.isError is True
     assert _error_message(result) == "Unknown tool: definitely_not_a_tool"
+
+
+def test_low_level_server_wrapper_preserves_is_error() -> None:
+    failed = server._err("cloud.register_icp requires different data and model entities")
+    request = mcp_types.CallToolRequest(
+        params=mcp_types.CallToolRequestParams(
+            name="register_live_icp",
+            arguments={"data_id": 520, "model_id": 520},
+        )
+    )
+    handler = server.server.request_handlers[mcp_types.CallToolRequest]
+
+    with patch.object(server, "handle_register_live_icp", return_value=failed):
+        wrapped = asyncio.run(handler(request))
+
+    result = wrapped.root
+    assert isinstance(result, CallToolResult)
+    assert result.isError is True
+    assert _error_message(result) == "cloud.register_icp requires different data and model entities"
