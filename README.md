@@ -35,6 +35,11 @@ These tools operate on the **CloudCompare instance that is already open** instea
 | `transform_live_entity` | Apply a 4x4 transform to an entity |
 | `set_live_view` | Change standard view / zoom / redraw |
 | `capture_live_view` | Return the active CloudCompare viewport as a PNG the model can see |
+| `create_live_group` | Create a DB-tree group for organizing working results |
+| `crop_live_cloud` | Non-destructively crop a cloud by an axis-aligned box in local or global coordinates |
+| `subsample_live_cloud` | Create random, spatial, or octree-subsampled working clouds |
+| `filter_live_cloud_sor` | Create a Statistical Outlier Removal filtered working cloud |
+| `compute_live_normals` | Compute normals on a working copy with optional MST orientation |
 
 The plugin source is included under `cloudcompare-plugin/qMCPBridge`. It runs a newline-delimited JSON control server bound to `127.0.0.1:8765` by default. See that directory's README for CloudCompare build/install instructions.
 
