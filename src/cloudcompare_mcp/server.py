@@ -13,7 +13,7 @@ from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import ImageContent, TextContent, Tool
+from mcp.types import CallToolResult, ImageContent, TextContent, Tool
 
 from .live import LiveBridgeError, request as live_request
 
@@ -1136,8 +1136,17 @@ def _ok(data: dict | str) -> list[TextContent]:
     return [TextContent(type="text", text=body)]
 
 
-def _err(msg: str) -> list[TextContent]:
-    return [TextContent(type="text", text=json.dumps({"error": msg}, indent=2))]
+def _err(msg: str) -> CallToolResult:
+    """Return a model-readable MCP tool failure, not successful error text."""
+    return CallToolResult(
+        content=[
+            TextContent(
+                type="text",
+                text=json.dumps({"error": msg}, indent=2),
+            )
+        ],
+        isError=True,
+    )
 
 
 def _run_result(rc: int, stdout: str, stderr: str, extra: dict | None = None) -> list[TextContent]:
@@ -1238,7 +1247,7 @@ def _live_call(
     params: dict | None = None,
     *,
     timeout: float | None = None,
-) -> list[TextContent]:
+) -> list[TextContent] | CallToolResult:
     try:
         return _ok(live_request(method, params or {}, timeout=timeout))
     except LiveBridgeError as exc:
@@ -1645,7 +1654,10 @@ async def list_tools() -> list[Tool]:
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageContent]:
+async def call_tool(
+    name: str,
+    arguments: dict,
+) -> list[TextContent | ImageContent] | CallToolResult:
     dispatch = {
         "get_live_cloudcompare_info": handle_get_live_cloudcompare_info,
         "list_live_entities": handle_list_live_entities,
