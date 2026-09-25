@@ -14,6 +14,14 @@ The listener binds only to `127.0.0.1` and defaults to TCP port `8765`.
 - rename, show/hide, enable/disable, delete, and transform entities
 - set standard views, zoom, and redraw
 - capture the active 3D viewport as PNG
+- deep-clone live point clouds and triangle meshes
+- non-destructively concatenate explicitly chosen live clouds
+- report point/triangle counts, attributes, hierarchy, native/global bounds, and global shift/scale
+- export live binary PLY point clouds and face-bearing OBJ meshes with read-back validation
+- expose cautious 2.5D meshing plus capability discovery for optional full-3D reconstruction/simplification
+
+The Fusion-oriented workflow and its optional PyMeshLab backend are documented in
+`docs/FUSION_REFERENCE_WORKFLOW.md`.
 
 Destructive operations such as delete and transform are applied directly to the open scene.
 The bridge does not provide an undo layer.
@@ -43,8 +51,10 @@ libraries over an existing installation. Restart CloudCompare after configuring
 the plugin path or replacing the plugin DLL.
 
 The `ping` response includes `process_id` and `application_version` to identify
-the GUI process. Entity responses include local `bounding_box` coordinates when
-available, allowing callers to verify geometry transformations.
+the GUI process. `capabilities.get` reports the bridge workflow revision, supported
+operations, unit policy, and meshing/simplification limitations. Entity responses
+report native-coordinate and global-coordinate bounds separately. Physical units
+remain `unknown` unless the caller supplies independent unit information.
 
 ## Configuration
 
@@ -56,6 +66,7 @@ Set these variables **before starting CloudCompare**:
 Set the same values for the Python MCP server. The MCP client additionally supports:
 
 - `CLOUDCOMPARE_MCP_HOST` — default `127.0.0.1`
-- `CLOUDCOMPARE_MCP_TIMEOUT` — socket timeout in seconds, default `5`
+- `CLOUDCOMPARE_MCP_TIMEOUT` — socket timeout in seconds, default `5`; long-running
+  geometry tools override this per request without changing the lightweight inspection timeout
 
 The plugin source is GPL-2.0-or-later because it links against CloudCompare's GPL plugin API.
