@@ -262,11 +262,13 @@ def _cloud_meta_stats(xyz: Any, meta: dict) -> dict:
         "y": [round(ymin, 3), round(ymax, 3)],
         "z": [round(zmin, 3), round(zmax, 3)],
     }
-    meta["extent_m"] = {
+    meta["units"] = meta.get("units", "unknown")
+    meta["units_confirmed"] = bool(meta.get("units_confirmed", False))
+    meta["extent_native"] = {
         "x": round(dx, 3), "y": round(dy, 3), "z": round(dz, 3),
     }
-    meta["area_xy_m2"] = round(area_xy, 2)
-    meta["density_pts_per_m2"] = round(n / area_xy, 1) if area_xy > 0 else None
+    meta["area_xy_native2"] = round(area_xy, 2)
+    meta["density_pts_per_native_unit2"] = round(n / area_xy, 1) if area_xy > 0 else None
     return meta
 
 
@@ -294,7 +296,7 @@ def _pick_colors(xyz: Any, colors: Any | None, color_by: str) -> tuple[Any, str 
         # use Z as proxy (intensity not loaded yet for non-LAS paths)
         return z, "plasma", "Z (intensity proxy)"
     # default: height / Z
-    return z, "viridis", "Z (m)"
+    return z, "viridis", "Z (native units)"
 
 
 def _scatter_kwargs(n: int) -> dict:
@@ -343,20 +345,20 @@ def _build_figure(xyz: Any, colors: Any | None, meta: dict, color_by: str) -> An
     # ── Top view (XY) ──────────────────────────────────────────────────────
     ax0 = fig.add_subplot(gs[0, 0])
     sc0 = ax0.scatter(x, y, c=c, cmap=cmap, **kw)
-    _ax_style(ax0, f"Top view  (XY)", "X (m)", "Y (m)")
+    _ax_style(ax0, f"Top view  (XY)", "X (native)", "Y (native)")
     ax0.set_aspect("equal", adjustable="datalim")
     _add_cbar(sc0, ax0, cbar_label)
 
     # ── Front view (XZ) ────────────────────────────────────────────────────
     ax1 = fig.add_subplot(gs[0, 1])
     sc1 = ax1.scatter(x, z, c=c, cmap=cmap, **kw)
-    _ax_style(ax1, "Front view  (XZ)", "X (m)", "Z (m)")
+    _ax_style(ax1, "Front view  (XZ)", "X (native)", "Z (native)")
     _add_cbar(sc1, ax1, cbar_label)
 
     # ── Side view (YZ) ─────────────────────────────────────────────────────
     ax2 = fig.add_subplot(gs[1, 0])
     sc2 = ax2.scatter(y, z, c=c, cmap=cmap, **kw)
-    _ax_style(ax2, "Side view  (YZ)", "Y (m)", "Z (m)")
+    _ax_style(ax2, "Side view  (YZ)", "Y (native)", "Z (native)")
     _add_cbar(sc2, ax2, cbar_label)
 
     # ── Stats panel ────────────────────────────────────────────────────────
@@ -365,15 +367,15 @@ def _build_figure(xyz: Any, colors: Any | None, meta: dict, color_by: str) -> An
     ax3.axis("off")
 
     bb = meta.get("bbox", {})
-    ex = meta.get("extent_m", {})
-    density = meta.get("density_pts_per_m2")
+    ex = meta.get("extent_native", {})
+    density = meta.get("density_pts_per_native_unit2")
     sf = meta.get("scalar_fields", [])
 
     lines = [
         f"  Points      {meta['point_count']:>14,}",
         f"  File size   {meta.get('file_size_mb', '?'):>13} MB",
         "",
-        "  Bounding box (m)",
+        "  Bounding box (native units)",
         f"    X  [{bb.get('x', ['?','?'])[0]:.2f}, {bb.get('x', ['?','?'])[1]:.2f}]"
         f"  Δ {ex.get('x', '?'):.2f}",
         f"    Y  [{bb.get('y', ['?','?'])[0]:.2f}, {bb.get('y', ['?','?'])[1]:.2f}]"
@@ -381,8 +383,8 @@ def _build_figure(xyz: Any, colors: Any | None, meta: dict, color_by: str) -> An
         f"    Z  [{bb.get('z', ['?','?'])[0]:.2f}, {bb.get('z', ['?','?'])[1]:.2f}]"
         f"  Δ {ex.get('z', '?'):.2f}",
         "",
-        f"  XY area     {meta.get('area_xy_m2', '?'):>13,.1f} m²",
-        f"  Density     {(str(density) + ' pts/m²') if density else 'N/A':>13}",
+        f"  XY area     {meta.get('area_xy_native2', '?'):>13,.1f} unit²",
+        f"  Density     {(str(density) + ' pts/unit²') if density else 'N/A':>13}",
         "",
         "  Attributes",
         f"    RGB         {'✓' if meta.get('has_rgb') else '✗'}",
@@ -644,7 +646,7 @@ TOOLS: list[Tool] = [
                 "name": {"type": "string"},
                 "destination_group_id": {"type": "integer"},
             },
-            "required": ["cloud_id", "method", "acknowledge_2_5d_limitations"],
+            "required": ["cloud_id", "method"],
         },
     ),
     Tool(
@@ -1035,10 +1037,10 @@ def handle_visualize(args: dict) -> list[ImageContent | TextContent]:
     desc = (
         f"Point cloud: {Path(fp).name} | "
         f"{meta['point_count']:,} points | "
-        f"XY extent {meta['extent_m']['x']:.1f} × {meta['extent_m']['y']:.1f} m | "
-        f"Z range {meta['bbox']['z'][0]:.2f}–{meta['bbox']['z'][1]:.2f} m | "
+        f"XY extent {meta['extent_native']['x']:.1f} × {meta['extent_native']['y']:.1f} native units | "
+        f"Z range {meta['bbox']['z'][0]:.2f}–{meta['bbox']['z'][1]:.2f} native units | "
         f"RGB: {'yes' if meta['has_rgb'] else 'no'} | "
-        f"Density: {meta.get('density_pts_per_m2', 'N/A')} pts/m²"
+        f"Density: {meta.get('density_pts_per_native_unit2', 'N/A')} pts/native-unit²"
     )
 
     return [
