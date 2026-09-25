@@ -385,14 +385,37 @@ QJsonObject capabilities()
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    QJsonArray operations{
+    result[ "plugin_version" ] = "0.3.0";
+
+    QJsonArray bridgeOperations{
+        "ping",
+        "scene.list",
+        "selection.get",
+        "selection.set",
+        "file.load",
+        "entity.rename",
+        "entity.set_state",
+        "entity.delete",
+        "entity.transform",
+        "view",
+        "view.capture",
+        "capabilities.get",
         "entity.clone",
         "cloud.merge",
         "mesh.reconstruct",
         "mesh.simplify",
         "entity.export"
     };
-    result[ "operations" ] = operations;
+    result[ "bridge_operations" ] = bridgeOperations;
+
+    QJsonArray workflowOperations{
+        "entity.clone",
+        "cloud.merge",
+        "mesh.reconstruct",
+        "mesh.simplify",
+        "entity.export"
+    };
+    result[ "workflow_operations" ] = workflowOperations;
 
     QJsonArray meshing;
     {
