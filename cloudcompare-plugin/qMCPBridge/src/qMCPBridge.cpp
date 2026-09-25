@@ -62,7 +62,7 @@ QJsonArray selectedIds( ccMainAppInterface* app )
 
 qMCPBridge::qMCPBridge( QObject* parent )
     : QObject( parent )
-    , ccStdPluginInterface()
+    , ccStdPluginInterface( ":/CC/plugin/qMCPBridge/info.json" )
     , m_server( new QTcpServer( this ) )
     , m_port( DEFAULT_PORT )
 {
