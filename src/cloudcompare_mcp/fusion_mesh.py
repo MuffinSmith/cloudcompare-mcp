@@ -95,6 +95,7 @@ def backend_capabilities() -> dict[str, Any]:
                         "clustering_percent",
                         "crease_threshold_degrees",
                     ],
+                    "result_options": ["name", "destination_group_id"],
                 }
             },
             "simplification": {
@@ -110,6 +111,21 @@ def backend_capabilities() -> dict[str, Any]:
     }
 
 
+def _load_generated_geometry(
+    path: Path,
+    *,
+    name: str | None = None,
+    destination_group_id: int | None = None,
+) -> dict[str, Any]:
+    """Load generated geometry into CloudCompare with optional result placement/name."""
+    params: dict[str, Any] = {"path": str(path.resolve())}
+    if name is not None:
+        params["name"] = name
+    if destination_group_id is not None:
+        params["destination_group_id"] = int(destination_group_id)
+    return live_request("file.load", params, timeout=600.0)
+
+
 def reconstruct_ball_pivoting(
     *,
     cloud_id: int,
@@ -117,6 +133,7 @@ def reconstruct_ball_pivoting(
     clustering_percent: float = 20.0,
     crease_threshold_degrees: float = 90.0,
     name: str | None = None,
+    destination_group_id: int | None = None,
 ) -> dict[str, Any]:
     if not pymeshlab_available():
         raise FusionMeshBackendError(
@@ -188,7 +205,11 @@ def reconstruct_ball_pivoting(
         }
 
         ms.save_current_mesh(str(output_path))
-        loaded = live_request("file.load", {"path": str(output_path.resolve())}, timeout=600.0)
+        loaded = _load_generated_geometry(
+            output_path,
+            name=name,
+            destination_group_id=destination_group_id,
+        )
 
         # file.load may return a wrapper group depending on the importer; preserve the
         # full returned hierarchy instead of guessing a child ID here.
@@ -211,6 +232,7 @@ def reconstruct_ball_pivoting(
             ),
             "live_loaded_entity": loaded,
             "requested_name": name,
+            "requested_destination_group_id": destination_group_id,
         }
 
 
