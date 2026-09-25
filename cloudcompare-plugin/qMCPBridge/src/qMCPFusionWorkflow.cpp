@@ -34,6 +34,25 @@ namespace
 {
 constexpr double FRAME_EPS = 1.0e-9;
 
+void addApplicationVersion( QJsonObject& result )
+{
+    const QString runtimeVersion = QCoreApplication::applicationVersion();
+    if ( !runtimeVersion.isEmpty() )
+    {
+        result[ "application_version" ] = runtimeVersion;
+        result[ "application_version_source" ] = "runtime_qt";
+        return;
+    }
+
+#ifdef QMCP_CLOUDCOMPARE_BUILD_VERSION
+    result[ "application_version" ] = QStringLiteral( QMCP_CLOUDCOMPARE_BUILD_VERSION );
+    result[ "application_version_source" ] = "plugin_build_source_tree";
+#else
+    result[ "application_version" ] = QString();
+    result[ "application_version_source" ] = "unavailable";
+#endif
+}
+
 ccHObject* findEntityRecursive( ccHObject* parent, unsigned id )
 {
     if ( !parent )
