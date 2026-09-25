@@ -101,6 +101,30 @@ class LiveWorkflowContractTests(unittest.TestCase):
             timeout=900.0,
         )
 
+    def test_ball_pivoting_forwards_result_name_and_destination(self) -> None:
+        with patch(
+            "cloudcompare_mcp.fusion_mesh.reconstruct_ball_pivoting",
+            return_value={"method": "ball_pivoting"},
+        ) as reconstruct:
+            server.handle_reconstruct_live_mesh(
+                {
+                    "cloud_id": 7,
+                    "method": "ball_pivoting",
+                    "name": "Requested BPA",
+                    "destination_group_id": 42,
+                    "ball_radius_percent": 1.5,
+                }
+            )
+
+        reconstruct.assert_called_once_with(
+            cloud_id=7,
+            ball_radius_percent=1.5,
+            clustering_percent=20.0,
+            crease_threshold_degrees=90.0,
+            name="Requested BPA",
+            destination_group_id=42,
+        )
+
     def test_reconstruction_requires_explicit_method_and_ack(self) -> None:
         with patch.object(server, "_live_call", return_value=[]) as call:
             server.handle_reconstruct_live_mesh(
