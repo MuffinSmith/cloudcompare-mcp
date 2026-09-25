@@ -1363,6 +1363,7 @@ def handle_reconstruct_live_mesh(args: dict) -> list[TextContent]:
                 clustering_percent=float(args.get("clustering_percent", 20.0)),
                 crease_threshold_degrees=float(args.get("crease_threshold_degrees", 90.0)),
                 name=args.get("name"),
+                destination_group_id=args.get("destination_group_id"),
             )
             return _ok(result)
         except (FusionMeshBackendError, LiveBridgeError, Exception) as exc:
