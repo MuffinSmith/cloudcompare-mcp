@@ -25,6 +25,14 @@ dependencies = [
     "plyfile>=0.9",
 ]
 
+[project.optional-dependencies]
+fusion = [
+    "pymeshlab>=2023.12",
+]
+test = [
+    "pytest>=8",
+]
+
 [project.scripts]
 cloudcompare-mcp = "cloudcompare_mcp.server:main"
 
