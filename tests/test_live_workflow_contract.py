@@ -33,6 +33,74 @@ class LiveWorkflowContractTests(unittest.TestCase):
             timeout=600.0,
         )
 
+    def test_create_group_forwards_optional_parent(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_create_live_group({"name": "MCP Working", "destination_group_id": 42})
+        call.assert_called_once_with(
+            "group.create",
+            {"name": "MCP Working", "destination_group_id": 42},
+        )
+
+    def test_crop_preserves_explicit_coordinate_space(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_crop_live_cloud(
+                {
+                    "cloud_id": 7,
+                    "min": [-10.0, -20.0, -30.0],
+                    "max": [10.0, 20.0, 30.0],
+                    "coordinate_space": "global",
+                    "keep_inside": False,
+                    "destination_group_id": 99,
+                }
+            )
+        call.assert_called_once_with(
+            "cloud.crop",
+            {
+                "cloud_id": 7,
+                "min": [-10.0, -20.0, -30.0],
+                "max": [10.0, 20.0, 30.0],
+                "coordinate_space": "global",
+                "keep_inside": False,
+                "destination_group_id": 99,
+            },
+            timeout=300.0,
+        )
+
+    def test_subsample_forwards_method_specific_settings(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_subsample_live_cloud(
+                {"cloud_id": 7, "method": "spatial", "min_spacing": 0.25}
+            )
+        call.assert_called_once_with(
+            "cloud.subsample",
+            {"cloud_id": 7, "method": "spatial", "min_spacing": 0.25},
+            timeout=600.0,
+        )
+
+    def test_sor_defaults_are_explicit(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_filter_live_cloud_sor({"cloud_id": 7})
+        call.assert_called_once_with(
+            "cloud.filter_sor",
+            {"cloud_id": 7, "knn": 6, "n_sigma": 1.0},
+            timeout=600.0,
+        )
+
+    def test_compute_normals_defaults_do_not_orient(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_compute_live_normals({"cloud_id": 7, "radius": 1.5})
+        call.assert_called_once_with(
+            "cloud.compute_normals",
+            {
+                "cloud_id": 7,
+                "radius": 1.5,
+                "model": "LS",
+                "orient_with_mst": False,
+                "mst_neighbors": 6,
+            },
+            timeout=900.0,
+        )
+
     def test_reconstruction_requires_explicit_method_and_ack(self) -> None:
         with patch.object(server, "_live_call", return_value=[]) as call:
             server.handle_reconstruct_live_mesh(
