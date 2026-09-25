@@ -1272,7 +1272,7 @@ bool dispatch(
     if ( method == "capabilities.get" )
     {
         QJsonObject out = capabilities();
-        out[ "application_version" ] = QCoreApplication::applicationVersion();
+        addApplicationVersion( out );
         out[ "plugin" ] = "qMCPBridge";
         result = out;
         return true;
