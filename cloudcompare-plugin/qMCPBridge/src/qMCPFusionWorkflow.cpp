@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QMainWindow>
 #include <QSet>
 #include <QTextStream>
 
@@ -773,7 +774,9 @@ bool mergeClouds(
             }
             working->setGlobalShift( first->getGlobalShift() );
             working->setGlobalScale( first->getGlobalScale() );
-            working->notifyGeometryUpdate();
+            // Public in CloudCompare 2.13.2; also invalidates VBOs and LOD.
+            // cloneThis(nullptr, true) creates a fresh cloud without an octree.
+            working->invalidateBoundingBox();
             appendSource = working.get();
         }
 
