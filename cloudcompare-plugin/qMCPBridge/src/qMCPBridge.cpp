@@ -364,6 +364,7 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         QJsonObject result;
         result[ "protocol_version" ] = 1;
         result[ "plugin" ] = "qMCPBridge";
+        result[ "plugin_version" ] = "0.3.1";
         result[ "process_id" ] = QCoreApplication::applicationPid();
         addApplicationVersion( result );
         result[ "port" ] = static_cast<int>( m_port );
