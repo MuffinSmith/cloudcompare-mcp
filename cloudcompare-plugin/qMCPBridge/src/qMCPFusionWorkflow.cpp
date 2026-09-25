@@ -214,7 +214,10 @@ QJsonObject entityDescription( ccHObject* entity, bool recursive )
     const ccBBox localBounds = entity->getOwnBB();
     if ( localBounds.isValid() )
     {
-        result[ "bounds_native" ] = boundsJson( localBounds );
+        const QJsonObject nativeBounds = boundsJson( localBounds );
+        result[ "bounds_native" ] = nativeBounds;
+        // Backwards-compatible alias used by the first live-bridge revision.
+        result[ "bounding_box" ] = nativeBounds;
     }
 
     ccGenericPointCloud* geometry = nullptr;
