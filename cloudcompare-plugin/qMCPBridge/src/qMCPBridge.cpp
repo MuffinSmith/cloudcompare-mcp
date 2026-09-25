@@ -11,12 +11,18 @@
 #include <QIcon>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QAbstractItemModel>
+#include <QItemSelectionModel>
+#include <QMainWindow>
+#include <QTreeView>
 #include <QTcpServer>
 #include <QTcpSocket>
 
 #include <ccGLMatrix.h>
 #include <ccGLWindowInterface.h>
 #include <ccHObject.h>
+
+#include "qMCPFusionWorkflow.h"
 
 #include <limits>
 
@@ -58,6 +64,47 @@ QJsonArray selectedIds( ccMainAppInterface* app )
         }
     }
     return ids;
+}
+
+QModelIndex findEntityIndex( QAbstractItemModel* model, ccHObject* entity, const QModelIndex& parent = QModelIndex() )
+{
+    if ( !model || !entity )
+    {
+        return {};
+    }
+
+    const int rows = model->rowCount( parent );
+    for ( int row = 0; row < rows; ++row )
+    {
+        const QModelIndex index = model->index( row, 0, parent );
+        if ( index.isValid() && index.internalPointer() == entity )
+        {
+            return index;
+        }
+
+        const QModelIndex child = findEntityIndex( model, entity, index );
+        if ( child.isValid() )
+        {
+            return child;
+        }
+    }
+    return {};
+}
+
+QTreeView* dbTreeView( ccMainAppInterface* app )
+{
+    QMainWindow* window = app ? app->getMainWindow() : nullptr;
+    return window ? window->findChild<QTreeView*>( "dbTreeView" ) : nullptr;
+}
+
+QJsonArray idsToJson( const QList<unsigned>& ids )
+{
+    QJsonArray array;
+    for ( unsigned id : ids )
+    {
+        array.append( static_cast<qint64>( id ) );
+    }
+    return array;
 }
 }
 
@@ -341,42 +388,116 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         const QJsonArray ids = params.value( "ids" ).toArray();
         const bool clearFirst = !params.contains( "clear" ) || params.value( "clear" ).toBool( true );
 
-        if ( clearFirst )
-        {
-            const ccHObject::Container previous = m_app->getSelectedEntities();
-            for ( ccHObject* entity : previous )
-            {
-                if ( entity )
-                {
-                    m_app->setSelectedInDB( entity, false );
-                }
-            }
-        }
-
-        QJsonArray missing;
+        QList<unsigned> requested;
+        QList<unsigned> missing;
+        QJsonArray invalid;
+        QSet<unsigned> seen;
         for ( const QJsonValue& value : ids )
         {
             if ( !value.isDouble() )
             {
+                invalid.append( value );
                 continue;
             }
 
-            const unsigned id = static_cast<unsigned>( value.toDouble() );
-            if ( ccHObject* entity = findEntity( id ) )
+            const double raw = value.toDouble();
+            if ( raw < 0.0 || raw > static_cast<double>( std::numeric_limits<unsigned>::max() ) )
             {
-                m_app->setSelectedInDB( entity, true );
+                invalid.append( value );
+                continue;
+            }
+
+            const unsigned id = static_cast<unsigned>( raw );
+            if ( seen.contains( id ) )
+            {
+                continue; // stable de-duplication: first occurrence wins
+            }
+            seen.insert( id );
+
+            if ( findEntity( id ) )
+            {
+                requested.append( id );
             }
             else
             {
-                missing.append( static_cast<qint64>( id ) );
+                missing.append( id );
             }
         }
 
+        QTreeView* tree = dbTreeView( m_app );
+        QItemSelectionModel* selectionModel = tree ? tree->selectionModel() : nullptr;
+        QAbstractItemModel* model = tree ? tree->model() : nullptr;
+
+        if ( clearFirst )
+        {
+            if ( selectionModel )
+            {
+                selectionModel->clearSelection();
+            }
+            else
+            {
+                const ccHObject::Container previous = m_app->getSelectedEntities();
+                for ( ccHObject* entity : previous )
+                {
+                    if ( entity )
+                    {
+                        m_app->setSelectedInDB( entity, false );
+                    }
+                }
+            }
+        }
+
+        QList<unsigned> unresolved;
+        for ( unsigned id : requested )
+        {
+            ccHObject* entity = findEntity( id );
+            bool selected = false;
+
+            if ( selectionModel && model && entity )
+            {
+                const QModelIndex index = findEntityIndex( model, entity );
+                if ( index.isValid() )
+                {
+                    selectionModel->select( index, QItemSelectionModel::Select | QItemSelectionModel::Rows );
+                    selected = selectionModel->isSelected( index );
+                    entity->setSelected( selected );
+                }
+            }
+
+            // Fallback is reliable for a single entity, but older CloudCompare
+            // versions may replace the prior selection on each call.
+            if ( !selected && entity )
+            {
+                m_app->setSelectedInDB( entity, true );
+            }
+        }
+
+        QCoreApplication::processEvents();
         m_app->updateUI();
 
+        const QJsonArray actual = selectedIds( m_app );
+        QSet<unsigned> actualSet;
+        for ( const QJsonValue& value : actual )
+        {
+            actualSet.insert( static_cast<unsigned>( value.toDouble() ) );
+        }
+        for ( unsigned id : requested )
+        {
+            if ( !actualSet.contains( id ) )
+            {
+                unresolved.append( id );
+            }
+        }
+
         QJsonObject result;
-        result[ "selected_ids" ] = selectedIds( m_app );
-        result[ "missing_ids" ] = missing;
+        result[ "requested_ids" ] = idsToJson( requested );
+        result[ "selected_ids" ] = actual;
+        result[ "missing_ids" ] = idsToJson( missing );
+        result[ "invalid_ids" ] = invalid;
+        result[ "unresolved_ids" ] = idsToJson( unresolved );
+        result[ "duplicates_ignored" ] = ids.size() - requested.size() - missing.size() - invalid.size();
+        result[ "matched_request" ] = unresolved.isEmpty() && ( !clearFirst || actualSet.size() == requested.size() );
+        result[ "selection_backend" ] = selectionModel ? "db_tree_selection_model" : "main_app_fallback";
         return result;
     }
 
@@ -624,6 +745,12 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         result[ "height" ] = image.height();
         result[ "png_base64" ] = QString::fromLatin1( png.toBase64() );
         return result;
+    }
+
+    QJsonValue workflowResult;
+    if ( qMCPFusionWorkflow::dispatch( m_app, method, params, workflowResult, error ) )
+    {
+        return workflowResult;
     }
 
     error = QString( "Unknown bridge method: %1" ).arg( method );
