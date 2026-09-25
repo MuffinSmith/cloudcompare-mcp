@@ -10,6 +10,7 @@ if ( PLUGIN_STANDARD_QMCP_BRIDGE )
 
     target_sources( ${PROJECT_NAME}
         PRIVATE
+            ${CMAKE_CURRENT_LIST_DIR}/qMCPBridge.qrc
             ${CMAKE_CURRENT_LIST_DIR}/include/qMCPBridge.h
             ${CMAKE_CURRENT_LIST_DIR}/src/qMCPBridge.cpp
     )
