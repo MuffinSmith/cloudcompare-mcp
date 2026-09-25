@@ -9,6 +9,10 @@ live cloning/merging, validated PLY/OBJ export, optional full-3D ball-pivoting
 reconstruction, reference-mesh simplification, and the end-to-end acceptance
 harness, see [docs/FUSION_REFERENCE_WORKFLOW.md](docs/FUSION_REFERENCE_WORKFLOW.md).
 
+The next live workflow layer adds non-destructive crop, subsampling, SOR filtering,
+normal computation/orientation, and working groups. See
+[docs/LIVE_SCAN_PREPARATION.md](docs/LIVE_SCAN_PREPARATION.md).
+
 ## Features
 
 ### Native tools (no CloudCompare required)
