@@ -15,6 +15,8 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import ImageContent, TextContent, Tool
 
+from .live import LiveBridgeError, request as live_request
+
 # ── CloudCompare binary discovery ────────────────────────────────────────────
 
 _CC_CANDIDATES: dict[str, list[str]] = {
@@ -420,6 +422,144 @@ server = Server("cloudcompare-mcp")
 
 TOOLS: list[Tool] = [
     Tool(
+        name="get_live_cloudcompare_info",
+        description=(
+            "Connect to the qMCPBridge plugin in an already-open CloudCompare GUI instance. "
+            "Returns bridge status, protocol version, selected entity IDs, and live scene count. "
+            "Use this first when the user wants to operate on the CloudCompare window they already have open."
+        ),
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="list_live_entities",
+        description=(
+            "List entities in the currently open CloudCompare GUI database tree. "
+            "Returns stable CloudCompare unique IDs used by the other live-instance tools."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "recursive": {"type": "boolean", "default": True},
+            },
+        },
+    ),
+    Tool(
+        name="get_live_selection",
+        description="Return the entities currently selected in the open CloudCompare GUI.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="set_live_selection",
+        description=(
+            "Select entities in the open CloudCompare GUI by unique entity ID. "
+            "By default the existing selection is cleared first."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "ids": {"type": "array", "items": {"type": "integer"}},
+                "clear": {"type": "boolean", "default": True},
+            },
+            "required": ["ids"],
+        },
+    ),
+    Tool(
+        name="load_file_live",
+        description="Load a point cloud or mesh into the already-open CloudCompare GUI instance.",
+        inputSchema={
+            "type": "object",
+            "properties": {"file_path": {"type": "string"}},
+            "required": ["file_path"],
+        },
+    ),
+    Tool(
+        name="rename_live_entity",
+        description="Rename an entity in the open CloudCompare GUI by its unique ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_id": {"type": "integer"},
+                "name": {"type": "string"},
+            },
+            "required": ["entity_id", "name"],
+        },
+    ),
+    Tool(
+        name="set_live_entity_state",
+        description="Show/hide and/or enable/disable an entity in the open CloudCompare GUI.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_id": {"type": "integer"},
+                "visible": {"type": "boolean"},
+                "enabled": {"type": "boolean"},
+            },
+            "required": ["entity_id"],
+        },
+    ),
+    Tool(
+        name="delete_live_entities",
+        description=(
+            "Delete one or more entities from the open CloudCompare GUI database tree. "
+            "This is destructive and the bridge does not provide an undo layer."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "ids": {"type": "array", "items": {"type": "integer"}, "minItems": 1},
+            },
+            "required": ["ids"],
+        },
+    ),
+    Tool(
+        name="transform_live_entity",
+        description=(
+            "Apply a 4x4 transform directly to an entity in the open CloudCompare GUI. "
+            "Matrix values must be 16 numbers in OpenGL column-major order."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_id": {"type": "integer"},
+                "matrix": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "minItems": 16,
+                    "maxItems": 16,
+                },
+            },
+            "required": ["entity_id", "matrix"],
+        },
+    ),
+    Tool(
+        name="set_live_view",
+        description=(
+            "Control the active 3D view in the open CloudCompare GUI. "
+            "Supports standard orthographic directions plus zoom/redraw actions."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "top", "bottom", "front", "back", "left", "right",
+                        "zoom_selected", "global_zoom", "redraw",
+                    ],
+                },
+            },
+            "required": ["action"],
+        },
+    ),
+    Tool(
+        name="capture_live_view",
+        description=(
+            "Capture the active 3D viewport from the currently open CloudCompare GUI "
+            "and return it as a PNG image the model can inspect."
+        ),
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
         name="get_cloudcompare_info",
         description=(
             "Check if CloudCompare is installed and return its version and path. "
@@ -767,6 +907,86 @@ def handle_visualize(args: dict) -> list[ImageContent | TextContent]:
     ]
 
 
+# ── Live CloudCompare GUI bridge handlers ─────────────────────────────────────
+
+def _live_call(method: str, params: dict | None = None) -> list[TextContent]:
+    try:
+        return _ok(live_request(method, params or {}))
+    except LiveBridgeError as exc:
+        return _err(str(exc))
+
+
+def handle_get_live_cloudcompare_info(_args: dict) -> list[TextContent]:
+    return _live_call("ping")
+
+
+def handle_list_live_entities(args: dict) -> list[TextContent]:
+    return _live_call("scene.list", {"recursive": bool(args.get("recursive", True))})
+
+
+def handle_get_live_selection(_args: dict) -> list[TextContent]:
+    return _live_call("selection.get")
+
+
+def handle_set_live_selection(args: dict) -> list[TextContent]:
+    return _live_call(
+        "selection.set",
+        {"ids": args["ids"], "clear": bool(args.get("clear", True))},
+    )
+
+
+def handle_load_file_live(args: dict) -> list[TextContent]:
+    return _live_call("file.load", {"path": args["file_path"]})
+
+
+def handle_rename_live_entity(args: dict) -> list[TextContent]:
+    return _live_call(
+        "entity.rename",
+        {"id": args["entity_id"], "name": args["name"]},
+    )
+
+
+def handle_set_live_entity_state(args: dict) -> list[TextContent]:
+    params = {"id": args["entity_id"]}
+    if "visible" in args:
+        params["visible"] = args["visible"]
+    if "enabled" in args:
+        params["enabled"] = args["enabled"]
+    return _live_call("entity.set_state", params)
+
+
+def handle_delete_live_entities(args: dict) -> list[TextContent]:
+    return _live_call("entity.delete", {"ids": args["ids"]})
+
+
+def handle_transform_live_entity(args: dict) -> list[TextContent]:
+    return _live_call(
+        "entity.transform",
+        {"id": args["entity_id"], "matrix": args["matrix"]},
+    )
+
+
+def handle_set_live_view(args: dict) -> list[TextContent]:
+    return _live_call("view", {"action": args["action"]})
+
+
+def handle_capture_live_view(_args: dict) -> list[ImageContent | TextContent]:
+    try:
+        result = live_request("view.capture", {})
+        png_b64 = result["png_base64"]
+        metadata = {
+            "width": result.get("width"),
+            "height": result.get("height"),
+            "source": "open CloudCompare active 3D viewport",
+        }
+        return [
+            ImageContent(type="image", data=png_b64, mimeType="image/png"),
+            TextContent(type="text", text=json.dumps(metadata, indent=2)),
+        ]
+    except (LiveBridgeError, KeyError, TypeError) as exc:
+        return _err(str(exc))
+
+
 # ── CloudCompare handlers ─────────────────────────────────────────────────────
 
 def handle_get_cloudcompare_info(_args: dict) -> list[TextContent]:
@@ -936,6 +1156,17 @@ async def list_tools() -> list[Tool]:
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageContent]:
     dispatch = {
+        "get_live_cloudcompare_info": handle_get_live_cloudcompare_info,
+        "list_live_entities": handle_list_live_entities,
+        "get_live_selection": handle_get_live_selection,
+        "set_live_selection": handle_set_live_selection,
+        "load_file_live": handle_load_file_live,
+        "rename_live_entity": handle_rename_live_entity,
+        "set_live_entity_state": handle_set_live_entity_state,
+        "delete_live_entities": handle_delete_live_entities,
+        "transform_live_entity": handle_transform_live_entity,
+        "set_live_view": handle_set_live_view,
+        "capture_live_view": handle_capture_live_view,
         "get_cloudcompare_info": handle_get_cloudcompare_info,
         "read_cloud_metadata": handle_read_metadata,
         "visualize_cloud": handle_visualize,
