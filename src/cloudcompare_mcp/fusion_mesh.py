@@ -6,6 +6,7 @@ CloudCompare scene. They never modify source entities or project files.
 
 from __future__ import annotations
 
+import importlib.metadata
 import importlib.util
 import math
 import tempfile
@@ -24,17 +25,13 @@ def pymeshlab_available() -> bool:
 
 
 def pymeshlab_version() -> str | None:
+    """Return the installed distribution version without importing native modules."""
     if not pymeshlab_available():
         return None
-    import pymeshlab  # type: ignore[import-not-found]
-
-    value = getattr(pymeshlab, "__version__", None) or getattr(pymeshlab, "version", None)
-    if callable(value):
-        try:
-            value = value()
-        except Exception:
-            return None
-    return str(value) if value is not None else None
+    try:
+        return importlib.metadata.version("pymeshlab")
+    except importlib.metadata.PackageNotFoundError:
+        return None
 
 
 def _json_value(value: Any) -> Any:
