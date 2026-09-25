@@ -32,6 +32,25 @@ namespace
 {
 constexpr quint16 DEFAULT_PORT = 8765;
 
+void addApplicationVersion( QJsonObject& result )
+{
+    const QString runtimeVersion = QCoreApplication::applicationVersion();
+    if ( !runtimeVersion.isEmpty() )
+    {
+        result[ "application_version" ] = runtimeVersion;
+        result[ "application_version_source" ] = "runtime_qt";
+        return;
+    }
+
+#ifdef QMCP_CLOUDCOMPARE_BUILD_VERSION
+    result[ "application_version" ] = QStringLiteral( QMCP_CLOUDCOMPARE_BUILD_VERSION );
+    result[ "application_version_source" ] = "plugin_build_source_tree";
+#else
+    result[ "application_version" ] = QString();
+    result[ "application_version_source" ] = "unavailable";
+#endif
+}
+
 bool readId( const QJsonObject& object, const char* key, unsigned& id )
 {
     const QJsonValue value = object.value( QLatin1String( key ) );
