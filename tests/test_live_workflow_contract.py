@@ -101,6 +101,54 @@ class LiveWorkflowContractTests(unittest.TestCase):
             timeout=900.0,
         )
 
+    def test_live_icp_defaults_to_preview_and_forwards_safety_settings(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_register_live_icp({"data_id": 10, "model_id": 20})
+        call.assert_called_once_with(
+            "cloud.register_icp",
+            {
+                "data_id": 10,
+                "model_id": 20,
+                "overlap_percent": 100.0,
+                "max_iterations": 20,
+                "random_sampling_limit": 50000,
+                "filter_out_farthest_points": False,
+                "preview_only": True,
+            },
+            timeout=900.0,
+        )
+
+    def test_live_icp_forwards_result_options(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_register_live_icp(
+                {
+                    "data_id": 10,
+                    "model_id": 20,
+                    "overlap_percent": 65,
+                    "max_iterations": 40,
+                    "random_sampling_limit": 25000,
+                    "filter_out_farthest_points": True,
+                    "preview_only": False,
+                    "name": "aligned working copy",
+                    "destination_group_id": 42,
+                }
+            )
+        call.assert_called_once_with(
+            "cloud.register_icp",
+            {
+                "data_id": 10,
+                "model_id": 20,
+                "overlap_percent": 65.0,
+                "max_iterations": 40,
+                "random_sampling_limit": 25000,
+                "filter_out_farthest_points": True,
+                "preview_only": False,
+                "name": "aligned working copy",
+                "destination_group_id": 42,
+            },
+            timeout=900.0,
+        )
+
     def test_ball_pivoting_forwards_result_name_and_destination(self) -> None:
         with patch(
             "cloudcompare_mcp.fusion_mesh.reconstruct_ball_pivoting",
