@@ -23,14 +23,25 @@ from cloudcompare_mcp.live import LiveBridgeError, request
 
 
 def flatten_entities(result: Any) -> dict[int, dict[str, Any]]:
+    """Flatten scene envelopes, entity groups, nested children, and entity lists."""
     found: dict[int, dict[str, Any]] = {}
 
     def visit(value: Any) -> None:
         if isinstance(value, dict):
             if isinstance(value.get("id"), int):
                 found[int(value["id"])] = value
-            for child in value.get("children", []):
-                visit(child)
+
+            # scene.list returns {"entities": [...], "selected_ids": [...]},
+            # while loaded entities/groups expose descendants through "children".
+            # Traverse both documented container shapes without recursively walking
+            # arbitrary metadata dictionaries that may also contain numeric IDs.
+            for key in ("entities", "children"):
+                nested = value.get(key)
+                if isinstance(nested, list):
+                    for item in nested:
+                        visit(item)
+                elif isinstance(nested, dict):
+                    visit(nested)
         elif isinstance(value, list):
             for item in value:
                 visit(item)
