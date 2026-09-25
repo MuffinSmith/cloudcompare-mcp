@@ -560,6 +560,131 @@ TOOLS: list[Tool] = [
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
+        name="get_live_workflow_capabilities",
+        description=(
+            "Report the live bridge's safe reverse-engineering capabilities, application/plugin versions, "
+            "native-unit policy, available meshing methods, simplification backends, and execution limitations."
+        ),
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="clone_live_entities",
+        description=(
+            "Deep-clone explicitly chosen live point clouds or triangle meshes without modifying the sources. "
+            "Use this before destructive or experimental reverse-engineering steps."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "ids": {"type": "array", "items": {"type": "integer"}, "minItems": 1},
+                "destination_group_id": {"type": "integer"},
+                "name_suffix": {"type": "string", "default": ".mcp_clone"},
+            },
+            "required": ["ids"],
+        },
+    ),
+    Tool(
+        name="merge_live_clouds",
+        description=(
+            "Create a new live point cloud by concatenating only the explicitly supplied cloud IDs. "
+            "No filtering, smoothing, duplicate removal, or resampling is performed. Originals are preserved."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "ids": {"type": "array", "items": {"type": "integer"}, "minItems": 1},
+                "name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+                "coordinate_frame_policy": {
+                    "type": "string",
+                    "enum": ["strict", "convert_to_first"],
+                    "default": "strict",
+                },
+            },
+            "required": ["ids"],
+        },
+    ),
+    Tool(
+        name="reconstruct_live_mesh",
+        description=(
+            "Create a separate mesh from a live cloud using an explicitly chosen supported reconstruction method. "
+            "CloudCompare core methods exposed here are 2.5D only; Poisson is never selected automatically."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "method": {
+                    "type": "string",
+                    "enum": [
+                        "delaunay_2_5d_best_fit_plane",
+                        "delaunay_2_5d_axis_aligned",
+                    ],
+                },
+                "acknowledge_2_5d_limitations": {"type": "boolean", "default": False},
+                "max_edge_length": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Maximum triangle edge length in the cloud's native coordinate units; 0 disables the limit.",
+                },
+                "projection_dimension": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 2,
+                    "default": 2,
+                },
+                "name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+            },
+            "required": ["cloud_id", "method", "acknowledge_2_5d_limitations"],
+        },
+    ),
+    Tool(
+        name="simplify_live_mesh",
+        description=(
+            "Request persisted reference-mesh simplification. The tool reports whether a safe topology simplifier "
+            "is actually available instead of silently substituting CloudCompare display LOD decimation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "mesh_id": {"type": "integer"},
+                "target_triangles": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "For fan reference meshes, normally target 200000-500000 triangles.",
+                },
+                "preserve_boundaries": {"type": "boolean", "default": True},
+                "preserve_sharp_features": {"type": "boolean", "default": True},
+            },
+            "required": ["mesh_id", "target_triangles"],
+        },
+    ),
+    Tool(
+        name="export_live_entity",
+        description=(
+            "Export current live geometry, including unsaved edits/transforms, directly from CloudCompare. "
+            "Use binary PLY for point clouds and OBJ only for genuine triangle meshes. "
+            "Exports are written transactionally, refuse overwrite by default, and are read back for count/bounds validation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_id": {"type": "integer"},
+                "path": {
+                    "type": "string",
+                    "description": "Absolute output path ending in .ply or .obj.",
+                },
+                "overwrite": {"type": "boolean", "default": False},
+                "intended_import_units": {
+                    "type": "string",
+                    "description": "Optional caller-supplied intended units for unitless OBJ import (for example 'millimeters').",
+                },
+            },
+            "required": ["entity_id", "path"],
+        },
+    ),
+    Tool(
         name="get_cloudcompare_info",
         description=(
             "Check if CloudCompare is installed and return its version and path. "
@@ -909,9 +1034,14 @@ def handle_visualize(args: dict) -> list[ImageContent | TextContent]:
 
 # ── Live CloudCompare GUI bridge handlers ─────────────────────────────────────
 
-def _live_call(method: str, params: dict | None = None) -> list[TextContent]:
+def _live_call(
+    method: str,
+    params: dict | None = None,
+    *,
+    timeout: float | None = None,
+) -> list[TextContent]:
     try:
-        return _ok(live_request(method, params or {}))
+        return _ok(live_request(method, params or {}, timeout=timeout))
     except LiveBridgeError as exc:
         return _err(str(exc))
 
@@ -985,6 +1115,67 @@ def handle_capture_live_view(_args: dict) -> list[ImageContent | TextContent]:
         ]
     except (LiveBridgeError, KeyError, TypeError) as exc:
         return _err(str(exc))
+
+
+def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
+    return _live_call("capabilities.get")
+
+
+def handle_clone_live_entities(args: dict) -> list[TextContent]:
+    params = {
+        "ids": args["ids"],
+        "name_suffix": args.get("name_suffix", ".mcp_clone"),
+    }
+    if "destination_group_id" in args:
+        params["destination_group_id"] = args["destination_group_id"]
+    return _live_call("entity.clone", params, timeout=300.0)
+
+
+def handle_merge_live_clouds(args: dict) -> list[TextContent]:
+    params = {
+        "ids": args["ids"],
+        "coordinate_frame_policy": args.get("coordinate_frame_policy", "strict"),
+    }
+    for key in ("name", "destination_group_id"):
+        if key in args:
+            params[key] = args[key]
+    return _live_call("cloud.merge", params, timeout=600.0)
+
+
+def handle_reconstruct_live_mesh(args: dict) -> list[TextContent]:
+    params = {
+        "cloud_id": args["cloud_id"],
+        "method": args["method"],
+        "acknowledge_2_5d_limitations": bool(args.get("acknowledge_2_5d_limitations", False)),
+    }
+    for key in ("max_edge_length", "projection_dimension", "name", "destination_group_id"):
+        if key in args:
+            params[key] = args[key]
+    return _live_call("mesh.reconstruct", params, timeout=600.0)
+
+
+def handle_simplify_live_mesh(args: dict) -> list[TextContent]:
+    return _live_call(
+        "mesh.simplify",
+        {
+            "mesh_id": args["mesh_id"],
+            "target_triangles": args["target_triangles"],
+            "preserve_boundaries": bool(args.get("preserve_boundaries", True)),
+            "preserve_sharp_features": bool(args.get("preserve_sharp_features", True)),
+        },
+        timeout=600.0,
+    )
+
+
+def handle_export_live_entity(args: dict) -> list[TextContent]:
+    params = {
+        "entity_id": args["entity_id"],
+        "path": args["path"],
+        "overwrite": bool(args.get("overwrite", False)),
+    }
+    if "intended_import_units" in args:
+        params["intended_import_units"] = args["intended_import_units"]
+    return _live_call("entity.export", params, timeout=600.0)
 
 
 # ── CloudCompare handlers ─────────────────────────────────────────────────────
@@ -1167,6 +1358,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageConte
         "transform_live_entity": handle_transform_live_entity,
         "set_live_view": handle_set_live_view,
         "capture_live_view": handle_capture_live_view,
+        "get_live_workflow_capabilities": handle_get_live_workflow_capabilities,
+        "clone_live_entities": handle_clone_live_entities,
+        "merge_live_clouds": handle_merge_live_clouds,
+        "reconstruct_live_mesh": handle_reconstruct_live_mesh,
+        "simplify_live_mesh": handle_simplify_live_mesh,
+        "export_live_entity": handle_export_live_entity,
         "get_cloudcompare_info": handle_get_cloudcompare_info,
         "read_cloud_metadata": handle_read_metadata,
         "visualize_cloud": handle_visualize,
