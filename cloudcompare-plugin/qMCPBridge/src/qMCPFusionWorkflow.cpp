@@ -16,6 +16,7 @@
 #include <CloudSamplingTools.h>
 #include <CCConst.h>
 #include <ReferenceCloud.h>
+#include <RegistrationTools.h>
 #include <ccBBox.h>
 #include <ccGenericMesh.h>
 #include <ccGenericPointCloud.h>
@@ -25,6 +26,7 @@
 #include <ccPointCloud.h>
 #include <ccScalarField.h>
 #include <ccGlobalShiftManager.h>
+#include <ccGLMatrix.h>
 
 #include "ccMainAppInterface.h"
 
@@ -327,6 +329,17 @@ bool readVector3(
 
     value = CCVector3d( components[0], components[1], components[2] );
     return true;
+}
+
+QJsonArray matrixJson( const ccGLMatrix& matrix )
+{
+    QJsonArray out;
+    const float* values = matrix.data();
+    for ( int i = 0; i < 16; ++i )
+    {
+        out.append( static_cast<double>( values[i] ) );
+    }
+    return out;
 }
 
 QJsonArray partialCloneWarnings( int warnings )
@@ -934,17 +947,199 @@ bool computeCloudNormals(
     return true;
 }
 
+bool registerCloudsICP(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned dataId = 0;
+    unsigned modelId = 0;
+    if ( !readId( params, "data_id", dataId ) || !readId( params, "model_id", modelId ) )
+    {
+        error = "cloud.register_icp requires numeric data_id and model_id";
+        return true;
+    }
+    if ( dataId == modelId )
+    {
+        error = "cloud.register_icp requires different data and model entities";
+        return true;
+    }
+
+    ccPointCloud* dataSource = requireStandaloneCloud( app, dataId, error );
+    if ( !dataSource )
+    {
+        return true;
+    }
+    ccPointCloud* modelSource = requireStandaloneCloud( app, modelId, error );
+    if ( !modelSource )
+    {
+        return true;
+    }
+    if ( dataSource->size() < 3 || modelSource->size() < 3 )
+    {
+        error = "ICP requires at least three points in both data and model clouds";
+        return true;
+    }
+    if ( !compatibleFrames( dataSource, modelSource ) )
+    {
+        error =
+            "Data and model coordinate frames differ. Live ICP currently requires identical "
+            "CloudCompare global shift/scale metadata; convert working copies to a common frame first.";
+        return true;
+    }
+
+    const double overlapPercent = params.value( "overlap_percent" ).toDouble( 100.0 );
+    if ( !std::isfinite( overlapPercent ) || overlapPercent < 1.0 || overlapPercent > 100.0 )
+    {
+        error = "overlap_percent must be between 1 and 100";
+        return true;
+    }
+
+    const int maxIterations = params.value( "max_iterations" ).toInt( 20 );
+    if ( maxIterations < 1 || maxIterations > 10000 )
+    {
+        error = "max_iterations must be between 1 and 10000";
+        return true;
+    }
+
+    const int samplingLimit = params.value( "random_sampling_limit" ).toInt( 50000 );
+    if ( samplingLimit < 3 )
+    {
+        error = "random_sampling_limit must be at least 3";
+        return true;
+    }
+
+    const bool previewOnly = params.value( "preview_only" ).toBool( true );
+    const bool filterFarthest = params.value( "filter_out_farthest_points" ).toBool( false );
+
+    ccHObject* destination = nullptr;
+    if ( !resolveDestination( app, params, destination, error ) )
+    {
+        return true;
+    }
+
+    std::unique_ptr<ccPointCloud> registrationData( dataSource->cloneThis( nullptr, true ) );
+    std::unique_ptr<ccPointCloud> registrationModel( modelSource->cloneThis( nullptr, true ) );
+    if ( !registrationData || !registrationModel )
+    {
+        error = "Could not allocate temporary ICP working copies";
+        return true;
+    }
+
+    if ( !registrationData->enableScalarField() )
+    {
+        error = "Could not allocate the temporary ICP distance scalar field";
+        return true;
+    }
+
+    CCCoreLib::ICPRegistrationTools::Parameters icp;
+    icp.convType = CCCoreLib::ICPRegistrationTools::MAX_ITER_CONVERGENCE;
+    icp.nbMaxIterations = static_cast<unsigned>( maxIterations );
+    icp.adjustScale = false;
+    icp.filterOutFarthestPoints = filterFarthest;
+    icp.samplingLimit = static_cast<unsigned>( samplingLimit );
+    icp.finalOverlapRatio = overlapPercent / 100.0;
+    icp.modelWeights = nullptr;
+    icp.dataWeights = nullptr;
+    icp.transformationFilters = CCCoreLib::RegistrationTools::SKIP_NONE;
+    icp.maxThreadCount = 0;
+    icp.useC2MSignedDistances = false;
+    icp.robustC2MSignedDistances = true;
+    icp.normalsMatching = CCCoreLib::ICPRegistrationTools::NO_NORMAL;
+
+    CCCoreLib::PointProjectionTools::Transformation transform;
+    double finalRMS = 0.0;
+    unsigned finalPointCount = 0;
+    const CCCoreLib::ICPRegistrationTools::RESULT_TYPE icpResult =
+        CCCoreLib::ICPRegistrationTools::Register(
+            registrationModel.get(),
+            nullptr,
+            registrationData.get(),
+            icp,
+            transform,
+            finalRMS,
+            finalPointCount,
+            nullptr );
+
+    if ( icpResult >= CCCoreLib::ICPRegistrationTools::ICP_ERROR )
+    {
+        error = QString( "CloudCompare ICP failed with result code %1" )
+                    .arg( static_cast<int>( icpResult ) );
+        return true;
+    }
+
+    ccGLMatrix transformMatrix;
+    transformMatrix.toIdentity();
+    bool hasTransform = false;
+    if ( icpResult == CCCoreLib::ICPRegistrationTools::ICP_APPLY_TRANSFO )
+    {
+        transformMatrix = FromCCLibMatrix<double, float>( transform.R, transform.T, transform.s );
+        hasTransform = true;
+    }
+
+    QJsonObject out;
+    out[ "data_id" ] = static_cast<qint64>( dataId );
+    out[ "model_id" ] = static_cast<qint64>( modelId );
+    out[ "data_source_preserved" ] = true;
+    out[ "model_source_preserved" ] = true;
+    out[ "preview_only" ] = previewOnly;
+    out[ "coordinate_frame_policy" ] = "strict_same_global_shift_scale";
+    out[ "overlap_percent" ] = overlapPercent;
+    out[ "max_iterations" ] = maxIterations;
+    out[ "random_sampling_limit" ] = samplingLimit;
+    out[ "filter_out_farthest_points" ] = filterFarthest;
+    out[ "final_rms_native" ] = finalRMS;
+    out[ "final_point_count" ] = static_cast<qint64>( finalPointCount );
+    out[ "result_code" ] = static_cast<int>( icpResult );
+    out[ "transformation_available" ] = hasTransform;
+    out[ "transformation_matrix_column_major" ] = matrixJson( transformMatrix );
+    out[ "scale" ] = hasTransform ? transform.s : 1.0;
+    out[ "result_created" ] = false;
+
+    if ( !previewOnly && hasTransform )
+    {
+        std::unique_ptr<ccPointCloud> aligned( dataSource->cloneThis( nullptr, true ) );
+        if ( !aligned )
+        {
+            error = "ICP succeeded but CloudCompare could not allocate the aligned result clone";
+            return true;
+        }
+
+        aligned->applyGLTransformation_recursive( &transformMatrix );
+        aligned->setName(
+            params.value( "name" ).toString( dataSource->getName() + ".mcp_icp_aligned" ) );
+        aligned->setVisible( true );
+        aligned->setEnabled( true );
+
+        ccPointCloud* liveAligned = aligned.release();
+        attachToDestination( app, liveAligned, destination );
+        app->refreshAll();
+        app->updateUI();
+
+        out[ "result_created" ] = true;
+        out[ "result_entity" ] = entityDescription( liveAligned, false );
+    }
+    else if ( !previewOnly && !hasTransform )
+    {
+        out[ "note" ] = "ICP reported that no transformation was necessary; no duplicate result was created.";
+    }
+
+    result = out;
+    return true;
+}
+
 QJsonObject capabilities()
 {
     QJsonObject result;
     result[ "protocol_version" ] = 1;
-    result[ "workflow_revision" ] = 2;
+    result[ "workflow_revision" ] = 3;
     result[ "units_policy" ] =
         "Coordinates are reported in native units. Units remain unknown unless supplied by the caller.";
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    result[ "plugin_version" ] = "0.4.1";
+    result[ "plugin_version" ] = "0.5.0";
 
     QJsonArray bridgeOperations{
         "ping",
@@ -968,7 +1163,8 @@ QJsonObject capabilities()
         "cloud.crop",
         "cloud.subsample",
         "cloud.filter_sor",
-        "cloud.compute_normals"
+        "cloud.compute_normals",
+        "cloud.register_icp"
     };
     result[ "bridge_operations" ] = bridgeOperations;
 
@@ -982,7 +1178,8 @@ QJsonObject capabilities()
         "cloud.crop",
         "cloud.subsample",
         "cloud.filter_sor",
-        "cloud.compute_normals"
+        "cloud.compute_normals",
+        "cloud.register_icp"
     };
     result[ "workflow_operations" ] = workflowOperations;
 
@@ -995,6 +1192,23 @@ QJsonObject capabilities()
     scanPreparation[ "normal_models" ] = QJsonArray{ "LS", "QUADRIC", "TRIANGULATION" };
     scanPreparation[ "mst_normal_orientation" ] = true;
     result[ "scan_preparation" ] = scanPreparation;
+
+    QJsonObject registration;
+    registration[ "icp_point_cloud_to_point_cloud" ] = true;
+    registration[ "preview_only_supported" ] = true;
+    registration[ "creates_aligned_clone" ] = true;
+    registration[ "scale_adjustment_supported" ] = false;
+    registration[ "coordinate_frame_policy" ] = "strict_same_global_shift_scale";
+    registration[ "parameters" ] = QJsonArray{
+        "overlap_percent",
+        "max_iterations",
+        "random_sampling_limit",
+        "filter_out_farthest_points",
+        "preview_only",
+        "name",
+        "destination_group_id"
+    };
+    result[ "registration" ] = registration;
 
     QJsonArray meshing;
     {
@@ -1868,6 +2082,10 @@ bool dispatch(
     if ( method == "cloud.compute_normals" )
     {
         return computeCloudNormals( app, params, result, error );
+    }
+    if ( method == "cloud.register_icp" )
+    {
+        return registerCloudsICP( app, params, result, error );
     }
     if ( method == "entity.clone" )
     {
