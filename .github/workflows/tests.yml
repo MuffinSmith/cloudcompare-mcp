@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/fusion-reference-mesh-workflow
+      - feature/live-scan-preparation
   pull_request:
 
 jobs:
