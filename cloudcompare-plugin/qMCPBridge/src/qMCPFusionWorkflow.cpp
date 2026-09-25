@@ -1170,6 +1170,16 @@ bool exportEntity(
     out[ "file_size_bytes" ] = completed.size();
     out[ "point_count" ] = static_cast<qint64>( sourceCloud->size() );
     out[ "triangle_count" ] = sourceMesh ? static_cast<qint64>( sourceMesh->size() ) : 0;
+    out[ "has_normals" ] = sourceCloud->hasNormals();
+    out[ "has_colors" ] = sourceCloud->hasColors();
+    if ( ccPointCloud* sourcePointCloud = dynamic_cast<ccPointCloud*>( sourceCloud ) )
+    {
+        out[ "scalar_fields" ] = scalarFieldsJson( sourcePointCloud );
+    }
+    else
+    {
+        out[ "scalar_fields" ] = QJsonArray();
+    }
     out[ "obj_face_records" ] = objFaceLines;
     out[ "coordinates_written" ] = "global";
     out[ "source_global_shift" ] = vector3Json( sourceCloud->getGlobalShift() );
