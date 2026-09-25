@@ -54,5 +54,5 @@ if ( PLUGIN_STANDARD_QMCP_BRIDGE )
     # AddPlugin in older releases uses the plain target_link_libraries
     # signature. Appending the dependency works with either helper version.
     set_property( TARGET ${PROJECT_NAME} APPEND PROPERTY
-        LINK_LIBRARIES ${QMCP_QT_PACKAGE}::Network QCC_IO_LIB QCC_DB_LIB )
+        LINK_LIBRARIES ${QMCP_QT_PACKAGE}::Network QCC_IO_LIB QCC_DB_LIB CCCoreLib )
 endif()
