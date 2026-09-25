@@ -75,3 +75,12 @@ Before merging this branch, live Windows acceptance should verify at minimum:
 - invalid IDs, same data/model ID, incompatible global frames, invalid overlap/iteration/sampling values,
   empty names, and invalid destination groups are transactional failures
 - the aligned result preserves the original data cloud's RGB, normals, scalar fields, global shift, and scale
+
+
+## MCP error signaling
+
+Native bridge validation failures are returned as MCP tool failures with
+`CallToolResult.isError=true`. The JSON error text remains in the content so an
+assistant can read the validation message and correct its next call. A rejected
+native request must not be represented as a successful tool result containing an
+`{"error": ...}` payload.
