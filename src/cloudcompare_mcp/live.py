@@ -37,9 +37,20 @@ def _config() -> tuple[str, int, float, str | None]:
     return host, port, timeout, token
 
 
-def request(method: str, params: dict[str, Any] | None = None) -> Any:
-    """Send one newline-delimited JSON request to the open CloudCompare instance."""
-    host, port, timeout, token = _config()
+def request(
+    method: str,
+    params: dict[str, Any] | None = None,
+    *,
+    timeout: float | None = None,
+) -> Any:
+    """Send one newline-delimited JSON request to the open CloudCompare instance.
+
+    A longer timeout can be supplied for explicitly long-running geometry operations.
+    """
+    host, port, configured_timeout, token = _config()
+    timeout = configured_timeout if timeout is None else float(timeout)
+    if timeout <= 0:
+        raise LiveBridgeError("timeout must be greater than zero")
     payload: dict[str, Any] = {
         "id": 1,
         "method": method,
