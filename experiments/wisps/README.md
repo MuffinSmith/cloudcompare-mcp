@@ -71,3 +71,29 @@ of every wisp is made. Use the proposed mask as a reviewable experiment.
 Synthetic tests cover a strand, clean boundaries, missing overlap, thin opposite
 faces, a cylinder, and uniform registration offset. These checks do not establish
 that the full real scan is undamaged.
+
+## Optional fine edge pass
+
+After reviewing the primary detector output, `fine_edges.py` can process accepted
+copies. It requires at least three independent scans and consistently **outward**
+normals; inward or inconsistent normals invalidate the signed exterior test.
+
+```powershell
+python fine_edges.py accepted-wrap.ply accepted-top.ply accepted-bottom.ply --output fine-run --tolerance 0.10
+python test_fine_edges.py
+```
+
+This pass handles a point that aligns with a top face but protrudes beyond its
+side wall. Both independent reference scans must place it outside locally coherent
+patches at two neighborhood sizes. Only small candidate groups (40 points or fewer)
+qualify, and every removed point must have lower local sampling density than its
+neighbors. A sparse seed never causes removal of an entire surrounding group.
+
+It writes before-indexed evidence, removed/review subsets, exact retained records,
+source snapshots and a manifest. It preserves the input copies. Avoid blindly
+repeating the pass: iterative erosion can create damage even if each pass is small.
+Four additional synthetic tests cover fine side-wall strays despite top-plane
+support, intact thin slabs, convex/concave cylinder surfaces, and missing overlap.
+The 0.10 default is in native units and is not a guaranteed safe tolerance for all
+registration errors or scanners. Fine residuals close to registration uncertainty
+and inadequately observed boundaries remain unresolved.
