@@ -1013,6 +1013,17 @@ bool registerCloudsICP(
     const bool previewOnly = params.value( "preview_only" ).toBool( true );
     const bool filterFarthest = params.value( "filter_out_farthest_points" ).toBool( false );
 
+    QString requestedName;
+    if ( params.contains( "name" ) )
+    {
+        requestedName = params.value( "name" ).toString().trimmed();
+        if ( requestedName.isEmpty() )
+        {
+            error = "cloud.register_icp name must be non-empty when supplied";
+            return true;
+        }
+    }
+
     ccHObject* destination = nullptr;
     if ( !resolveDestination( app, params, destination, error ) )
     {
@@ -1108,7 +1119,7 @@ bool registerCloudsICP(
 
         aligned->applyGLTransformation_recursive( &transformMatrix );
         aligned->setName(
-            params.value( "name" ).toString( dataSource->getName() + ".mcp_icp_aligned" ) );
+            requestedName.isEmpty() ? dataSource->getName() + ".mcp_icp_aligned" : requestedName );
         aligned->setVisible( true );
         aligned->setEnabled( true );
 
