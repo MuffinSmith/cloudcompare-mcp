@@ -13,6 +13,10 @@
 
 #include <FileIOFilter.h>
 #include <PlyFilter.h>
+#include <CloudSamplingTools.h>
+#include <CCConst.h>
+#include <ReferenceCloud.h>
+#include <ccBBox.h>
 #include <ccGenericMesh.h>
 #include <ccGenericPointCloud.h>
 #include <ccHObject.h>
@@ -292,6 +296,72 @@ QJsonObject entityDescription( ccHObject* entity, bool recursive )
     return result;
 }
 
+bool readVector3(
+    const QJsonObject& object,
+    const char* key,
+    CCVector3d& value,
+    QString& error )
+{
+    const QJsonArray array = object.value( QLatin1String( key ) ).toArray();
+    if ( array.size() != 3 )
+    {
+        error = QString( "%1 must contain exactly three numeric values" ).arg( key );
+        return false;
+    }
+
+    double components[3];
+    for ( int i = 0; i < 3; ++i )
+    {
+        if ( !array.at( i ).isDouble() )
+        {
+            error = QString( "%1 must contain exactly three numeric values" ).arg( key );
+            return false;
+        }
+        components[i] = array.at( i ).toDouble();
+        if ( !std::isfinite( components[i] ) )
+        {
+            error = QString( "%1 values must be finite" ).arg( key );
+            return false;
+        }
+    }
+
+    value = CCVector3d( components[0], components[1], components[2] );
+    return true;
+}
+
+QJsonArray partialCloneWarnings( int warnings )
+{
+    QJsonArray out;
+    if ( warnings & ccPointCloud::WRN_OUT_OF_MEM_FOR_COLORS )
+        out.append( "colors_not_copied" );
+    if ( warnings & ccPointCloud::WRN_OUT_OF_MEM_FOR_NORMALS )
+        out.append( "normals_not_copied" );
+    if ( warnings & ccPointCloud::WRN_OUT_OF_MEM_FOR_SFS )
+        out.append( "scalar_fields_not_copied" );
+    if ( warnings & ccPointCloud::WRN_OUT_OF_MEM_FOR_FWF )
+        out.append( "full_waveform_data_not_copied" );
+    return out;
+}
+
+ccPointCloud* requireStandaloneCloud(
+    ccMainAppInterface* app,
+    unsigned id,
+    QString& error )
+{
+    ccHObject* entity = findEntity( app, id );
+    if ( !entity )
+    {
+        error = QString( "Entity %1 was not found" ).arg( id );
+        return nullptr;
+    }
+    if ( !entity->isA( CC_TYPES::POINT_CLOUD ) )
+    {
+        error = QString( "Entity %1 is not a standalone point cloud" ).arg( id );
+        return nullptr;
+    }
+    return static_cast<ccPointCloud*>( entity );
+}
+
 bool compatibleFrames( const ccGenericPointCloud* a, const ccGenericPointCloud* b )
 {
     if ( !a || !b )
@@ -399,17 +469,482 @@ bool boundsEquivalent( const QJsonObject& a, const QJsonObject& b )
     return true;
 }
 
+bool createGroup(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    const QString name = params.value( "name" ).toString().trimmed();
+    if ( name.isEmpty() )
+    {
+        error = "group.create requires a non-empty name";
+        return true;
+    }
+
+    ccHObject* destination = nullptr;
+    if ( !resolveDestination( app, params, destination, error ) )
+    {
+        return true;
+    }
+
+    std::unique_ptr<ccHObject> group( new ccHObject( name ) );
+    group->setVisible( true );
+    group->setEnabled( true );
+
+    ccHObject* liveGroup = group.release();
+    attachToDestination( app, liveGroup, destination );
+    app->refreshAll();
+    app->updateUI();
+
+    QJsonObject out = entityDescription( liveGroup, false );
+    out[ "created" ] = true;
+    result = out;
+    return true;
+}
+
+bool cropCloud(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned id = 0;
+    if ( !readId( params, "cloud_id", id ) )
+    {
+        error = "cloud.crop requires a numeric cloud_id";
+        return true;
+    }
+
+    ccPointCloud* source = requireStandaloneCloud( app, id, error );
+    if ( !source )
+    {
+        return true;
+    }
+
+    CCVector3d requestedMin;
+    CCVector3d requestedMax;
+    if ( !readVector3( params, "min", requestedMin, error )
+         || !readVector3( params, "max", requestedMax, error ) )
+    {
+        return true;
+    }
+
+    for ( unsigned axis = 0; axis < 3; ++axis )
+    {
+        if ( requestedMax.u[axis] <= requestedMin.u[axis] )
+        {
+            error = "cloud.crop requires max to be greater than min on all three axes";
+            return true;
+        }
+    }
+
+    const QString coordinateSpace = params.value( "coordinate_space" ).toString( "native_local" );
+    if ( coordinateSpace != "native_local" && coordinateSpace != "global" )
+    {
+        error = "coordinate_space must be 'native_local' or 'global'";
+        return true;
+    }
+
+    CCVector3d localA = requestedMin;
+    CCVector3d localB = requestedMax;
+    if ( coordinateSpace == "global" )
+    {
+        localA = source->toLocal3d<double>( requestedMin );
+        localB = source->toLocal3d<double>( requestedMax );
+    }
+
+    CCVector3 localMin(
+        static_cast<PointCoordinateType>( std::min( localA.x, localB.x ) ),
+        static_cast<PointCoordinateType>( std::min( localA.y, localB.y ) ),
+        static_cast<PointCoordinateType>( std::min( localA.z, localB.z ) ) );
+    CCVector3 localMax(
+        static_cast<PointCoordinateType>( std::max( localA.x, localB.x ) ),
+        static_cast<PointCoordinateType>( std::max( localA.y, localB.y ) ),
+        static_cast<PointCoordinateType>( std::max( localA.z, localB.z ) ) );
+
+    const bool keepInside = params.value( "keep_inside" ).toBool( true );
+    const ccBBox box( localMin, localMax, true );
+    std::unique_ptr<CCCoreLib::ReferenceCloud> selection( source->crop( box, keepInside ) );
+    if ( !selection )
+    {
+        error = "CloudCompare failed to evaluate the crop selection";
+        return true;
+    }
+    if ( selection->size() == 0 )
+    {
+        error = QString( "Crop selected no points on the requested %1" )
+                    .arg( keepInside ? "inside" : "outside" );
+        return true;
+    }
+
+    int warnings = 0;
+    std::unique_ptr<ccPointCloud> cropped( source->partialClone( selection.get(), &warnings, false ) );
+    if ( !cropped )
+    {
+        error = "CloudCompare could not allocate the cropped point cloud";
+        return true;
+    }
+
+    cropped->setName(
+        params.value( "name" ).toString(
+            source->getName() + ( keepInside ? ".mcp_crop_inside" : ".mcp_crop_outside" ) ) );
+    cropped->setVisible( true );
+    cropped->setEnabled( true );
+
+    ccHObject* destination = nullptr;
+    if ( !resolveDestination( app, params, destination, error ) )
+    {
+        return true;
+    }
+
+    ccPointCloud* liveResult = cropped.release();
+    attachToDestination( app, liveResult, destination );
+    app->refreshAll();
+    app->updateUI();
+
+    QJsonObject out = entityDescription( liveResult, false );
+    out[ "source_id" ] = static_cast<qint64>( id );
+    out[ "source_preserved" ] = true;
+    out[ "coordinate_space" ] = coordinateSpace;
+    out[ "requested_min" ] = vector3Json( requestedMin );
+    out[ "requested_max" ] = vector3Json( requestedMax );
+    out[ "keep_inside" ] = keepInside;
+    out[ "source_point_count" ] = static_cast<qint64>( source->size() );
+    out[ "selected_point_count" ] = static_cast<qint64>( liveResult->size() );
+    out[ "attribute_copy_warnings" ] = partialCloneWarnings( warnings );
+    result = out;
+    return true;
+}
+
+bool subsampleCloud(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned id = 0;
+    if ( !readId( params, "cloud_id", id ) )
+    {
+        error = "cloud.subsample requires a numeric cloud_id";
+        return true;
+    }
+
+    ccPointCloud* source = requireStandaloneCloud( app, id, error );
+    if ( !source )
+    {
+        return true;
+    }
+    if ( source->size() == 0 )
+    {
+        error = "Cannot subsample an empty cloud";
+        return true;
+    }
+
+    const QString method = params.value( "method" ).toString().toLower();
+    std::unique_ptr<CCCoreLib::ReferenceCloud> selection;
+    QJsonObject settings;
+
+    if ( method == "random" )
+    {
+        const qint64 requested = static_cast<qint64>( params.value( "target_points" ).toDouble( 0 ) );
+        if ( requested <= 0 || requested >= static_cast<qint64>( source->size() ) )
+        {
+            error = QString( "random subsampling requires target_points between 1 and %1" )
+                        .arg( source->size() - 1 );
+            return true;
+        }
+        selection.reset(
+            CCCoreLib::CloudSamplingTools::subsampleCloudRandomly(
+                source,
+                static_cast<unsigned>( requested ) ) );
+        settings[ "target_points" ] = requested;
+    }
+    else if ( method == "spatial" )
+    {
+        const double spacing = params.value( "min_spacing" ).toDouble( 0.0 );
+        if ( !std::isfinite( spacing ) || spacing <= 0.0 )
+        {
+            error = "spatial subsampling requires min_spacing > 0 in native coordinate units";
+            return true;
+        }
+        CCCoreLib::CloudSamplingTools::SFModulationParams modulation( false );
+        selection.reset(
+            CCCoreLib::CloudSamplingTools::resampleCloudSpatially(
+                source,
+                static_cast<PointCoordinateType>( spacing ),
+                modulation ) );
+        settings[ "min_spacing_native" ] = spacing;
+    }
+    else if ( method == "octree" )
+    {
+        const int level = params.value( "octree_level" ).toInt( 0 );
+        if ( level < 1 || level > static_cast<int>( CCCoreLib::DgmOctree::MAX_OCTREE_LEVEL ) )
+        {
+            error = QString( "octree_level must be between 1 and %1" )
+                        .arg( CCCoreLib::DgmOctree::MAX_OCTREE_LEVEL );
+            return true;
+        }
+        selection.reset(
+            CCCoreLib::CloudSamplingTools::subsampleCloudWithOctreeAtLevel(
+                source,
+                static_cast<unsigned char>( level ),
+                CCCoreLib::CloudSamplingTools::NEAREST_POINT_TO_CELL_CENTER ) );
+        settings[ "octree_level" ] = level;
+        settings[ "cell_rule" ] = "nearest_point_to_cell_center";
+    }
+    else
+    {
+        error = "method must be 'random', 'spatial', or 'octree'";
+        return true;
+    }
+
+    if ( !selection )
+    {
+        error = "CloudCompare subsampling failed";
+        return true;
+    }
+    if ( selection->size() == 0 )
+    {
+        error = "CloudCompare subsampling produced an empty selection";
+        return true;
+    }
+
+    int warnings = 0;
+    std::unique_ptr<ccPointCloud> sampled( source->partialClone( selection.get(), &warnings, false ) );
+    if ( !sampled )
+    {
+        error = "CloudCompare could not allocate the subsampled cloud";
+        return true;
+    }
+
+    sampled->setName(
+        params.value( "name" ).toString( source->getName() + ".mcp_subsample_" + method ) );
+    sampled->setVisible( true );
+    sampled->setEnabled( true );
+
+    ccHObject* destination = nullptr;
+    if ( !resolveDestination( app, params, destination, error ) )
+    {
+        return true;
+    }
+
+    ccPointCloud* liveResult = sampled.release();
+    attachToDestination( app, liveResult, destination );
+    app->refreshAll();
+    app->updateUI();
+
+    QJsonObject out = entityDescription( liveResult, false );
+    out[ "source_id" ] = static_cast<qint64>( id );
+    out[ "source_preserved" ] = true;
+    out[ "method" ] = method;
+    out[ "settings" ] = settings;
+    out[ "source_point_count" ] = static_cast<qint64>( source->size() );
+    out[ "output_point_count" ] = static_cast<qint64>( liveResult->size() );
+    out[ "retained_fraction" ] =
+        static_cast<double>( liveResult->size() ) / static_cast<double>( source->size() );
+    out[ "attribute_copy_warnings" ] = partialCloneWarnings( warnings );
+    result = out;
+    return true;
+}
+
+bool sorFilterCloud(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned id = 0;
+    if ( !readId( params, "cloud_id", id ) )
+    {
+        error = "cloud.filter_sor requires a numeric cloud_id";
+        return true;
+    }
+
+    ccPointCloud* source = requireStandaloneCloud( app, id, error );
+    if ( !source )
+    {
+        return true;
+    }
+
+    const int knn = params.value( "knn" ).toInt( 6 );
+    const double nSigma = params.value( "n_sigma" ).toDouble( 1.0 );
+    if ( knn < 2 )
+    {
+        error = "knn must be at least 2";
+        return true;
+    }
+    if ( !std::isfinite( nSigma ) || nSigma <= 0.0 )
+    {
+        error = "n_sigma must be greater than zero";
+        return true;
+    }
+
+    std::unique_ptr<CCCoreLib::ReferenceCloud> selection(
+        CCCoreLib::CloudSamplingTools::sorFilter( source, knn, nSigma ) );
+    if ( !selection )
+    {
+        error = "CloudCompare SOR filtering failed";
+        return true;
+    }
+    if ( selection->size() == 0 )
+    {
+        error = "SOR filtering rejected every point; no result was added";
+        return true;
+    }
+
+    int warnings = 0;
+    std::unique_ptr<ccPointCloud> filtered( source->partialClone( selection.get(), &warnings, false ) );
+    if ( !filtered )
+    {
+        error = "CloudCompare could not allocate the SOR-filtered cloud";
+        return true;
+    }
+
+    filtered->setName(
+        params.value( "name" ).toString( source->getName() + ".mcp_sor" ) );
+    filtered->setVisible( true );
+    filtered->setEnabled( true );
+
+    ccHObject* destination = nullptr;
+    if ( !resolveDestination( app, params, destination, error ) )
+    {
+        return true;
+    }
+
+    ccPointCloud* liveResult = filtered.release();
+    attachToDestination( app, liveResult, destination );
+    app->refreshAll();
+    app->updateUI();
+
+    QJsonObject out = entityDescription( liveResult, false );
+    out[ "source_id" ] = static_cast<qint64>( id );
+    out[ "source_preserved" ] = true;
+    out[ "knn" ] = knn;
+    out[ "n_sigma" ] = nSigma;
+    out[ "source_point_count" ] = static_cast<qint64>( source->size() );
+    out[ "output_point_count" ] = static_cast<qint64>( liveResult->size() );
+    out[ "removed_point_count" ] =
+        static_cast<qint64>( source->size() - liveResult->size() );
+    out[ "attribute_copy_warnings" ] = partialCloneWarnings( warnings );
+    result = out;
+    return true;
+}
+
+bool computeCloudNormals(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned id = 0;
+    if ( !readId( params, "cloud_id", id ) )
+    {
+        error = "cloud.compute_normals requires a numeric cloud_id";
+        return true;
+    }
+
+    ccPointCloud* source = requireStandaloneCloud( app, id, error );
+    if ( !source )
+    {
+        return true;
+    }
+
+    const double radius = params.value( "radius" ).toDouble( 0.0 );
+    if ( !std::isfinite( radius ) || radius <= 0.0 )
+    {
+        error = "radius must be greater than zero in native coordinate units";
+        return true;
+    }
+
+    const QString modelName = params.value( "model" ).toString( "LS" ).toUpper();
+    CCCoreLib::LOCAL_MODEL_TYPES model = CCCoreLib::LS;
+    if ( modelName == "LS" )
+        model = CCCoreLib::LS;
+    else if ( modelName == "QUADRIC" )
+        model = CCCoreLib::QUADRIC;
+    else if ( modelName == "TRIANGULATION" )
+        model = CCCoreLib::TRI;
+    else
+    {
+        error = "model must be 'LS', 'QUADRIC', or 'TRIANGULATION'";
+        return true;
+    }
+
+    const bool orientMst = params.value( "orient_with_mst" ).toBool( false );
+    const int mstNeighbors = params.value( "mst_neighbors" ).toInt( 6 );
+    if ( orientMst && ( mstNeighbors < 2 || mstNeighbors > 1000 ) )
+    {
+        error = "mst_neighbors must be between 2 and 1000";
+        return true;
+    }
+
+    std::unique_ptr<ccPointCloud> working( source->cloneThis( nullptr, true ) );
+    if ( !working )
+    {
+        error = "CloudCompare could not allocate a working clone for normal computation";
+        return true;
+    }
+
+    if ( !working->computeNormalsWithOctree(
+             model,
+             ccNormalVectors::UNDEFINED,
+             static_cast<PointCoordinateType>( radius ),
+             nullptr ) )
+    {
+        error = "CloudCompare normal computation failed; no result was added";
+        return true;
+    }
+
+    if ( orientMst && !working->orientNormalsWithMST(
+                          static_cast<unsigned>( mstNeighbors ),
+                          nullptr ) )
+    {
+        error = "CloudCompare MST normal orientation failed; no result was added";
+        return true;
+    }
+
+    working->setName(
+        params.value( "name" ).toString( source->getName() + ".mcp_normals" ) );
+    working->showNormals( true );
+    working->setVisible( true );
+    working->setEnabled( true );
+
+    ccHObject* destination = nullptr;
+    if ( !resolveDestination( app, params, destination, error ) )
+    {
+        return true;
+    }
+
+    ccPointCloud* liveResult = working.release();
+    attachToDestination( app, liveResult, destination );
+    app->refreshAll();
+    app->updateUI();
+
+    QJsonObject out = entityDescription( liveResult, false );
+    out[ "source_id" ] = static_cast<qint64>( id );
+    out[ "source_preserved" ] = true;
+    out[ "model" ] = modelName;
+    out[ "radius_native" ] = radius;
+    out[ "orient_with_mst" ] = orientMst;
+    if ( orientMst )
+        out[ "mst_neighbors" ] = mstNeighbors;
+    out[ "normals_computed" ] = liveResult->hasNormals();
+    result = out;
+    return true;
+}
+
 QJsonObject capabilities()
 {
     QJsonObject result;
     result[ "protocol_version" ] = 1;
-    result[ "workflow_revision" ] = 1;
+    result[ "workflow_revision" ] = 2;
     result[ "units_policy" ] =
         "Coordinates are reported in native units. Units remain unknown unless supplied by the caller.";
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    result[ "plugin_version" ] = "0.3.1";
+    result[ "plugin_version" ] = "0.4.0";
 
     QJsonArray bridgeOperations{
         "ping",
@@ -428,7 +963,12 @@ QJsonObject capabilities()
         "cloud.merge",
         "mesh.reconstruct",
         "mesh.simplify",
-        "entity.export"
+        "entity.export",
+        "group.create",
+        "cloud.crop",
+        "cloud.subsample",
+        "cloud.filter_sor",
+        "cloud.compute_normals"
     };
     result[ "bridge_operations" ] = bridgeOperations;
 
@@ -437,9 +977,24 @@ QJsonObject capabilities()
         "cloud.merge",
         "mesh.reconstruct",
         "mesh.simplify",
-        "entity.export"
+        "entity.export",
+        "group.create",
+        "cloud.crop",
+        "cloud.subsample",
+        "cloud.filter_sor",
+        "cloud.compute_normals"
     };
     result[ "workflow_operations" ] = workflowOperations;
+
+    QJsonObject scanPreparation;
+    scanPreparation[ "non_destructive_results" ] = true;
+    scanPreparation[ "crop_axis_aligned" ] = true;
+    scanPreparation[ "crop_coordinate_spaces" ] = QJsonArray{ "native_local", "global" };
+    scanPreparation[ "subsampling_methods" ] = QJsonArray{ "random", "spatial", "octree" };
+    scanPreparation[ "sor_filter" ] = true;
+    scanPreparation[ "normal_models" ] = QJsonArray{ "LS", "QUADRIC", "TRIANGULATION" };
+    scanPreparation[ "mst_normal_orientation" ] = true;
+    result[ "scan_preparation" ] = scanPreparation;
 
     QJsonArray meshing;
     {
@@ -1293,6 +1848,26 @@ bool dispatch(
         out[ "plugin" ] = "qMCPBridge";
         result = out;
         return true;
+    }
+    if ( method == "group.create" )
+    {
+        return createGroup( app, params, result, error );
+    }
+    if ( method == "cloud.crop" )
+    {
+        return cropCloud( app, params, result, error );
+    }
+    if ( method == "cloud.subsample" )
+    {
+        return subsampleCloud( app, params, result, error );
+    }
+    if ( method == "cloud.filter_sor" )
+    {
+        return sorFilterCloud( app, params, result, error );
+    }
+    if ( method == "cloud.compute_normals" )
+    {
+        return computeCloudNormals( app, params, result, error );
     }
     if ( method == "entity.clone" )
     {
