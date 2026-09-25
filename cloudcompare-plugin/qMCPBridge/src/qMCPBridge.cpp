@@ -292,6 +292,8 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         QJsonObject result;
         result[ "protocol_version" ] = 1;
         result[ "plugin" ] = "qMCPBridge";
+        result[ "process_id" ] = QCoreApplication::applicationPid();
+        result[ "application_version" ] = QCoreApplication::applicationVersion();
         result[ "port" ] = static_cast<int>( m_port );
         result[ "selected_ids" ] = selectedIds( m_app );
         ccHObject* root = m_app->dbRootObject();
@@ -395,6 +397,9 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
             return {};
         }
 
+        // loadFile only constructs the hierarchy; the caller must register it
+        // with the application's database and displays.
+        m_app->addToDB( loaded, true );
         m_app->redrawAll();
         return entityToJson( loaded, true );
     }
@@ -461,6 +466,7 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
             return {};
         }
 
+        entity->prepareDisplayForRefresh_recursive();
         m_app->refreshAll();
         m_app->updateUI();
         return entityToJson( entity, false );
@@ -542,6 +548,7 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         const ccGLMatrix transform( matrixData );
         entity->applyGLTransformation_recursive( &transform );
         entity->notifyGeometryUpdate();
+        entity->prepareDisplayForRefresh_recursive();
         m_app->refreshAll();
         m_app->updateUI();
 
@@ -633,6 +640,19 @@ QJsonObject qMCPBridge::entityToJson( ccHObject* entity, bool recursive ) const
     result[ "enabled" ] = entity->isEnabled();
     result[ "visible" ] = entity->isVisible();
     result[ "child_count" ] = static_cast<int>( entity->getChildrenNumber() );
+
+    // Local geometry bounds make transformations inspectable independently
+    // of camera position, selection decoration, and viewport screenshots.
+    const ccBBox bounds = entity->getOwnBB();
+    if ( bounds.isValid() )
+    {
+        const CCVector3& minimum = bounds.minCorner();
+        const CCVector3& maximum = bounds.maxCorner();
+        QJsonObject box;
+        box[ "min" ] = QJsonArray{ minimum.x, minimum.y, minimum.z };
+        box[ "max" ] = QJsonArray{ maximum.x, maximum.y, maximum.z };
+        result[ "bounding_box" ] = box;
+    }
 
     QString kind = "object";
     if ( entity->isKindOf( CC_TYPES::POINT_CLOUD ) )

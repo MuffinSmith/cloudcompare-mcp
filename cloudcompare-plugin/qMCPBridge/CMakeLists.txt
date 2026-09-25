@@ -6,7 +6,15 @@ if ( PLUGIN_STANDARD_QMCP_BRIDGE )
 
     AddPlugin( NAME ${PROJECT_NAME} )
 
-    find_package( Qt6 REQUIRED COMPONENTS Network )
+    # Use the same Qt major version as the host CloudCompare build.
+    if ( TARGET Qt6::Core )
+        set( QMCP_QT_PACKAGE Qt6 )
+    elseif ( TARGET Qt5::Core )
+        set( QMCP_QT_PACKAGE Qt5 )
+    else()
+        message( FATAL_ERROR "qMCPBridge requires CloudCompare's Qt targets" )
+    endif()
+    find_package( ${QMCP_QT_PACKAGE} REQUIRED COMPONENTS Network )
 
     target_sources( ${PROJECT_NAME}
         PRIVATE
@@ -20,8 +28,8 @@ if ( PLUGIN_STANDARD_QMCP_BRIDGE )
             ${CMAKE_CURRENT_LIST_DIR}/include
     )
 
-    target_link_libraries( ${PROJECT_NAME}
-        PRIVATE
-            Qt6::Network
-    )
+    # AddPlugin in older releases uses the plain target_link_libraries
+    # signature. Appending the dependency works with either helper version.
+    set_property( TARGET ${PROJECT_NAME} APPEND PROPERTY
+        LINK_LIBRARIES ${QMCP_QT_PACKAGE}::Network )
 endif()

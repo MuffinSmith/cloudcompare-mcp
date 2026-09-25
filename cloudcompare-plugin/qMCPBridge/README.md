@@ -34,6 +34,18 @@ directory is intended to be built as part of a CloudCompare checkout.
 A compiled plugin can also live in a custom plugin directory by setting CloudCompare's
 `CC_PLUGIN_PATH` environment variable.
 
+Build against the source release and Qt major version used by the installed
+CloudCompare. The plugin uses the host build's Qt 5 or Qt 6 targets. For
+CloudCompare 2.13.2 on Windows, use the `v2.13.2` source tag, Qt 5.15.2
+`msvc2019_64`, and a compatible MSVC Release/x64 toolchain. Build just
+`QMCP_BRIDGE_PLUGIN` and its dependencies; do not copy the rebuilt CloudCompare
+libraries over an existing installation. Restart CloudCompare after configuring
+the plugin path or replacing the plugin DLL.
+
+The `ping` response includes `process_id` and `application_version` to identify
+the GUI process. Entity responses include local `bounding_box` coordinates when
+available, allowing callers to verify geometry transformations.
+
 ## Configuration
 
 Set these variables **before starting CloudCompare**:
