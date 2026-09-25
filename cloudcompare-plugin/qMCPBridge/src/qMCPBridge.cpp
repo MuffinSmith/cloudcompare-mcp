@@ -365,7 +365,7 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         result[ "protocol_version" ] = 1;
         result[ "plugin" ] = "qMCPBridge";
         result[ "process_id" ] = QCoreApplication::applicationPid();
-        result[ "application_version" ] = QCoreApplication::applicationVersion();
+        addApplicationVersion( result );
         result[ "port" ] = static_cast<int>( m_port );
         result[ "selected_ids" ] = selectedIds( m_app );
         ccHObject* root = m_app->dbRootObject();
