@@ -570,6 +570,134 @@ TOOLS: list[Tool] = [
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
+        name="create_live_group",
+        description=(
+            "Create an empty group in the open CloudCompare DB tree for organizing MCP working results. "
+            "The operation does not move or modify existing entities."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+            },
+            "required": ["name"],
+        },
+    ),
+    Tool(
+        name="crop_live_cloud",
+        description=(
+            "Create a new point cloud cropped by an axis-aligned box while preserving the source cloud. "
+            "Bounds can be expressed in the cloud's native local coordinates or CloudCompare global coordinates."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "min": {
+                    "type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3,
+                    "description": "Minimum X/Y/Z corner of the crop box.",
+                },
+                "max": {
+                    "type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3,
+                    "description": "Maximum X/Y/Z corner of the crop box.",
+                },
+                "coordinate_space": {
+                    "type": "string",
+                    "enum": ["native_local", "global"],
+                    "default": "native_local",
+                },
+                "keep_inside": {"type": "boolean", "default": True},
+                "name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+            },
+            "required": ["cloud_id", "min", "max"],
+        },
+    ),
+    Tool(
+        name="subsample_live_cloud",
+        description=(
+            "Create a new subsampled point cloud from a live source without changing the source. "
+            "Supports exact-count random sampling, minimum-spacing spatial sampling, and octree-level sampling."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "method": {
+                    "type": "string",
+                    "enum": ["random", "spatial", "octree"],
+                },
+                "target_points": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Required for method=random; exact number of points to retain.",
+                },
+                "min_spacing": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "Required for method=spatial; minimum spacing in native coordinate units.",
+                },
+                "octree_level": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 21,
+                    "description": "Required for method=octree.",
+                },
+                "name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+            },
+            "required": ["cloud_id", "method"],
+        },
+    ),
+    Tool(
+        name="filter_live_cloud_sor",
+        description=(
+            "Create a Statistical Outlier Removal filtered point cloud from a live source. "
+            "The original cloud is preserved and the result is a separate entity."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "knn": {"type": "integer", "minimum": 2, "default": 6},
+                "n_sigma": {"type": "number", "exclusiveMinimum": 0, "default": 1.0},
+                "name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+            },
+            "required": ["cloud_id"],
+        },
+    ),
+    Tool(
+        name="compute_live_normals",
+        description=(
+            "Create a working copy of a live point cloud and compute normals on that copy. "
+            "Optionally orient the computed normals with a minimum-spanning-tree pass. "
+            "The source cloud is never modified."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "radius": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "Neighborhood radius in native coordinate units.",
+                },
+                "model": {
+                    "type": "string",
+                    "enum": ["LS", "QUADRIC", "TRIANGULATION"],
+                    "default": "LS",
+                },
+                "orient_with_mst": {"type": "boolean", "default": False},
+                "mst_neighbors": {"type": "integer", "minimum": 2, "maximum": 1000, "default": 6},
+                "name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+            },
+            "required": ["cloud_id", "radius"],
+        },
+    ),
+    Tool(
         name="clone_live_entities",
         description=(
             "Deep-clone explicitly chosen live point clouds or triangle meshes without modifying the sources. "
@@ -1145,6 +1273,64 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
         return _err(str(exc))
 
 
+def handle_create_live_group(args: dict) -> list[TextContent]:
+    params = {"name": args["name"]}
+    if "destination_group_id" in args:
+        params["destination_group_id"] = args["destination_group_id"]
+    return _live_call("group.create", params)
+
+
+def handle_crop_live_cloud(args: dict) -> list[TextContent]:
+    params = {
+        "cloud_id": args["cloud_id"],
+        "min": args["min"],
+        "max": args["max"],
+        "coordinate_space": args.get("coordinate_space", "native_local"),
+        "keep_inside": bool(args.get("keep_inside", True)),
+    }
+    for key in ("name", "destination_group_id"):
+        if key in args:
+            params[key] = args[key]
+    return _live_call("cloud.crop", params, timeout=300.0)
+
+
+def handle_subsample_live_cloud(args: dict) -> list[TextContent]:
+    params = {
+        "cloud_id": args["cloud_id"],
+        "method": args["method"],
+    }
+    for key in ("target_points", "min_spacing", "octree_level", "name", "destination_group_id"):
+        if key in args:
+            params[key] = args[key]
+    return _live_call("cloud.subsample", params, timeout=600.0)
+
+
+def handle_filter_live_cloud_sor(args: dict) -> list[TextContent]:
+    params = {
+        "cloud_id": args["cloud_id"],
+        "knn": int(args.get("knn", 6)),
+        "n_sigma": float(args.get("n_sigma", 1.0)),
+    }
+    for key in ("name", "destination_group_id"):
+        if key in args:
+            params[key] = args[key]
+    return _live_call("cloud.filter_sor", params, timeout=600.0)
+
+
+def handle_compute_live_normals(args: dict) -> list[TextContent]:
+    params = {
+        "cloud_id": args["cloud_id"],
+        "radius": args["radius"],
+        "model": args.get("model", "LS"),
+        "orient_with_mst": bool(args.get("orient_with_mst", False)),
+        "mst_neighbors": int(args.get("mst_neighbors", 6)),
+    }
+    for key in ("name", "destination_group_id"):
+        if key in args:
+            params[key] = args[key]
+    return _live_call("cloud.compute_normals", params, timeout=900.0)
+
+
 def handle_clone_live_entities(args: dict) -> list[TextContent]:
     params = {
         "ids": args["ids"],
@@ -1402,6 +1588,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageConte
         "set_live_view": handle_set_live_view,
         "capture_live_view": handle_capture_live_view,
         "get_live_workflow_capabilities": handle_get_live_workflow_capabilities,
+        "create_live_group": handle_create_live_group,
+        "crop_live_cloud": handle_crop_live_cloud,
+        "subsample_live_cloud": handle_subsample_live_cloud,
+        "filter_live_cloud_sor": handle_filter_live_cloud_sor,
+        "compute_live_normals": handle_compute_live_normals,
         "clone_live_entities": handle_clone_live_entities,
         "merge_live_clouds": handle_merge_live_clouds,
         "reconstruct_live_mesh": handle_reconstruct_live_mesh,
