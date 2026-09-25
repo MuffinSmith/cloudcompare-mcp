@@ -535,7 +535,9 @@ bool cloneEntities(
             break;
         }
         const double raw = value.toDouble();
-        if ( raw < 0.0 || raw > static_cast<double>( std::numeric_limits<unsigned>::max() ) )
+        if ( raw < 0.0
+             || raw > static_cast<double>( std::numeric_limits<unsigned>::max() )
+             || std::floor( raw ) != raw )
         {
             error = "entity.clone contains an invalid entity ID";
             break;
@@ -647,7 +649,15 @@ bool mergeClouds(
             error = "cloud.merge IDs must all be numeric";
             return true;
         }
-        const unsigned id = static_cast<unsigned>( value.toDouble() );
+        const double raw = value.toDouble();
+        if ( raw < 0.0
+             || raw > static_cast<double>( std::numeric_limits<unsigned>::max() )
+             || std::floor( raw ) != raw )
+        {
+            error = "cloud.merge contains an invalid entity ID";
+            return true;
+        }
+        const unsigned id = static_cast<unsigned>( raw );
         if ( seen.contains( id ) )
         {
             continue;
