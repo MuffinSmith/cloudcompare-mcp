@@ -1,5 +1,6 @@
 <RCC>
   <qresource prefix="/CC/plugin/qMCPBridge">
     <file>info.json</file>
+    <file>images/bridge.svg</file>
   </qresource>
 </RCC>

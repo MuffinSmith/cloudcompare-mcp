@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QHostAddress>
 #include <QImage>
+#include <QIcon>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QTcpServer>
@@ -107,8 +108,8 @@ QList<QAction*> qMCPBridge::getActions()
     if ( !m_action )
     {
         m_action = new QAction( this );
-        m_action->setToolTip(
-            tr( "Start or stop the localhost bridge used by cloudcompare-mcp to control this open CloudCompare instance." ) );
+        m_action->setIcon( QIcon( ":/CC/plugin/qMCPBridge/images/bridge.svg" ) );
+        m_action->setIconText( tr( "MCP" ) );
 
         connect( m_action, &QAction::triggered, this, [this]()
         {
@@ -185,11 +186,14 @@ void qMCPBridge::updateAction()
     if ( m_server && m_server->isListening() )
     {
         m_action->setText( tr( "MCP Bridge: stop localhost server (%1)" ).arg( m_port ) );
+        m_action->setToolTip( tr( "MCP Bridge is listening on 127.0.0.1:%1. Click to stop." ).arg( m_port ) );
     }
     else
     {
         m_action->setText( tr( "MCP Bridge: start localhost server (%1)" ).arg( m_port ) );
+        m_action->setToolTip( tr( "MCP Bridge is stopped. Click to listen on 127.0.0.1:%1." ).arg( m_port ) );
     }
+    m_action->setStatusTip( m_action->toolTip() );
 }
 
 void qMCPBridge::onNewConnection()
