@@ -13,6 +13,9 @@ The next live workflow layer adds non-destructive crop, subsampling, SOR filteri
 normal computation/orientation, and working groups. See
 [docs/LIVE_SCAN_PREPARATION.md](docs/LIVE_SCAN_PREPARATION.md).
 
+Live rigid registration now supports preview-only and clone-producing point-cloud
+ICP. See [docs/LIVE_REGISTRATION.md](docs/LIVE_REGISTRATION.md).
+
 ## Features
 
 ### Native tools (no CloudCompare required)
@@ -44,6 +47,7 @@ These tools operate on the **CloudCompare instance that is already open** instea
 | `subsample_live_cloud` | Create random, spatial, or octree-subsampled working clouds |
 | `filter_live_cloud_sor` | Create a Statistical Outlier Removal filtered working cloud |
 | `compute_live_normals` | Compute normals on a working copy with optional MST orientation |
+| `register_live_icp` | Preview or create a non-destructive rigid ICP-aligned working copy |
 
 The plugin source is included under `cloudcompare-plugin/qMCPBridge`. It runs a newline-delimited JSON control server bound to `127.0.0.1:8765` by default. See that directory's README for CloudCompare build/install instructions.
 
