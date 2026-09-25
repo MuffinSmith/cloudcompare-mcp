@@ -42,7 +42,9 @@ reconstruct_live_mesh
 : Supports two deliberately separate families:
 
 - ball_pivoting — optional PyMeshLab full-3D local reconstruction. It requires
-  point normals and does not claim that openings are preserved.
+  point normals and does not claim that openings are preserved. Optional `name`
+  and `destination_group_id` are applied to the loaded live result so generated
+  meshes can remain inside an explicit MCP working group.
 - delaunay_2_5d_best_fit_plane / delaunay_2_5d_axis_aligned — CloudCompare core
   2.5D reconstruction. These require explicit acknowledgement because they are
   unsuitable for a complete multi-sided mechanical assembly.
