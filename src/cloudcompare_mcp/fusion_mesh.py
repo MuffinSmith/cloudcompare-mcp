@@ -111,19 +111,73 @@ def backend_capabilities() -> dict[str, Any]:
     }
 
 
+def _walk_live_entities(value: Any):
+    if isinstance(value, dict):
+        if isinstance(value.get("id"), int):
+            yield value
+        children = value.get("children")
+        if isinstance(children, list):
+            for child in children:
+                yield from _walk_live_entities(child)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk_live_entities(item)
+
+
+def _delete_loaded_root(loaded: Any) -> None:
+    if not isinstance(loaded, dict) or not isinstance(loaded.get("id"), int):
+        return
+    try:
+        live_request("entity.delete", {"ids": [int(loaded["id"])]}, timeout=60.0)
+    except Exception:
+        # Preserve the original option-validation error. The caller still gets a
+        # clear failure even if cleanup itself cannot be completed.
+        pass
+
+
 def _load_generated_geometry(
     path: Path,
     *,
     name: str | None = None,
     destination_group_id: int | None = None,
 ) -> dict[str, Any]:
-    """Load generated geometry into CloudCompare with optional result placement/name."""
+    """Load generated geometry and verify optional live result placement/name."""
     params: dict[str, Any] = {"path": str(path.resolve())}
     if name is not None:
         params["name"] = name
     if destination_group_id is not None:
         params["destination_group_id"] = int(destination_group_id)
-    return live_request("file.load", params, timeout=600.0)
+
+    loaded = live_request("file.load", params, timeout=600.0)
+
+    if destination_group_id is not None:
+        parent = loaded.get("parent") if isinstance(loaded, dict) else None
+        actual_parent = parent.get("id") if isinstance(parent, dict) else None
+        if actual_parent != int(destination_group_id):
+            _delete_loaded_root(loaded)
+            raise FusionMeshBackendError(
+                "CloudCompare loaded the reconstructed mesh, but did not place it in the "
+                f"requested destination group {destination_group_id}. The loaded result was removed."
+            )
+
+    if name is not None:
+        geometry = next(
+            (
+                entity
+                for entity in _walk_live_entities(loaded)
+                if entity.get("kind") in {"mesh", "point_cloud"}
+            ),
+            None,
+        )
+        actual_name = geometry.get("name") if geometry else None
+        if actual_name != name:
+            _delete_loaded_root(loaded)
+            raise FusionMeshBackendError(
+                "CloudCompare loaded the reconstructed mesh, but did not apply the requested "
+                f"name {name!r}. The loaded result was removed."
+            )
+
+    return loaded
 
 
 def reconstruct_ball_pivoting(
