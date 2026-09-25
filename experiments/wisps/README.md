@@ -97,3 +97,58 @@ support, intact thin slabs, convex/concave cylinder surfaces, and missing overla
 The 0.10 default is in native units and is not a guaranteed safe tolerance for all
 registration errors or scanners. Fine residuals close to registration uncertainty
 and inadequately observed boundaries remain unresolved.
+
+## Scan-boundary drift and low-confidence fringe trimming
+
+`edge_drift.py` adds a separate pass for curled acquisition boundaries, including
+coherent strips that are too large or dense for the small-wisp detector.
+
+```powershell
+python edge_drift.py accepted-wrap.ply accepted-top.ply accepted-bottom.ply --output drift-run --tolerance 0.18 --band 4
+python -m unittest discover -s . -p "test_*.py"
+```
+
+Keep the scans separate and aligned. Normals must consistently identify the same
+side of a surface across scans. Two independent scans suffice where one has good
+interior coverage of the other's edge; duplicate files are rejected. Independent
+acquisition provenance remains the caller's responsibility.
+
+1. Infer boundaries from angular gaps in each scan's local tangent neighborhoods,
+   agreeing at two radii. This uses the [angle-based boundary-estimation
+   principle](https://pointclouds.org/documentation/classpcl_1_1_boundary_estimation.html),
+   with our own implementation and conservative overlap checks.
+2. Mark a band up to four local point spacings from a compatible boundary. Lock
+   reference interiors beyond six spacings before considering any deletion.
+   Removable bands and reference interiors are disjoint throughout the pass.
+3. Fit robust quadratic reference patches at two scales using only another scan's
+   locked interior. Require same-side normals, low scatter, well-conditioned fits,
+   surrounding angular coverage, and nearby actual samples. Do not extrapolate
+   through missing overlap or across a hole. Curved patches can represent local
+   curvature instead of treating it as departure from a plane.
+4. Seed drift where every available reference agrees on signed departure exceeding
+   the tolerance or four times patch scatter. Reliable supporting references veto
+   deletion. No usable reference means keep the point.
+5. Trim a bounded fringe within two spacings of those seeds only if it also departs
+   by at least half the tolerance or three times patch scatter and has agreeing
+   reference evidence. There is no recursive erosion or arbitrary removal of all
+   boundary points. Confident replacement samples stay locked in the output.
+
+The output includes exact retained/removed PLY records, a review PLY containing
+all remaining boundary-band points (not all are defects), and per-point boundary,
+spacing, reference coverage, drift-seed and fringe-trim labels. Reference residual
+and scatter arrays map through `query_indices` to input rows, with columns in
+input order excluding the current scan; NaN means unknown. The manifest records
+input/source hashes, parameters and environment. Source files remain unchanged.
+
+Here "confidence" is geometric support, not a scanner-provided confidence value
+or calibrated probability. Without acquisition poses or per-frame range images,
+scan-footprint edges are inferred: physical edges, occlusion boundaries and old
+cleanup boundaries can also be detected. Overlap checks reduce that ambiguity;
+they do not prove the scanner's error mechanism. Large registration errors,
+consistently biased interiors, close parallel surfaces, bad normals and unobserved
+regions remain limitations. Choose tolerance above alignment uncertainty in native
+units. Inspect each new copy; do not repeatedly feed the result back into this pass.
+
+Eight added tests cover a curled edge plus fringe, retained replacement interiors,
+clean quadratic curvature, missing overlap, small registration offset, opposite
+thin faces, contradictory references, intact hole rims and no fitting across holes.
