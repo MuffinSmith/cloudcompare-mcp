@@ -5,6 +5,7 @@ on:
     branches:
       - feature/fusion-reference-mesh-workflow
       - feature/live-scan-preparation
+      - feature/live-registration
   pull_request:
 
 jobs:
