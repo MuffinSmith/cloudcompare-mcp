@@ -69,6 +69,26 @@ bool readId( const QJsonObject& object, const char* key, unsigned& id )
     return true;
 }
 
+ccHObject* firstGeometryEntity( ccHObject* root )
+{
+    if ( !root )
+    {
+        return nullptr;
+    }
+    if ( root->isKindOf( CC_TYPES::MESH ) || root->isKindOf( CC_TYPES::POINT_CLOUD ) )
+    {
+        return root;
+    }
+    for ( unsigned i = 0; i < root->getChildrenNumber(); ++i )
+    {
+        if ( ccHObject* found = firstGeometryEntity( root->getChild( i ) ) )
+        {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 QJsonArray selectedIds( ccMainAppInterface* app )
 {
     QJsonArray ids;
@@ -364,7 +384,7 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         QJsonObject result;
         result[ "protocol_version" ] = 1;
         result[ "plugin" ] = "qMCPBridge";
-        result[ "plugin_version" ] = "0.4.0";
+        result[ "plugin_version" ] = "0.4.1";
         result[ "process_id" ] = QCoreApplication::applicationPid();
         addApplicationVersion( result );
         result[ "port" ] = static_cast<int>( m_port );
@@ -539,6 +559,40 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
             return {};
         }
 
+        ccHObject* destination = nullptr;
+        if ( params.contains( "destination_group_id" ) )
+        {
+            unsigned destinationId = 0;
+            if ( !readId( params, "destination_group_id", destinationId ) )
+            {
+                error = "file.load destination_group_id must be a valid numeric entity ID";
+                return {};
+            }
+
+            destination = findEntity( destinationId );
+            if ( !destination )
+            {
+                error = QString( "Destination group %1 was not found" ).arg( destinationId );
+                return {};
+            }
+            if ( !destination->isA( CC_TYPES::HIERARCHY_OBJECT ) )
+            {
+                error = QString( "Entity %1 is not a plain hierarchy/group destination" ).arg( destinationId );
+                return {};
+            }
+        }
+
+        QString requestedName;
+        if ( params.contains( "name" ) )
+        {
+            requestedName = params.value( "name" ).toString().trimmed();
+            if ( requestedName.isEmpty() )
+            {
+                error = "file.load name must be non-empty when supplied";
+                return {};
+            }
+        }
+
         ccHObject* loaded = m_app->loadFile( path, true );
         if ( !loaded )
         {
@@ -546,10 +600,28 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
             return {};
         }
 
+        if ( !requestedName.isEmpty() )
+        {
+            ccHObject* geometry = firstGeometryEntity( loaded );
+            if ( !geometry )
+            {
+                delete loaded;
+                error = "Loaded file contains no point cloud or mesh to name";
+                return {};
+            }
+            geometry->setName( requestedName );
+        }
+
         // loadFile only constructs the hierarchy; the caller must register it
-        // with the application's database and displays.
+        // with the application's database and displays. If a working group was
+        // requested, establish that parent before registration.
+        if ( destination )
+        {
+            destination->addChild( loaded );
+        }
         m_app->addToDB( loaded, true );
         m_app->redrawAll();
+        m_app->updateUI();
         return entityToJson( loaded, true );
     }
 
