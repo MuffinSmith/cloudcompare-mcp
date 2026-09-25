@@ -61,3 +61,17 @@ This first revision supports standalone point-cloud to standalone point-cloud IC
 Mesh reference registration, scalar-field weighting, normals matching,
 transformation-axis constraints, frame conversion, and point-pair initialization
 are intentionally left for later registration revisions.
+
+
+## Acceptance targets
+
+Before merging this branch, live Windows acceptance should verify at minimum:
+
+- a synthetic data cloud with a known rigid transform converges back onto its model
+- preview mode returns a plausible inverse transform and adds no scene entities
+- applied mode creates exactly one aligned clone under the requested working group
+- original data/model coordinates, attributes, names, parents, and shift/scale remain unchanged
+- returned RMS and point count match the native ICP result
+- invalid IDs, same data/model ID, incompatible global frames, invalid overlap/iteration/sampling values,
+  empty names, and invalid destination groups are transactional failures
+- the aligned result preserves the original data cloud's RGB, normals, scalar fields, global shift, and scale
