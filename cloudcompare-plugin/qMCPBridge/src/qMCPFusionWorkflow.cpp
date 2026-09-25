@@ -1091,6 +1091,23 @@ bool exportEntity(
     const QString tempPath = finalPath + ".mcp-partial";
     QFile::remove( tempPath );
 
+    // Probe write access from the CloudCompare GUI process before entering an
+    // exporter. Some filters can surface native/UI errors on access failures;
+    // bridge operations must fail promptly and noninteractively instead.
+    QFile writeProbe( tempPath );
+    if ( !writeProbe.open( QIODevice::WriteOnly ) )
+    {
+        error = QString( "CloudCompare process cannot write to output directory '%1': %2" )
+                    .arg( parentDir.absolutePath(), writeProbe.errorString() );
+        return true;
+    }
+    writeProbe.close();
+    if ( !QFile::remove( tempPath ) )
+    {
+        error = QString( "CloudCompare process could not remove export write probe: %1" ).arg( tempPath );
+        return true;
+    }
+
     FileIOFilter::Shared filter = FileIOFilter::FindBestFilterForExtension( suffix );
     if ( !filter )
     {
