@@ -1,6 +1,6 @@
 # Live scan preparation tools
 
-Version 0.4.0 begins the next phase of the live CloudCompare bridge: non-destructive
+Version 0.4.x begins the next phase of the live CloudCompare bridge: non-destructive
 scan preparation inside the already-open GUI.
 
 All tools in this document create new entities. They do not alter the source cloud.
