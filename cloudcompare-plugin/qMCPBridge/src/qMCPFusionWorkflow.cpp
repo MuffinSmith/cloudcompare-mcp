@@ -944,7 +944,7 @@ QJsonObject capabilities()
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    result[ "plugin_version" ] = "0.4.0";
+    result[ "plugin_version" ] = "0.4.1";
 
     QJsonArray bridgeOperations{
         "ping",
