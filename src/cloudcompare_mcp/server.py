@@ -570,6 +570,336 @@ TOOLS: list[Tool] = [
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
+        name="query_live_region",
+        description=(
+            "Query the geometry of a sphere, box, slab, or nearest-point region of a live point cloud "
+            "without creating entities or returning an image. Returns exact match count/bounds/centroid "
+            "plus a small structured preview sample."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "region": {
+                    "type": "object",
+                    "description": (
+                        "Region selector. type=sphere uses center/radius; type=box uses min/max; "
+                        "type=slab uses origin/normal/half_thickness; type=nearest uses center and optional max_distance."
+                    ),
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["sphere", "box", "slab", "nearest"],
+                        },
+                        "center": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "radius": {"type": "number", "exclusiveMinimum": 0},
+                        "min": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "max": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "origin": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "normal": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "half_thickness": {"type": "number", "minimum": 0},
+                        "max_distance": {"type": "number", "minimum": 0},
+                    },
+                    "required": ["type"],
+                },
+                "coordinate_space": {
+                    "type": "string",
+                    "enum": ["global", "native_local"],
+                    "default": "global",
+                    "description": "Coordinate space used to interpret the region selector.",
+                },
+                "preview_points": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 64,
+                    "default": 16,
+                },
+            },
+            "required": ["cloud_id", "region"],
+        },
+    ),
+    Tool(
+        name="fit_live_region_plane",
+        description=(
+            "Fit a plane directly to points selected from a live point-cloud region, avoiding manual GUI picking. "
+            "Region selection is performed natively in qMCPBridge; only the compact fit result is returned to the model."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "region": {
+                    "type": "object",
+                    "description": (
+                        "Region selector. type=sphere uses center/radius; type=box uses min/max; "
+                        "type=slab uses origin/normal/half_thickness; type=nearest uses center and optional max_distance."
+                    ),
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["sphere", "box", "slab", "nearest"],
+                        },
+                        "center": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "radius": {"type": "number", "exclusiveMinimum": 0},
+                        "min": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "max": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "origin": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "normal": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "half_thickness": {"type": "number", "minimum": 0},
+                        "max_distance": {"type": "number", "minimum": 0},
+                    },
+                    "required": ["type"],
+                },
+                "coordinate_space": {
+                    "type": "string",
+                    "enum": ["global", "native_local"],
+                    "default": "global",
+                },
+                "sample_limit": {
+                    "type": "integer",
+                    "minimum": 3,
+                    "maximum": 20000,
+                    "default": 5000,
+                },
+            },
+            "required": ["cloud_id", "region"],
+        },
+    ),
+    Tool(
+        name="fit_live_region_circle",
+        description=(
+            "Fit a 3D circle/hole directly to a live point-cloud region without image-based/manual point selection. "
+            "Returns center, diameter, coverage and residual diagnostics while preserving the source."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "region": {
+                    "type": "object",
+                    "description": (
+                        "Region selector. type=sphere uses center/radius; type=box uses min/max; "
+                        "type=slab uses origin/normal/half_thickness; type=nearest uses center and optional max_distance."
+                    ),
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["sphere", "box", "slab", "nearest"],
+                        },
+                        "center": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "radius": {"type": "number", "exclusiveMinimum": 0},
+                        "min": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "max": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "origin": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "normal": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "half_thickness": {"type": "number", "minimum": 0},
+                        "max_distance": {"type": "number", "minimum": 0},
+                    },
+                    "required": ["type"],
+                },
+                "coordinate_space": {
+                    "type": "string",
+                    "enum": ["global", "native_local"],
+                    "default": "global",
+                },
+                "sample_limit": {
+                    "type": "integer",
+                    "minimum": 4,
+                    "maximum": 20000,
+                    "default": 5000,
+                },
+            },
+            "required": ["cloud_id", "region"],
+        },
+    ),
+    Tool(
+        name="fit_live_region_cylinder",
+        description=(
+            "Fit a cylinder/bore/shaft directly to a live point-cloud region without manual viewport sampling. "
+            "Returns axis, diameter, radial residuals, coverage and axial span."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "region": {
+                    "type": "object",
+                    "description": (
+                        "Region selector. type=sphere uses center/radius; type=box uses min/max; "
+                        "type=slab uses origin/normal/half_thickness; type=nearest uses center and optional max_distance."
+                    ),
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["sphere", "box", "slab", "nearest"],
+                        },
+                        "center": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "radius": {"type": "number", "exclusiveMinimum": 0},
+                        "min": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "max": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "origin": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "normal": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                        "half_thickness": {"type": "number", "minimum": 0},
+                        "max_distance": {"type": "number", "minimum": 0},
+                    },
+                    "required": ["type"],
+                },
+                "coordinate_space": {
+                    "type": "string",
+                    "enum": ["global", "native_local"],
+                    "default": "global",
+                },
+                "sample_limit": {
+                    "type": "integer",
+                    "minimum": 6,
+                    "maximum": 20000,
+                    "default": 5000,
+                },
+            },
+            "required": ["cloud_id", "region"],
+        },
+    ),
+    Tool(
+        name="extract_live_section",
+        description=(
+            "Extract a thin full-cloud slab around an explicit global section plane, project the selected sample "
+            "to a stable 2D U/V frame, and return compact profile statistics plus a small preview. "
+            "No viewport image or manual picking is required."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "origin": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "minItems": 3,
+                    "maxItems": 3,
+                },
+                "normal": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "minItems": 3,
+                    "maxItems": 3,
+                },
+                "half_thickness": {"type": "number", "minimum": 0},
+                "sample_limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20000,
+                    "default": 20000,
+                },
+                "preview_points": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 64,
+                    "default": 24,
+                },
+            },
+            "required": ["cloud_id", "origin", "normal", "half_thickness"],
+        },
+    ),
+    Tool(
         name="create_live_group",
         description=(
             "Create an empty group in the open CloudCompare DB tree for organizing MCP working results. "
@@ -1771,6 +2101,274 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
         return _err(str(exc))
 
 
+def _request_live_region(
+    *,
+    cloud_id: int,
+    region: dict,
+    coordinate_space: str = "global",
+    max_points: int,
+) -> dict:
+    result = live_request(
+        "cloud.region_query",
+        {
+            "cloud_id": cloud_id,
+            "region": region,
+            "coordinate_space": coordinate_space,
+            "max_points": max_points,
+        },
+        timeout=300.0,
+    )
+    if not isinstance(result, dict):
+        raise LiveBridgeError("CloudCompare returned an invalid region-query response")
+    return result
+
+
+def _region_positions_global(
+    region_result: dict,
+    *,
+    minimum: int,
+) -> list[list[float]]:
+    from .feature_fit import FeatureFitError
+
+    points = region_result.get("points")
+    if not isinstance(points, list):
+        raise FeatureFitError("Region query returned no point sample")
+
+    positions: list[list[float]] = []
+    for index, point in enumerate(points):
+        if not isinstance(point, dict):
+            raise FeatureFitError(f"Region sample {index} is malformed")
+        position = point.get("position_global")
+        if not isinstance(position, list) or len(position) != 3:
+            raise FeatureFitError(f"Region sample {index} has no valid global position")
+        try:
+            xyz = [float(component) for component in position]
+        except (TypeError, ValueError) as exc:
+            raise FeatureFitError(
+                f"Region sample {index} has non-numeric global coordinates"
+            ) from exc
+        if not all(math.isfinite(component) for component in xyz):
+            raise FeatureFitError(
+                f"Region sample {index} has non-finite global coordinates"
+            )
+        positions.append(xyz)
+
+    if len(positions) < minimum:
+        matched = region_result.get("matched_count", len(positions))
+        raise FeatureFitError(
+            f"Region supplied only {len(positions)} sampled points "
+            f"({matched} total matches); at least {minimum} are required"
+        )
+    return positions
+
+
+def _compact_region_summary(
+    region_result: dict,
+    *,
+    preview_points: int = 0,
+) -> dict:
+    summary = {
+        key: value
+        for key, value in region_result.items()
+        if key != "points"
+    }
+    points = region_result.get("points")
+    if isinstance(points, list) and preview_points > 0:
+        summary["preview_points"] = points[:preview_points]
+    else:
+        summary["preview_points"] = []
+    return summary
+
+
+def handle_query_live_region(args: dict) -> list[TextContent] | CallToolResult:
+    try:
+        preview_points = int(args.get("preview_points", 16))
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region=args["region"],
+            coordinate_space=args.get("coordinate_space", "global"),
+            max_points=preview_points,
+        )
+        return _ok(_compact_region_summary(native, preview_points=preview_points))
+    except (LiveBridgeError, KeyError, TypeError, ValueError) as exc:
+        return _err(str(exc))
+
+
+def _decorate_region_fit(
+    fit: dict,
+    native: dict,
+    args: dict,
+) -> dict:
+    out = dict(fit)
+    out["coordinate_space"] = "global"
+    out["units"] = "native"
+    out["units_confirmed"] = False
+    out["source_geometry_preserved"] = True
+    out["source_cloud_id"] = int(args["cloud_id"])
+    out["region"] = args["region"]
+    out["region_coordinate_space"] = args.get("coordinate_space", "global")
+    out["region_match_count"] = native.get("matched_count")
+    out["region_sample_count"] = native.get("returned_count")
+    out["region_sample_truncated"] = native.get("truncated")
+    out["region_bounds_query_space"] = native.get("bounds_query_space")
+    out["region_centroid_query_space"] = native.get("centroid_query_space")
+    return out
+
+
+def handle_fit_live_region_plane(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_plane
+
+    try:
+        sample_limit = int(args.get("sample_limit", 5000))
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region=args["region"],
+            coordinate_space=args.get("coordinate_space", "global"),
+            max_points=sample_limit,
+        )
+        fit = fit_plane(_region_positions_global(native, minimum=3))
+        return _ok(_decorate_region_fit(fit, native, args))
+    except (
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return _err(str(exc))
+
+
+def handle_fit_live_region_circle(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_circle_3d
+
+    try:
+        sample_limit = int(args.get("sample_limit", 5000))
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region=args["region"],
+            coordinate_space=args.get("coordinate_space", "global"),
+            max_points=sample_limit,
+        )
+        fit = fit_circle_3d(_region_positions_global(native, minimum=4))
+        return _ok(_decorate_region_fit(fit, native, args))
+    except (
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return _err(str(exc))
+
+
+def handle_fit_live_region_cylinder(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_cylinder_3d
+
+    try:
+        sample_limit = int(args.get("sample_limit", 5000))
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region=args["region"],
+            coordinate_space=args.get("coordinate_space", "global"),
+            max_points=sample_limit,
+        )
+        fit = fit_cylinder_3d(_region_positions_global(native, minimum=6))
+        return _ok(_decorate_region_fit(fit, native, args))
+    except (
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return _err(str(exc))
+
+
+def handle_extract_live_section(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, project_points_to_section
+
+    try:
+        sample_limit = int(args.get("sample_limit", 20000))
+        preview_points = int(args.get("preview_points", 24))
+        origin = args["origin"]
+        normal = args["normal"]
+        half_thickness = float(args["half_thickness"])
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region={
+                "type": "slab",
+                "origin": origin,
+                "normal": normal,
+                "half_thickness": half_thickness,
+            },
+            coordinate_space="global",
+            max_points=sample_limit,
+        )
+        positions = _region_positions_global(native, minimum=1)
+        projection = project_points_to_section(
+            positions,
+            origin,
+            normal,
+            half_thickness=half_thickness,
+        )
+
+        uv = projection.get("uv", [])
+        projected = projection.get("projected_points_global", [])
+        offsets = projection.get("signed_offsets", [])
+        source_points = native.get("points", [])
+        preview = []
+        for index in range(
+            min(
+                preview_points,
+                len(uv),
+                len(projected),
+                len(offsets),
+                len(source_points) if isinstance(source_points, list) else 0,
+            )
+        ):
+            source = source_points[index]
+            preview.append(
+                {
+                    "point_index": source.get("point_index"),
+                    "position_global": source.get("position_global"),
+                    "uv": uv[index],
+                    "projected_position_global": projected[index],
+                    "signed_offset": offsets[index],
+                }
+            )
+
+        return _ok(
+            {
+                "type": "full_cloud_section_sample",
+                "source_cloud_id": int(args["cloud_id"]),
+                "coordinate_space": "global",
+                "units": "native",
+                "units_confirmed": False,
+                "source_geometry_preserved": True,
+                "origin": projection["origin"],
+                "normal": projection["normal"],
+                "basis_u": projection["basis_u"],
+                "basis_v": projection["basis_v"],
+                "half_thickness": half_thickness,
+                "matched_count": native.get("matched_count"),
+                "sampled_count": native.get("returned_count"),
+                "sample_truncated": native.get("truncated"),
+                "sample_strategy": native.get("sample_strategy"),
+                "projected_bounds": projection["projected_bounds"],
+                "signed_offset_stats": projection["signed_offset_stats"],
+                "profile_preview": preview,
+            }
+        )
+    except (
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return _err(str(exc))
+
+
 def handle_create_live_group(args: dict) -> list[TextContent]:
     params = {"name": args["name"]}
     if "destination_group_id" in args:
@@ -2604,6 +3202,11 @@ async def call_tool(
         "set_live_view": handle_set_live_view,
         "capture_live_view": handle_capture_live_view,
         "get_live_workflow_capabilities": handle_get_live_workflow_capabilities,
+        "query_live_region": handle_query_live_region,
+        "fit_live_region_plane": handle_fit_live_region_plane,
+        "fit_live_region_circle": handle_fit_live_region_circle,
+        "fit_live_region_cylinder": handle_fit_live_region_cylinder,
+        "extract_live_section": handle_extract_live_section,
         "create_live_group": handle_create_live_group,
         "crop_live_cloud": handle_crop_live_cloud,
         "subsample_live_cloud": handle_subsample_live_cloud,
