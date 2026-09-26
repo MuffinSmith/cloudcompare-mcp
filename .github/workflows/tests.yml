@@ -11,6 +11,7 @@ on:
       - feature/live-feature-fitting
       - feature/live-cylinder-sections
       - feature/live-region-fitting
+      - feature/live-feature-discovery
   pull_request:
 
 jobs:
