@@ -130,6 +130,11 @@ def test_low_arc_coverage_is_reported() -> None:
     assert fit["quality_warnings"]
 
 
+def test_circle_requires_four_points_for_fit_quality() -> None:
+    with pytest.raises(FeatureFitError, match="at least 4"):
+        fit_circle_3d([[1, 0, 0], [0, 1, 0], [-1, 0, 0]])
+
+
 def test_circle_rejects_degenerate_points() -> None:
     with pytest.raises(FeatureFitError):
         fit_circle_3d([[0, 0, 0], [1, 0, 0], [2, 0, 0]])
