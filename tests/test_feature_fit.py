@@ -184,6 +184,34 @@ def test_large_shifted_coordinates_preserve_precision() -> None:
     assert angle < 0.001
 
 
+@pytest.mark.parametrize("scale", [1e-20, 1e-14, 1.0, 1e14, 1e20])
+def test_unit_neutral_scale_invariance(scale: float) -> None:
+    plane_points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [scale, 0.0, 0.0],
+            [0.0, scale, 0.0],
+            [scale, scale, 0.0],
+        ]
+    )
+    plane = fit_plane(plane_points)
+    assert plane["residuals"]["rms"] == pytest.approx(0.0, abs=abs(scale) * 1e-14)
+
+    theta = np.linspace(0, 2 * math.pi, 32, endpoint=False)
+    center = np.array([3.0, -2.0, 8.0]) * scale
+    radius = 5.0 * scale
+    circle_points = center + np.column_stack(
+        (
+            radius * np.cos(theta),
+            radius * np.sin(theta),
+            np.zeros_like(theta),
+        )
+    )
+    circle = fit_circle_3d(circle_points)
+    assert circle["radius"] == pytest.approx(radius, rel=1e-12)
+    assert np.allclose(circle["center"], center, rtol=1e-12, atol=abs(scale) * 1e-12)
+
+
 @pytest.mark.parametrize("seed", [260929, 260930, 260931])
 def test_random_rotation_invariance(seed: int) -> None:
     rng = np.random.default_rng(seed)
