@@ -25,6 +25,7 @@ The listener binds only to `127.0.0.1` and defaults to TCP port `8765`.
 - exact point inspection plus picked-point distance and three-point angle measurements
 - bounded structured sphere/box/slab/nearest queries over live point clouds
 - exact all-match region summaries with deterministic bounded point samples
+- exact regular 3D region grids with stable per-cell covariance for numerical spatial inspection
 
 The Fusion-oriented workflow and its optional PyMeshLab backend are documented in
 `docs/FUSION_REFERENCE_WORKFLOW.md`.
