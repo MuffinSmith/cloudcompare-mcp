@@ -35,6 +35,10 @@ reported in native coordinate units; the bridge does not invent physical units.
 
 `fit_live_circle` fits a 3D circle from captured picks.
 
+At least four captured samples are required. Three points define an exact circle
+but provide no useful redundancy for assessing fit quality; the four-point minimum
+also matches CloudCompare 2.13.2's native circle-fit input requirement.
+
 The algorithm:
 
 1. fits the best orthogonal plane to the 3D samples;
