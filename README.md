@@ -78,6 +78,8 @@ These tools operate on the **CloudCompare instance that is already open** instea
 | `fit_live_cylinder` | Fit a cylinder/bore/shaft axis and diameter with residual diagnostics |
 | `compare_live_picked_lines` | Compare fitted line/axis angle and shortest distance |
 | `compare_live_line_to_plane` | Compare a fitted line/axis with a fitted plane |
+| `compare_live_cylinders` | Compare fitted cylinder axes, offsets, and diameter differences |
+| `compare_live_cylinder_to_plane` | Compare a fitted cylinder axis with a fitted plane |
 | `project_live_picks_to_section` | Project captured profile picks into a fitted 2D section frame |
 
 The plugin source is included under `cloudcompare-plugin/qMCPBridge`. It runs a newline-delimited JSON control server bound to `127.0.0.1:8765` by default. See that directory's README for CloudCompare build/install instructions.
