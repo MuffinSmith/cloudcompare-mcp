@@ -106,7 +106,11 @@ def fit_plane(points: Iterable[Sequence[float]]) -> dict[str, Any]:
     if singular_values.size < 3:
         raise FeatureFitError("Plane fitting requires three-dimensional input")
 
-    scale = max(float(singular_values[0]), 1.0)
+    scale = float(singular_values[0])
+    if not math.isfinite(scale) or scale <= np.finfo(np.float64).tiny:
+        raise FeatureFitError(
+            "Plane fitting points are coincident or numerically unresolved"
+        )
     tolerance = np.finfo(np.float64).eps * max(xyz.shape) * scale * 32.0
     if float(singular_values[1]) <= tolerance:
         raise FeatureFitError("Plane fitting points are coincident or collinear")
@@ -232,10 +236,28 @@ def fit_circle_3d(points: Iterable[Sequence[float]]) -> dict[str, Any]:
     centered = xyz - centroid
     xy = np.column_stack((centered @ u, centered @ v))
 
+    # Normalize the algebraic seed so the unit-neutral fitter behaves the same
+    # for tiny and huge native-coordinate scales. Without this, the constant
+    # design column can dominate the X/Y columns and make a valid small circle
+    # appear rank deficient.
+    coordinate_scale = float(np.max(np.linalg.norm(xy, axis=1)))
+    if (
+        not math.isfinite(coordinate_scale)
+        or coordinate_scale <= np.finfo(np.float64).tiny
+    ):
+        raise FeatureFitError(
+            "Circle fitting points have no resolvable radial extent"
+        )
+    xy_seed = xy / coordinate_scale
+
     design = np.column_stack(
-        (2.0 * xy[:, 0], 2.0 * xy[:, 1], np.ones(xy.shape[0]))
+        (
+            2.0 * xy_seed[:, 0],
+            2.0 * xy_seed[:, 1],
+            np.ones(xy_seed.shape[0]),
+        )
     )
-    rhs = np.sum(np.square(xy), axis=1)
+    rhs = np.sum(np.square(xy_seed), axis=1)
     try:
         solution, _, rank, _ = np.linalg.lstsq(design, rhs, rcond=None)
     except np.linalg.LinAlgError as exc:
@@ -247,15 +269,19 @@ def fit_circle_3d(points: Iterable[Sequence[float]]) -> dict[str, Any]:
             "Circle fitting points are degenerate after plane projection"
         )
 
-    center2d = solution[:2]
-    radius_squared = float(solution[2] + np.dot(center2d, center2d))
-    if not math.isfinite(radius_squared) or radius_squared <= 0:
+    center2d_seed = solution[:2]
+    radius_squared_seed = float(
+        solution[2] + np.dot(center2d_seed, center2d_seed)
+    )
+    if not math.isfinite(radius_squared_seed) or radius_squared_seed <= 0:
         raise FeatureFitError("Circle fitting produced an invalid algebraic radius")
 
+    center2d = center2d_seed * coordinate_scale
+    radius_seed = math.sqrt(radius_squared_seed) * coordinate_scale
     center2d, radius, iterations = _refine_circle_2d(
         xy,
         center2d,
-        math.sqrt(radius_squared),
+        radius_seed,
     )
     radial_distance = np.hypot(
         xy[:, 0] - center2d[0],
