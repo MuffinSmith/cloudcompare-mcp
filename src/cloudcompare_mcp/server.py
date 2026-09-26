@@ -558,7 +558,9 @@ TOOLS: list[Tool] = [
         name="capture_live_view",
         description=(
             "Capture the active 3D viewport from the currently open CloudCompare GUI "
-            "and return it as a PNG image the model can inspect."
+            "and return it as a PNG image the model can inspect. Prefer structured scene/region queries "
+            "and direct feature fitting when geometry can answer the question; use a viewport image only "
+            "when visual ambiguity actually requires rendered context."
         ),
         inputSchema={"type": "object", "properties": {}},
     ),
