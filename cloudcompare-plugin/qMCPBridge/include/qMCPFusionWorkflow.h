@@ -10,6 +10,9 @@ class ccMainAppInterface;
 
 namespace qMCPFusionWorkflow
 {
+// Stops any persistent interactive picking listener before the plugin/app detaches.
+void shutdownInteractiveState();
+
 // Rich, unit-neutral entity description shared by scene.list and workflow tools.
 QJsonObject describeEntity( ccHObject* entity, bool recursive );
 
