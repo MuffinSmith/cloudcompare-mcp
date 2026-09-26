@@ -924,7 +924,7 @@ TOOLS: list[Tool] = [
                     "default": [4, 4, 4]
                 },
                 "min_count": {"type": "integer", "minimum": 1, "default": 1},
-                "max_cells": {"type": "integer", "minimum": 0, "maximum": 1024, "default": 64}
+                "max_cells": {"type": "integer", "minimum": 0, "maximum": 1024, "default": 32}
             },
             "required": ["cloud_id"]
         },
@@ -992,7 +992,7 @@ TOOLS: list[Tool] = [
                     "default": [16, 16]
                 },
                 "min_count": {"type": "integer", "minimum": 1, "default": 1},
-                "max_cells": {"type": "integer", "minimum": 0, "maximum": 4096, "default": 128}
+                "max_cells": {"type": "integer", "minimum": 0, "maximum": 4096, "default": 64}
             },
             "required": ["cloud_id", "origin", "normal", "half_thickness"]
         },
@@ -1997,6 +1997,16 @@ def _ok(data: dict | str) -> list[TextContent]:
     return [TextContent(type="text", text=body)]
 
 
+def _ok_compact(data: dict | str) -> list[TextContent]:
+    """Return structured geometry with minimal JSON whitespace to reduce model context."""
+    body = (
+        data
+        if isinstance(data, str)
+        else json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+    )
+    return [TextContent(type="text", text=body)]
+
+
 def _err(msg: str) -> CallToolResult:
     """Return a model-readable MCP tool failure, not successful error text."""
     return CallToolResult(
@@ -2320,7 +2330,7 @@ def handle_query_live_region(args: dict) -> list[TextContent] | CallToolResult:
         )
         summary = _compact_region_summary(native, preview_points=preview_points)
         summary["region"] = args["region"]
-        return _ok(summary)
+        return _ok_compact(summary)
     except (LiveBridgeError, KeyError, TypeError, ValueError) as exc:
         return _err(str(exc))
 
@@ -2364,7 +2374,7 @@ def handle_fit_live_region_plane(args: dict) -> list[TextContent] | CallToolResu
             max_points=sample_limit,
         )
         fit = fit_plane(_region_positions_global(native, minimum=3))
-        return _ok(_decorate_region_fit(fit, native, args))
+        return _ok_compact(_decorate_region_fit(fit, native, args))
     except (
         FeatureFitError,
         LiveBridgeError,
@@ -2484,7 +2494,7 @@ def handle_extract_live_section(args: dict) -> list[TextContent] | CallToolResul
                 }
             )
 
-        return _ok(
+        return _ok_compact(
             {
                 "type": "full_cloud_section_sample",
                 "source_cloud_id": int(args["cloud_id"]),
@@ -2526,7 +2536,7 @@ def handle_describe_live_region_grid(args: dict) -> list[TextContent] | CallTool
             "coordinate_space": args.get("coordinate_space", "global"),
             "divisions": args.get("divisions", [4, 4, 4]),
             "min_count": int(args.get("min_count", 1)),
-            "max_cells": int(args.get("max_cells", 64)),
+            "max_cells": int(args.get("max_cells", 32)),
         }
         if "min" in args or "max" in args:
             if "min" not in args or "max" not in args:
@@ -2538,7 +2548,7 @@ def handle_describe_live_region_grid(args: dict) -> list[TextContent] | CallTool
         enriched = enrich_region_grid(native)
         enriched["image_required"] = False
         enriched["source_geometry_preserved"] = True
-        return _ok(enriched)
+        return _ok_compact(enriched)
     except (FeatureFitError, LiveBridgeError, KeyError, TypeError, ValueError) as exc:
         return _err(str(exc))
 
@@ -2582,7 +2592,7 @@ def handle_discover_live_planes(args: dict) -> list[TextContent] | CallToolResul
             discovery["sampling_warning"] = (
                 "Plane discovery used a deterministic bounded sample of a larger matching region."
             )
-        return _ok(discovery)
+        return _ok_compact(discovery)
     except (
         FeatureFitError,
         LiveBridgeError,
@@ -2624,9 +2634,9 @@ def handle_describe_live_section_grid(args: dict) -> list[TextContent] | CallToo
             projection["uv"],
             divisions=args.get("divisions", [16, 16]),
             min_count=int(args.get("min_count", 1)),
-            max_cells=int(args.get("max_cells", 128)),
+            max_cells=int(args.get("max_cells", 64)),
         )
-        return _ok(
+        return _ok_compact(
             {
                 "type": "live_section_occupancy",
                 "source_cloud_id": int(args["cloud_id"]),
