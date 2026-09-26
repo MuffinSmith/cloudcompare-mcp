@@ -752,6 +752,107 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="register_live_point_pairs",
+        description=(
+            "Compute a rigid coarse alignment from at least three explicit corresponding point pairs. "
+            "Sources are preserved. Preview mode returns the transform/residuals without adding geometry; "
+            "applied mode creates a transformed clone of the data cloud for subsequent ICP refinement."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "data_id": {"type": "integer"},
+                "model_id": {"type": "integer"},
+                "data_points": {
+                    "type": "array",
+                    "minItems": 3,
+                    "items": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 3,
+                        "maxItems": 3,
+                    },
+                },
+                "model_points": {
+                    "type": "array",
+                    "minItems": 3,
+                    "items": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 3,
+                        "maxItems": 3,
+                    },
+                },
+                "coordinate_space": {
+                    "type": "string",
+                    "enum": ["global", "native_local"],
+                    "default": "global",
+                    "description": (
+                        "global: both point lists contain CloudCompare global coordinates. "
+                        "native_local: each list is expressed in its own source entity's local coordinates."
+                    ),
+                },
+                "preview_only": {"type": "boolean", "default": True},
+                "name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+            },
+            "required": ["data_id", "model_id", "data_points", "model_points"],
+        },
+    ),
+    Tool(
+        name="analyze_live_c2c",
+        description=(
+            "Compute nearest-neighbor cloud-to-cloud distances on a temporary clone of the compared cloud. "
+            "Returns distribution statistics and a histogram without changing either source. "
+            "Optionally add a separate result cloud with a displayed distance scalar field."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "compared_id": {"type": "integer"},
+                "reference_id": {"type": "integer"},
+                "max_distance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Maximum search distance in native coordinate units; 0 means unlimited.",
+                },
+                "create_result": {"type": "boolean", "default": False},
+                "name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+            },
+            "required": ["compared_id", "reference_id"],
+        },
+    ),
+    Tool(
+        name="analyze_live_c2m",
+        description=(
+            "Compute cloud-to-mesh distances on a temporary clone of the compared point cloud. "
+            "Returns distance statistics/histogram and supports signed distances. Sources are preserved. "
+            "Optionally add a separate scalar-field result cloud for visual inspection."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "compared_id": {"type": "integer"},
+                "reference_mesh_id": {"type": "integer"},
+                "max_distance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Maximum search distance in native coordinate units; 0 means unlimited.",
+                },
+                "signed_distances": {"type": "boolean", "default": False},
+                "flip_normals": {"type": "boolean", "default": False},
+                "robust": {"type": "boolean", "default": True},
+                "create_result": {"type": "boolean", "default": False},
+                "name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+            },
+            "required": ["compared_id", "reference_mesh_id"],
+        },
+    ),
+    Tool(
         name="clone_live_entities",
         description=(
             "Deep-clone explicitly chosen live point clouds or triangle meshes without modifying the sources. "
@@ -1410,6 +1511,50 @@ def handle_register_live_icp(args: dict) -> list[TextContent]:
     return _live_call("cloud.register_icp", params, timeout=900.0)
 
 
+def handle_register_live_point_pairs(args: dict) -> list[TextContent]:
+    params = {
+        "data_id": args["data_id"],
+        "model_id": args["model_id"],
+        "data_points": args["data_points"],
+        "model_points": args["model_points"],
+        "coordinate_space": args.get("coordinate_space", "global"),
+        "preview_only": bool(args.get("preview_only", True)),
+    }
+    for key in ("name", "destination_group_id"):
+        if key in args:
+            params[key] = args[key]
+    return _live_call("cloud.register_point_pairs", params, timeout=300.0)
+
+
+def handle_analyze_live_c2c(args: dict) -> list[TextContent]:
+    params = {
+        "compared_id": args["compared_id"],
+        "reference_id": args["reference_id"],
+        "max_distance": float(args.get("max_distance", 0.0)),
+        "create_result": bool(args.get("create_result", False)),
+    }
+    for key in ("name", "destination_group_id"):
+        if key in args:
+            params[key] = args[key]
+    return _live_call("cloud.distance_c2c", params, timeout=900.0)
+
+
+def handle_analyze_live_c2m(args: dict) -> list[TextContent]:
+    params = {
+        "compared_id": args["compared_id"],
+        "reference_mesh_id": args["reference_mesh_id"],
+        "max_distance": float(args.get("max_distance", 0.0)),
+        "signed_distances": bool(args.get("signed_distances", False)),
+        "flip_normals": bool(args.get("flip_normals", False)),
+        "robust": bool(args.get("robust", True)),
+        "create_result": bool(args.get("create_result", False)),
+    }
+    for key in ("name", "destination_group_id"):
+        if key in args:
+            params[key] = args[key]
+    return _live_call("cloud.distance_c2m", params, timeout=900.0)
+
+
 def handle_clone_live_entities(args: dict) -> list[TextContent]:
     params = {
         "ids": args["ids"],
@@ -1677,6 +1822,9 @@ async def call_tool(
         "filter_live_cloud_sor": handle_filter_live_cloud_sor,
         "compute_live_normals": handle_compute_live_normals,
         "register_live_icp": handle_register_live_icp,
+        "register_live_point_pairs": handle_register_live_point_pairs,
+        "analyze_live_c2c": handle_analyze_live_c2c,
+        "analyze_live_c2m": handle_analyze_live_c2m,
         "clone_live_entities": handle_clone_live_entities,
         "merge_live_clouds": handle_merge_live_clouds,
         "reconstruct_live_mesh": handle_reconstruct_live_mesh,
