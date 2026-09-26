@@ -19,6 +19,9 @@ ICP. See [docs/LIVE_REGISTRATION.md](docs/LIVE_REGISTRATION.md).
 Coarse point-pair registration plus live C2C/C2M quality analysis are documented in
 [docs/LIVE_REGISTRATION_ANALYSIS.md](docs/LIVE_REGISTRATION_ANALYSIS.md).
 
+Interactive viewport picking, point inspection, distance and angle measurements are
+documented in [docs/LIVE_METROLOGY.md](docs/LIVE_METROLOGY.md).
+
 ## Features
 
 ### Native tools (no CloudCompare required)
@@ -54,6 +57,13 @@ These tools operate on the **CloudCompare instance that is already open** instea
 | `register_live_point_pairs` | Coarse rigid alignment from explicit corresponding point pairs |
 | `analyze_live_c2c` | Live cloud-to-cloud distance statistics and optional scalar-field result |
 | `analyze_live_c2m` | Live cloud-to-mesh distance statistics and optional scalar-field result |
+| `start_live_picking` | Start interactive point/triangle picking in the visible CloudCompare viewport |
+| `get_live_picks` | Read captured picks with exact coordinates and attributes |
+| `clear_live_picks` | Clear captured picks while leaving picking active |
+| `stop_live_picking` | Stop the picking listener and return captured picks |
+| `inspect_live_point` | Inspect exact coordinates/RGB/normal/scalars for a point index |
+| `measure_live_picked_distance` | Measure distance and XYZ deltas between captured picks |
+| `measure_live_picked_angle` | Measure a three-point angle from captured picks |
 
 The plugin source is included under `cloudcompare-plugin/qMCPBridge`. It runs a newline-delimited JSON control server bound to `127.0.0.1:8765` by default. See that directory's README for CloudCompare build/install instructions.
 
