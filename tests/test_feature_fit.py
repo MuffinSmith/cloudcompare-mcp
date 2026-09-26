@@ -140,6 +140,13 @@ def test_circle_rejects_degenerate_points() -> None:
         fit_circle_3d([[0, 0, 0], [1, 0, 0], [2, 0, 0]])
 
 
+def test_circle_rejects_duplicate_spatial_samples() -> None:
+    with pytest.raises(FeatureFitError, match="distinct"):
+        fit_circle_3d(
+            [[1, 0, 0], [1, 0, 0], [0, 1, 0], [-1, 0, 0]]
+        )
+
+
 def test_point_to_plane_known_distance() -> None:
     fit = fit_plane([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]])
     result = point_to_plane([2, 3, 5], fit)
