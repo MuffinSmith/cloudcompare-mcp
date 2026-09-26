@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from cloudcompare_mcp import server
 
@@ -271,8 +271,8 @@ class LiveWorkflowContractTests(unittest.TestCase):
         self.assertEqual(
             call.call_args_list,
             [
-                unittest.mock.call("metrology.pick.status", {}),
-                unittest.mock.call("metrology.pick.stop", {}),
+                call("metrology.pick.status", {}),
+                call("metrology.pick.stop", {}),
             ],
         )
 
