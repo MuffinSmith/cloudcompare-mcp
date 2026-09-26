@@ -1025,6 +1025,120 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="fit_live_line",
+        description=(
+            "Fit an orthogonal least-squares 3D line to captured CloudCompare metrology picks. "
+            "Returns centroid, deterministic direction, span endpoints, linearity and residual diagnostics "
+            "without modifying the scene."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 2,
+                    "description": "Optional captured-pick indexes. Omit to use every currently captured pick.",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="fit_live_cylinder",
+        description=(
+            "Fit a circular-cylinder axis and diameter to captured 3D surface picks. "
+            "Uses deterministic multi-start axis search with geometric radial least squares and reports "
+            "radial residuals, angular coverage and axial span. Sources remain untouched."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 6,
+                    "description": "Optional captured-pick indexes. Omit to use every currently captured pick.",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="compare_live_picked_lines",
+        description=(
+            "Fit two 3D lines from captured-pick sets and compare their acute angle, "
+            "shortest infinite-line distance and closest points."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "line_a_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 2,
+                },
+                "line_b_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 2,
+                },
+            },
+            "required": ["line_a_pick_indices", "line_b_pick_indices"],
+        },
+    ),
+    Tool(
+        name="compare_live_line_to_plane",
+        description=(
+            "Fit a line/axis and a plane from captured picks and report their angle, "
+            "axis-point distance and intersection when one exists."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "line_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 2,
+                },
+                "plane_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 3,
+                },
+            },
+            "required": ["line_pick_indices", "plane_pick_indices"],
+        },
+    ),
+    Tool(
+        name="project_live_picks_to_section",
+        description=(
+            "Fit a section plane from captured picks and project another captured-pick set into a stable "
+            "2D U/V section frame. Optionally filter profile picks by half-thickness around the fitted plane. "
+            "This is a picked-profile tool; full-cloud arbitrary slab extraction is not yet implemented."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "section_plane_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 3,
+                },
+                "profile_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 1,
+                    "description": "Captured picks to project. If omitted, all captured picks are used.",
+                },
+                "half_thickness": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Optional maximum absolute offset from the section plane in native/global coordinate units.",
+                },
+            },
+            "required": ["section_plane_pick_indices"],
+        },
+    ),
+    Tool(
         name="clone_live_entities",
         description=(
             "Deep-clone explicitly chosen live point clouds or triangle meshes without modifying the sources. "
@@ -1946,6 +2060,159 @@ def handle_compare_live_picked_planes(args: dict) -> list[TextContent] | CallToo
         return _err(str(exc))
 
 
+def handle_fit_live_line(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_line_3d
+
+    try:
+        points, indexes, selected = _selected_live_pick_points(
+            args.get("pick_indices"),
+            minimum=2,
+        )
+        return _ok(
+            _decorate_feature_fit(
+                fit_line_3d(points),
+                indexes=indexes,
+                selected=selected,
+            )
+        )
+    except (FeatureFitError, LiveBridgeError) as exc:
+        return _err(str(exc))
+
+
+def handle_fit_live_cylinder(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_cylinder_3d
+
+    try:
+        points, indexes, selected = _selected_live_pick_points(
+            args.get("pick_indices"),
+            minimum=6,
+        )
+        return _ok(
+            _decorate_feature_fit(
+                fit_cylinder_3d(points),
+                indexes=indexes,
+                selected=selected,
+            )
+        )
+    except (FeatureFitError, LiveBridgeError) as exc:
+        return _err(str(exc))
+
+
+def handle_compare_live_picked_lines(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_line_3d, line_relationship
+
+    try:
+        points_a, indexes_a, picks_a = _selected_live_pick_points(
+            args["line_a_pick_indices"],
+            minimum=2,
+        )
+        points_b, indexes_b, picks_b = _selected_live_pick_points(
+            args["line_b_pick_indices"],
+            minimum=2,
+        )
+        line_a = fit_line_3d(points_a)
+        line_b = fit_line_3d(points_b)
+        return _ok(
+            {
+                "coordinate_space": "global",
+                "units": "native",
+                "units_confirmed": False,
+                "source_geometry_preserved": True,
+                "line_a_pick_indices": indexes_a,
+                "line_b_pick_indices": indexes_b,
+                "line_a_source_picks": picks_a,
+                "line_b_source_picks": picks_b,
+                "line_a": line_a,
+                "line_b": line_b,
+                "relationship": line_relationship(line_a, line_b),
+            }
+        )
+    except (FeatureFitError, LiveBridgeError, KeyError, TypeError, ValueError) as exc:
+        return _err(str(exc))
+
+
+def handle_compare_live_line_to_plane(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_line_3d, fit_plane, line_plane_relationship
+
+    try:
+        line_points, line_indexes, line_picks = _selected_live_pick_points(
+            args["line_pick_indices"],
+            minimum=2,
+        )
+        plane_points, plane_indexes, plane_picks = _selected_live_pick_points(
+            args["plane_pick_indices"],
+            minimum=3,
+        )
+        line = fit_line_3d(line_points)
+        plane = fit_plane(plane_points)
+        return _ok(
+            {
+                "coordinate_space": "global",
+                "units": "native",
+                "units_confirmed": False,
+                "source_geometry_preserved": True,
+                "line_pick_indices": line_indexes,
+                "plane_pick_indices": plane_indexes,
+                "line_source_picks": line_picks,
+                "plane_source_picks": plane_picks,
+                "line_fit": line,
+                "plane_fit": plane,
+                "relationship": line_plane_relationship(line, plane),
+            }
+        )
+    except (FeatureFitError, LiveBridgeError, KeyError, TypeError, ValueError) as exc:
+        return _err(str(exc))
+
+
+def handle_project_live_picks_to_section(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_plane, project_points_to_section
+
+    try:
+        plane_points, plane_indexes, plane_picks = _selected_live_pick_points(
+            args["section_plane_pick_indices"],
+            minimum=3,
+        )
+        profile_points, profile_indexes, profile_picks = _selected_live_pick_points(
+            args.get("profile_pick_indices"),
+            minimum=1,
+        )
+        plane = fit_plane(plane_points)
+        projection = project_points_to_section(
+            profile_points,
+            plane["centroid"],
+            plane["normal"],
+            half_thickness=args.get("half_thickness"),
+        )
+
+        selected_profile_indexes = [
+            profile_indexes[index]
+            for index in projection["source_indices"]
+        ]
+        selected_profile_picks = [
+            profile_picks[index]
+            for index in projection["source_indices"]
+        ]
+
+        return _ok(
+            {
+                "coordinate_space": "global",
+                "units": "native",
+                "units_confirmed": False,
+                "source_geometry_preserved": True,
+                "section_plane_pick_indices": plane_indexes,
+                "section_plane_source_picks": plane_picks,
+                "profile_pick_indices": profile_indexes,
+                "selected_profile_pick_indices": selected_profile_indexes,
+                "selected_profile_source_picks": selected_profile_picks,
+                "section_plane": plane,
+                "projection": projection,
+                "full_cloud_slab_extraction": False,
+            }
+        )
+    except (FeatureFitError, LiveBridgeError, KeyError, TypeError, ValueError) as exc:
+        return _err(str(exc))
+
+
 def handle_clone_live_entities(args: dict) -> list[TextContent]:
     params = {
         "ids": args["ids"],
@@ -2227,6 +2494,11 @@ async def call_tool(
         "fit_live_circle": handle_fit_live_circle,
         "measure_live_pick_to_plane": handle_measure_live_pick_to_plane,
         "compare_live_picked_planes": handle_compare_live_picked_planes,
+        "fit_live_line": handle_fit_live_line,
+        "fit_live_cylinder": handle_fit_live_cylinder,
+        "compare_live_picked_lines": handle_compare_live_picked_lines,
+        "compare_live_line_to_plane": handle_compare_live_line_to_plane,
+        "project_live_picks_to_section": handle_project_live_picks_to_section,
         "clone_live_entities": handle_clone_live_entities,
         "merge_live_clouds": handle_merge_live_clouds,
         "reconstruct_live_mesh": handle_reconstruct_live_mesh,
