@@ -1718,6 +1718,412 @@ bool queryCloudRegion(
     return true;
 }
 
+bool gridCloudRegion(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned cloudId = 0;
+    if ( !readId( params, "cloud_id", cloudId ) )
+    {
+        error = "cloud.region_grid requires a numeric cloud_id";
+        return true;
+    }
+
+    ccPointCloud* cloud = requireStandaloneCloud( app, cloudId, error );
+    if ( !cloud )
+    {
+        return true;
+    }
+    if ( cloud->size() == 0 )
+    {
+        error = "cloud.region_grid requires a non-empty point cloud";
+        return true;
+    }
+
+    const QString coordinateSpace =
+        params.value( "coordinate_space" ).toString( "global" ).trimmed().toLower();
+    if ( coordinateSpace != "global" && coordinateSpace != "native_local" )
+    {
+        error = "coordinate_space must be 'global' or 'native_local'";
+        return true;
+    }
+
+    int divisions[3] = { 6, 6, 6 };
+    if ( params.contains( "divisions" ) )
+    {
+        const QJsonArray values = params.value( "divisions" ).toArray();
+        if ( values.size() != 3 )
+        {
+            error = "divisions must contain exactly three integers";
+            return true;
+        }
+        for ( int axis = 0; axis < 3; ++axis )
+        {
+            if ( !values.at( axis ).isDouble() )
+            {
+                error = "divisions must contain exactly three integers";
+                return true;
+            }
+            const double raw = values.at( axis ).toDouble();
+            if ( raw < 1.0 || raw > 32.0 || std::floor( raw ) != raw )
+            {
+                error = "each divisions value must be an integer between 1 and 32";
+                return true;
+            }
+            divisions[axis] = static_cast<int>( raw );
+        }
+    }
+
+    int minCount = 1;
+    if ( params.contains( "min_count" ) )
+    {
+        const QJsonValue value = params.value( "min_count" );
+        if ( !value.isDouble()
+             || value.toDouble() < 1.0
+             || value.toDouble() > static_cast<double>( std::numeric_limits<int>::max() )
+             || std::floor( value.toDouble() ) != value.toDouble() )
+        {
+            error = "min_count must be a positive integer";
+            return true;
+        }
+        minCount = static_cast<int>( value.toDouble() );
+    }
+
+    int maxCells = 256;
+    if ( params.contains( "max_cells" ) )
+    {
+        const QJsonValue value = params.value( "max_cells" );
+        if ( !value.isDouble()
+             || value.toDouble() < 0.0
+             || value.toDouble() > 1024.0
+             || std::floor( value.toDouble() ) != value.toDouble() )
+        {
+            error = "max_cells must be an integer between 0 and 1024";
+            return true;
+        }
+        maxCells = static_cast<int>( value.toDouble() );
+    }
+
+    const bool hasMin = params.contains( "min" );
+    const bool hasMax = params.contains( "max" );
+    if ( hasMin != hasMax )
+    {
+        error = "cloud.region_grid requires both min and max when explicit bounds are supplied";
+        return true;
+    }
+
+    CCVector3d requestedMin;
+    CCVector3d requestedMax;
+    if ( hasMin )
+    {
+        if ( !readVector3( params, "min", requestedMin, error )
+             || !readVector3( params, "max", requestedMax, error ) )
+        {
+            return true;
+        }
+        for ( int axis = 0; axis < 3; ++axis )
+        {
+            if ( requestedMax.u[axis] < requestedMin.u[axis] )
+            {
+                error = "cloud.region_grid requires max >= min on all axes";
+                return true;
+            }
+        }
+    }
+    else
+    {
+        const ccBBox bounds = cloud->getOwnBB();
+        if ( !bounds.isValid() )
+        {
+            error = "cloud.region_grid could not determine source bounds";
+            return true;
+        }
+
+        if ( coordinateSpace == "global" )
+        {
+            const CCVector3d a =
+                cloud->toGlobal3d<PointCoordinateType>( bounds.minCorner() );
+            const CCVector3d b =
+                cloud->toGlobal3d<PointCoordinateType>( bounds.maxCorner() );
+            requestedMin = CCVector3d(
+                std::min( a.x, b.x ),
+                std::min( a.y, b.y ),
+                std::min( a.z, b.z ) );
+            requestedMax = CCVector3d(
+                std::max( a.x, b.x ),
+                std::max( a.y, b.y ),
+                std::max( a.z, b.z ) );
+        }
+        else
+        {
+            requestedMin = bounds.minCorner().toDouble();
+            requestedMax = bounds.maxCorner().toDouble();
+        }
+    }
+
+    int effectiveDivisions[3] = {
+        divisions[0],
+        divisions[1],
+        divisions[2]
+    };
+    double spans[3] = {
+        requestedMax.x - requestedMin.x,
+        requestedMax.y - requestedMin.y,
+        requestedMax.z - requestedMin.z
+    };
+    double cellSize[3] = { 0.0, 0.0, 0.0 };
+    for ( int axis = 0; axis < 3; ++axis )
+    {
+        if ( spans[axis] == 0.0 )
+        {
+            effectiveDivisions[axis] = 1;
+            cellSize[axis] = 0.0;
+        }
+        else
+        {
+            cellSize[axis] =
+                spans[axis] / static_cast<double>( effectiveDivisions[axis] );
+        }
+    }
+
+    const quint64 totalCellCount =
+        static_cast<quint64>( effectiveDivisions[0] )
+        * static_cast<quint64>( effectiveDivisions[1] )
+        * static_cast<quint64>( effectiveDivisions[2] );
+    if ( totalCellCount == 0 || totalCellCount > 32768ULL )
+    {
+        error = "The effective region grid may contain at most 32768 cells";
+        return true;
+    }
+
+    struct CellStats
+    {
+        quint64 count = 0;
+        CCVector3d mean;
+        double m2xx = 0.0;
+        double m2xy = 0.0;
+        double m2xz = 0.0;
+        double m2yy = 0.0;
+        double m2yz = 0.0;
+        double m2zz = 0.0;
+        CCVector3d minimum;
+        CCVector3d maximum;
+        bool haveBounds = false;
+    };
+
+    std::vector<CellStats> cells( static_cast<size_t>( totalCellCount ) );
+    quint64 matchedCount = 0;
+
+    auto pointInQuerySpace =
+        [cloud, coordinateSpace]( const CCVector3& localPoint ) -> CCVector3d
+        {
+            return coordinateSpace == "global"
+                ? cloud->toGlobal3d<PointCoordinateType>( localPoint )
+                : localPoint.toDouble();
+        };
+
+    for ( unsigned pointIndex = 0; pointIndex < cloud->size(); ++pointIndex )
+    {
+        const CCVector3* localPoint = cloud->getPoint( pointIndex );
+        if ( !localPoint )
+        {
+            continue;
+        }
+        const CCVector3d point = pointInQuerySpace( *localPoint );
+
+        if ( point.x < requestedMin.x || point.x > requestedMax.x
+             || point.y < requestedMin.y || point.y > requestedMax.y
+             || point.z < requestedMin.z || point.z > requestedMax.z )
+        {
+            continue;
+        }
+
+        int cellIndex[3] = { 0, 0, 0 };
+        for ( int axis = 0; axis < 3; ++axis )
+        {
+            if ( effectiveDivisions[axis] <= 1 || spans[axis] == 0.0 )
+            {
+                cellIndex[axis] = 0;
+                continue;
+            }
+
+            const double normalized =
+                ( point.u[axis] - requestedMin.u[axis] ) / spans[axis];
+            int index = static_cast<int>(
+                std::floor(
+                    normalized
+                    * static_cast<double>( effectiveDivisions[axis] ) ) );
+            index = std::max( 0, std::min( effectiveDivisions[axis] - 1, index ) );
+            cellIndex[axis] = index;
+        }
+
+        const size_t linearIndex =
+            static_cast<size_t>( cellIndex[0] )
+            + static_cast<size_t>( effectiveDivisions[0] )
+                * ( static_cast<size_t>( cellIndex[1] )
+                    + static_cast<size_t>( effectiveDivisions[1] )
+                        * static_cast<size_t>( cellIndex[2] ) );
+
+        CellStats& cell = cells[linearIndex];
+        ++cell.count;
+        ++matchedCount;
+
+        const CCVector3d delta = point - cell.mean;
+        cell.mean += delta / static_cast<double>( cell.count );
+        const CCVector3d delta2 = point - cell.mean;
+        cell.m2xx += delta.x * delta2.x;
+        cell.m2xy += delta.x * delta2.y;
+        cell.m2xz += delta.x * delta2.z;
+        cell.m2yy += delta.y * delta2.y;
+        cell.m2yz += delta.y * delta2.z;
+        cell.m2zz += delta.z * delta2.z;
+
+        if ( !cell.haveBounds )
+        {
+            cell.minimum = point;
+            cell.maximum = point;
+            cell.haveBounds = true;
+        }
+        else
+        {
+            for ( int axis = 0; axis < 3; ++axis )
+            {
+                cell.minimum.u[axis] =
+                    std::min( cell.minimum.u[axis], point.u[axis] );
+                cell.maximum.u[axis] =
+                    std::max( cell.maximum.u[axis], point.u[axis] );
+            }
+        }
+    }
+
+    if ( matchedCount == 0 )
+    {
+        error = "cloud.region_grid selected no points";
+        return true;
+    }
+
+    std::vector<size_t> eligible;
+    eligible.reserve( cells.size() );
+    quint64 nonEmptyCount = 0;
+    for ( size_t i = 0; i < cells.size(); ++i )
+    {
+        if ( cells[i].count > 0 )
+        {
+            ++nonEmptyCount;
+        }
+        if ( cells[i].count >= static_cast<quint64>( minCount ) )
+        {
+            eligible.push_back( i );
+        }
+    }
+
+    std::sort(
+        eligible.begin(),
+        eligible.end(),
+        [&cells]( size_t a, size_t b )
+        {
+            if ( cells[a].count != cells[b].count )
+            {
+                return cells[a].count > cells[b].count;
+            }
+            return a < b;
+        } );
+
+    const size_t returnCount =
+        std::min( eligible.size(), static_cast<size_t>( maxCells ) );
+
+    QJsonArray cellsJson;
+    for ( size_t outputIndex = 0; outputIndex < returnCount; ++outputIndex )
+    {
+        const size_t linearIndex = eligible[outputIndex];
+        const CellStats& cell = cells[linearIndex];
+
+        const int ix =
+            static_cast<int>(
+                linearIndex % static_cast<size_t>( effectiveDivisions[0] ) );
+        const size_t yz =
+            linearIndex / static_cast<size_t>( effectiveDivisions[0] );
+        const int iy =
+            static_cast<int>(
+                yz % static_cast<size_t>( effectiveDivisions[1] ) );
+        const int iz =
+            static_cast<int>(
+                yz / static_cast<size_t>( effectiveDivisions[1] ) );
+
+        QJsonObject cellJson;
+        cellJson[ "index" ] = QJsonArray{ ix, iy, iz };
+        cellJson[ "count" ] = static_cast<qint64>( cell.count );
+        cellJson[ "fraction_of_matches" ] =
+            static_cast<double>( cell.count )
+            / static_cast<double>( matchedCount );
+        cellJson[ "centroid" ] = vector3Json( cell.mean );
+
+        QJsonObject pointBounds;
+        pointBounds[ "min" ] = vector3Json( cell.minimum );
+        pointBounds[ "max" ] = vector3Json( cell.maximum );
+        pointBounds[ "extent" ] = QJsonArray{
+            cell.maximum.x - cell.minimum.x,
+            cell.maximum.y - cell.minimum.y,
+            cell.maximum.z - cell.minimum.z
+        };
+        cellJson[ "point_bounds" ] = pointBounds;
+
+        const double divisor = static_cast<double>( cell.count );
+        const double cxx = cell.m2xx / divisor;
+        const double cxy = cell.m2xy / divisor;
+        const double cxz = cell.m2xz / divisor;
+        const double cyy = cell.m2yy / divisor;
+        const double cyz = cell.m2yz / divisor;
+        const double czz = cell.m2zz / divisor;
+        cellJson[ "covariance" ] = QJsonArray{
+            QJsonArray{ cxx, cxy, cxz },
+            QJsonArray{ cxy, cyy, cyz },
+            QJsonArray{ cxz, cyz, czz }
+        };
+        cellsJson.append( cellJson );
+    }
+
+    QJsonObject gridBounds;
+    gridBounds[ "min" ] = vector3Json( requestedMin );
+    gridBounds[ "max" ] = vector3Json( requestedMax );
+    gridBounds[ "extent" ] = QJsonArray{ spans[0], spans[1], spans[2] };
+
+    QJsonObject out;
+    out[ "cloud_id" ] = static_cast<qint64>( cloudId );
+    out[ "cloud_name" ] = cloud->getName();
+    out[ "coordinate_space" ] = coordinateSpace;
+    out[ "matched_count" ] = static_cast<qint64>( matchedCount );
+    out[ "grid_bounds_query_space" ] = gridBounds;
+    out[ "requested_divisions" ] =
+        QJsonArray{ divisions[0], divisions[1], divisions[2] };
+    out[ "effective_divisions" ] =
+        QJsonArray{
+            effectiveDivisions[0],
+            effectiveDivisions[1],
+            effectiveDivisions[2]
+        };
+    out[ "cell_size_query_space" ] =
+        QJsonArray{ cellSize[0], cellSize[1], cellSize[2] };
+    out[ "total_cell_count" ] = static_cast<qint64>( totalCellCount );
+    out[ "nonempty_cell_count" ] = static_cast<qint64>( nonEmptyCount );
+    out[ "eligible_cell_count" ] =
+        static_cast<qint64>( eligible.size() );
+    out[ "returned_cell_count" ] =
+        static_cast<qint64>( returnCount );
+    out[ "cells_truncated" ] = returnCount < eligible.size();
+    out[ "min_count" ] = minCount;
+    out[ "max_cells" ] = maxCells;
+    out[ "cells" ] = cellsJson;
+    out[ "source_geometry_preserved" ] = true;
+    out[ "source_global_shift" ] = vector3Json( cloud->getGlobalShift() );
+    out[ "source_global_scale" ] = cloud->getGlobalScale();
+
+    result = out;
+    return true;
+}
+
 bool createGroup(
     ccMainAppInterface* app,
     const QJsonObject& params,
@@ -2906,13 +3312,13 @@ QJsonObject capabilities()
 {
     QJsonObject result;
     result[ "protocol_version" ] = 1;
-    result[ "workflow_revision" ] = 6;
+    result[ "workflow_revision" ] = 7;
     result[ "units_policy" ] =
         "Coordinates are reported in native units. Units remain unknown unless supplied by the caller.";
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    result[ "plugin_version" ] = "0.10.0";
+    result[ "plugin_version" ] = "0.11.0";
 
     QJsonArray bridgeOperations{
         "ping",
@@ -2942,6 +3348,7 @@ QJsonObject capabilities()
         "cloud.distance_c2c",
         "cloud.distance_c2m",
         "cloud.region_query",
+        "cloud.region_grid",
         "metrology.pick.start",
         "metrology.pick.status",
         "metrology.pick.clear",
@@ -2968,6 +3375,7 @@ QJsonObject capabilities()
         "cloud.distance_c2c",
         "cloud.distance_c2m",
         "cloud.region_query",
+        "cloud.region_grid",
         "metrology.pick.start",
         "metrology.pick.status",
         "metrology.pick.clear",
@@ -3042,6 +3450,18 @@ QJsonObject capabilities()
     regionQuery[ "summary_over_all_matches" ] = true;
     regionQuery[ "source_preserved" ] = true;
     result[ "region_query" ] = regionQuery;
+
+    QJsonObject regionGrid;
+    regionGrid[ "available" ] = true;
+    regionGrid[ "point_cloud_only" ] = true;
+    regionGrid[ "coordinate_spaces" ] = QJsonArray{ "global", "native_local" };
+    regionGrid[ "max_grid_cells" ] = 32768;
+    regionGrid[ "max_returned_cells" ] = 1024;
+    regionGrid[ "exact_cell_counts" ] = true;
+    regionGrid[ "exact_cell_centroids" ] = true;
+    regionGrid[ "stable_cell_covariance" ] = true;
+    regionGrid[ "source_preserved" ] = true;
+    result[ "region_grid" ] = regionGrid;
 
     QJsonArray meshing;
     {
@@ -3912,6 +4332,10 @@ bool dispatch(
     if ( method == "cloud.region_query" )
     {
         return queryCloudRegion( app, params, result, error );
+    }
+    if ( method == "cloud.region_grid" )
+    {
+        return gridCloudRegion( app, params, result, error );
     }
     if ( method == "cloud.subsample" )
     {
