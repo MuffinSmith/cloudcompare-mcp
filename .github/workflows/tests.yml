@@ -10,6 +10,7 @@ on:
       - feature/live-metrology
       - feature/live-feature-fitting
       - feature/live-cylinder-sections
+      - feature/live-region-fitting
   pull_request:
 
 jobs:
