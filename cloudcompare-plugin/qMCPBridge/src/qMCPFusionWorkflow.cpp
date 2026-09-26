@@ -696,12 +696,12 @@ QJsonObject pickedItemDescription(
 
     ccGenericPointCloud* coordinateCloud = nullptr;
 
-    if ( entity->isA( CC_TYPES::POINT_CLOUD ) )
+    if ( entity->isKindOf( CC_TYPES::POINT_CLOUD ) )
     {
-        ccPointCloud* cloud = static_cast<ccPointCloud*>( entity );
+        ccPointCloud* cloud = ccHObjectCaster::ToPointCloud( entity );
         coordinateCloud = cloud;
 
-        if ( !item.entityCenter && item.itemIndex < cloud->size() )
+        if ( cloud && !item.entityCenter && item.itemIndex < cloud->size() )
         {
             QJsonObject pointInfo =
                 pointCloudPointDescription( cloud, item.itemIndex );
@@ -3509,6 +3509,11 @@ bool exportEntity(
 
 namespace qMCPFusionWorkflow
 {
+void shutdownInteractiveState()
+{
+    g_metrologyPickingSession.stop();
+}
+
 QJsonObject describeEntity( ccHObject* entity, bool recursive )
 {
     return entityDescription( entity, recursive );
