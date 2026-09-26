@@ -945,6 +945,86 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="fit_live_plane",
+        description=(
+            "Fit an orthogonal least-squares plane to captured CloudCompare metrology picks. "
+            "Uses global coordinates, preserves all source geometry, and reports the plane equation, "
+            "basis, residual statistics, planarity diagnostics, and sampled extents."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 3,
+                    "description": "Optional captured-pick indexes. Omit to use every currently captured pick.",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="fit_live_circle",
+        description=(
+            "Fit a 3D circle to captured CloudCompare metrology picks by best-fit-plane projection "
+            "and geometric least-squares circle refinement. Reports center, normal, diameter, "
+            "arc coverage and radial/planar residual diagnostics without modifying the scene."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 3,
+                    "description": "Optional captured-pick indexes. Omit to use every currently captured pick.",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="measure_live_pick_to_plane",
+        description=(
+            "Fit a plane from selected captured picks and measure another captured pick to that plane "
+            "in CloudCompare global/native coordinates. Returns signed and absolute distance plus projection."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "point_pick": {"type": "integer", "minimum": 0},
+                "plane_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 3,
+                },
+            },
+            "required": ["point_pick", "plane_pick_indices"],
+        },
+    ),
+    Tool(
+        name="compare_live_picked_planes",
+        description=(
+            "Fit two planes from two captured-pick sets and compare their acute angle, centroid offset, "
+            "and normal-direction separation. Sources remain untouched."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "plane_a_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 3,
+                },
+                "plane_b_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 3,
+                },
+            },
+            "required": ["plane_a_pick_indices", "plane_b_pick_indices"],
+        },
+    ),
+    Tool(
         name="clone_live_entities",
         description=(
             "Deep-clone explicitly chosen live point clouds or triangle meshes without modifying the sources. "
@@ -1524,6 +1604,8 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
         from .fusion_mesh import backend_capabilities
 
         native["python_backends"] = backend_capabilities()
+        from .feature_fit import feature_fit_capabilities
+        native["python_feature_fitting"] = feature_fit_capabilities()
         return _ok(native)
     except (LiveBridgeError, Exception) as exc:
         return _err(str(exc))
@@ -1693,6 +1775,175 @@ def handle_measure_live_picked_angle(args: dict) -> list[TextContent]:
         if key in args:
             params[key] = args[key]
     return _live_call("metrology.measure.picked_angle", params)
+
+
+def _selected_live_pick_points(
+    pick_indices: list[int] | None,
+    *,
+    minimum: int,
+) -> tuple[list[list[float]], list[int], list[dict]]:
+    from .feature_fit import FeatureFitError
+
+    status = live_request("metrology.pick.status", {})
+    if not isinstance(status, dict) or not isinstance(status.get("picks"), list):
+        raise FeatureFitError("CloudCompare returned an invalid metrology picking-session response")
+
+    picks = status["picks"]
+    if pick_indices is None:
+        indexes = list(range(len(picks)))
+    else:
+        indexes = list(pick_indices)
+
+    if len(indexes) < minimum:
+        raise FeatureFitError(f"At least {minimum} captured picks are required")
+    if len(set(indexes)) != len(indexes):
+        raise FeatureFitError("Pick-index lists must not contain duplicate indexes")
+
+    positions: list[list[float]] = []
+    selected: list[dict] = []
+    for index in indexes:
+        if isinstance(index, bool) or not isinstance(index, int) or index < 0 or index >= len(picks):
+            raise FeatureFitError(
+                f"Captured pick index {index!r} is outside the available range 0..{max(len(picks) - 1, 0)}"
+            )
+        pick = picks[index]
+        if not isinstance(pick, dict):
+            raise FeatureFitError(f"Captured pick {index} is malformed")
+        position = pick.get("position_global")
+        if not isinstance(position, list) or len(position) != 3:
+            raise FeatureFitError(f"Captured pick {index} has no valid global 3D position")
+        try:
+            xyz = [float(component) for component in position]
+        except (TypeError, ValueError) as exc:
+            raise FeatureFitError(
+                f"Captured pick {index} has non-numeric global coordinates"
+            ) from exc
+
+        positions.append(xyz)
+        pick_copy = dict(pick)
+        pick_copy["pick_index"] = index
+        selected.append(pick_copy)
+
+    return positions, indexes, selected
+
+
+def _decorate_feature_fit(
+    fit: dict,
+    *,
+    indexes: list[int],
+    selected: list[dict],
+) -> dict:
+    out = dict(fit)
+    out["coordinate_space"] = "global"
+    out["units"] = "native"
+    out["units_confirmed"] = False
+    out["pick_indices"] = indexes
+    out["source_picks"] = selected
+    out["source_geometry_preserved"] = True
+    return out
+
+
+def handle_fit_live_plane(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_plane
+
+    try:
+        points, indexes, selected = _selected_live_pick_points(
+            args.get("pick_indices"),
+            minimum=3,
+        )
+        return _ok(
+            _decorate_feature_fit(
+                fit_plane(points),
+                indexes=indexes,
+                selected=selected,
+            )
+        )
+    except (FeatureFitError, LiveBridgeError) as exc:
+        return _err(str(exc))
+
+
+def handle_fit_live_circle(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_circle_3d
+
+    try:
+        points, indexes, selected = _selected_live_pick_points(
+            args.get("pick_indices"),
+            minimum=3,
+        )
+        return _ok(
+            _decorate_feature_fit(
+                fit_circle_3d(points),
+                indexes=indexes,
+                selected=selected,
+            )
+        )
+    except (FeatureFitError, LiveBridgeError) as exc:
+        return _err(str(exc))
+
+
+def handle_measure_live_pick_to_plane(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_plane, point_to_plane
+
+    try:
+        plane_points, plane_indexes, plane_picks = _selected_live_pick_points(
+            args["plane_pick_indices"],
+            minimum=3,
+        )
+        point_points, point_indexes, point_picks = _selected_live_pick_points(
+            [int(args["point_pick"])],
+            minimum=1,
+        )
+        plane = fit_plane(plane_points)
+        measurement = point_to_plane(point_points[0], plane)
+        return _ok(
+            {
+                "coordinate_space": "global",
+                "units": "native",
+                "units_confirmed": False,
+                "source_geometry_preserved": True,
+                "point_pick": point_indexes[0],
+                "point_source": point_picks[0],
+                "plane_pick_indices": plane_indexes,
+                "plane_source_picks": plane_picks,
+                "plane_fit": plane,
+                "measurement": measurement,
+            }
+        )
+    except (FeatureFitError, LiveBridgeError, KeyError, TypeError, ValueError) as exc:
+        return _err(str(exc))
+
+
+def handle_compare_live_picked_planes(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_plane, plane_relationship
+
+    try:
+        points_a, indexes_a, picks_a = _selected_live_pick_points(
+            args["plane_a_pick_indices"],
+            minimum=3,
+        )
+        points_b, indexes_b, picks_b = _selected_live_pick_points(
+            args["plane_b_pick_indices"],
+            minimum=3,
+        )
+        plane_a = fit_plane(points_a)
+        plane_b = fit_plane(points_b)
+        return _ok(
+            {
+                "coordinate_space": "global",
+                "units": "native",
+                "units_confirmed": False,
+                "source_geometry_preserved": True,
+                "plane_a_pick_indices": indexes_a,
+                "plane_b_pick_indices": indexes_b,
+                "plane_a_source_picks": picks_a,
+                "plane_b_source_picks": picks_b,
+                "plane_a": plane_a,
+                "plane_b": plane_b,
+                "relationship": plane_relationship(plane_a, plane_b),
+            }
+        )
+    except (FeatureFitError, LiveBridgeError, KeyError, TypeError, ValueError) as exc:
+        return _err(str(exc))
 
 
 def handle_clone_live_entities(args: dict) -> list[TextContent]:
@@ -1972,6 +2223,10 @@ async def call_tool(
         "inspect_live_point": handle_inspect_live_point,
         "measure_live_picked_distance": handle_measure_live_picked_distance,
         "measure_live_picked_angle": handle_measure_live_picked_angle,
+        "fit_live_plane": handle_fit_live_plane,
+        "fit_live_circle": handle_fit_live_circle,
+        "measure_live_pick_to_plane": handle_measure_live_pick_to_plane,
+        "compare_live_picked_planes": handle_compare_live_picked_planes,
         "clone_live_entities": handle_clone_live_entities,
         "merge_live_clouds": handle_merge_live_clouds,
         "reconstruct_live_mesh": handle_reconstruct_live_mesh,
