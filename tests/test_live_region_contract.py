@@ -78,6 +78,28 @@ class LiveRegionContractTests(unittest.TestCase):
         self.assertEqual(body["matched_count"], 1000)
         self.assertTrue(body["truncated"])
 
+    def test_query_live_region_can_be_summary_only(self) -> None:
+        native = _native_region([], matched_count=123456)
+        native["returned_count"] = 0
+        native["truncated"] = True
+        native["sample_strategy"] = "summary_only"
+        native["points"] = []
+        with patch.object(server, "live_request", return_value=native) as request:
+            result = server.handle_query_live_region(
+                {
+                    "cloud_id": 7,
+                    "region": {"type": "box", "min": [-10, -10, -10], "max": [10, 10, 10]},
+                    "preview_points": 0,
+                }
+            )
+
+        self.assertEqual(request.call_args.args[1]["max_points"], 0)
+        body = _body(result)
+        self.assertEqual(body["matched_count"], 123456)
+        self.assertEqual(body["preview_points"], [])
+        self.assertEqual(body["sample_strategy"], "summary_only")
+        self.assertNotIn("points", body)
+
     def test_region_plane_fit_uses_internal_points_but_returns_only_fit(self) -> None:
         points = [[0, 0, 2], [4, 0, 2], [0, 3, 2], [4, 3, 2], [2, 1, 2]]
         native = _native_region(points, matched_count=500)
