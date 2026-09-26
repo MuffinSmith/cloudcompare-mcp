@@ -1890,7 +1890,7 @@ def handle_measure_live_pick_to_plane(args: dict) -> list[TextContent] | CallToo
             minimum=3,
         )
         point_points, point_indexes, point_picks = _selected_live_pick_points(
-            [int(args["point_pick"])],
+            [args["point_pick"]],
             minimum=1,
         )
         plane = fit_plane(plane_points)
