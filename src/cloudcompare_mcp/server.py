@@ -2190,7 +2190,9 @@ def handle_query_live_region(args: dict) -> list[TextContent] | CallToolResult:
             coordinate_space=args.get("coordinate_space", "global"),
             max_points=preview_points,
         )
-        return _ok(_compact_region_summary(native, preview_points=preview_points))
+        summary = _compact_region_summary(native, preview_points=preview_points)
+        summary["region"] = args["region"]
+        return _ok(summary)
     except (LiveBridgeError, KeyError, TypeError, ValueError) as exc:
         return _err(str(exc))
 
@@ -2211,8 +2213,14 @@ def _decorate_region_fit(
     out["region_match_count"] = native.get("matched_count")
     out["region_sample_count"] = native.get("returned_count")
     out["region_sample_truncated"] = native.get("truncated")
+    out["region_sample_strategy"] = native.get("sample_strategy")
     out["region_bounds_query_space"] = native.get("bounds_query_space")
     out["region_centroid_query_space"] = native.get("centroid_query_space")
+    if native.get("truncated"):
+        out["sampling_warning"] = (
+            "The fit used a deterministic bounded sample of a larger matching region; "
+            "exact match count/bounds/centroid still describe all matches."
+        )
     return out
 
 
