@@ -195,6 +195,56 @@ class LiveRegionContractTests(unittest.TestCase):
         self.assertTrue(result2.isError)
         self.assertIn("at least 3", result2.content[0].text)
 
+    def test_region_tools_are_discoverable(self) -> None:
+        names = {tool.name for tool in server.TOOLS}
+        for name in (
+            "query_live_region",
+            "fit_live_region_plane",
+            "fit_live_region_circle",
+            "fit_live_region_cylinder",
+            "extract_live_section",
+        ):
+            self.assertIn(name, names)
+
+    def test_capabilities_preserve_native_region_query_advertisement(self) -> None:
+        native = {
+            "plugin_version": "0.10.0",
+            "workflow_revision": 6,
+            "region_query": {
+                "available": True,
+                "region_types": ["sphere", "box", "slab", "nearest"],
+                "max_returned_points": 20000,
+            },
+        }
+        with patch.object(server, "live_request", return_value=native):
+            result = server.handle_get_live_workflow_capabilities({})
+
+        body = _body(result)
+        self.assertEqual(body["plugin_version"], "0.10.0")
+        self.assertEqual(body["workflow_revision"], 6)
+        self.assertTrue(body["region_query"]["available"])
+        self.assertEqual(
+            body["region_query"]["region_types"],
+            ["sphere", "box", "slab", "nearest"],
+        )
+
+    def test_truncated_region_fit_reports_sampling_warning(self) -> None:
+        points = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]]
+        native = _native_region(points, matched_count=100000)
+        with patch.object(server, "live_request", return_value=native):
+            result = server.handle_fit_live_region_plane(
+                {
+                    "cloud_id": 7,
+                    "region": {"type": "box", "min": [-1, -1, -1], "max": [2, 2, 1]},
+                    "sample_limit": 4,
+                }
+            )
+
+        body = _body(result)
+        self.assertTrue(body["region_sample_truncated"])
+        self.assertIn("sampling_warning", body)
+        self.assertEqual(body["region_sample_strategy"], "deterministic_reservoir")
+
     def test_nearest_region_forwards_native_local_coordinate_space(self) -> None:
         native = _native_region([[10, 20, 30]])
         native["region_type"] = "nearest"
