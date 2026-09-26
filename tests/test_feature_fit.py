@@ -287,6 +287,21 @@ def test_line_relationship_skew_and_parallel() -> None:
     assert skew["shortest_distance"] == pytest.approx(2.0, abs=1e-12)
 
 
+def test_nearly_parallel_line_relationship_is_stable() -> None:
+    line_a = {
+        "centroid": [0.0, 0.0, 0.0],
+        "direction": [1.0, 0.0, 0.0],
+    }
+    tiny = 1.0e-10
+    line_b = {
+        "centroid": [0.0, 3.0, 4.0],
+        "direction": [math.cos(tiny), math.sin(tiny), 0.0],
+    }
+    rel = line_relationship(line_a, line_b)
+    assert rel["parallel"]
+    assert rel["shortest_distance"] == pytest.approx(5.0, abs=1e-10)
+
+
 def test_line_plane_relationship_known_cases() -> None:
     plane = fit_plane([[0, 0, 0], [4, 0, 0], [0, 4, 0], [4, 4, 0]])
 
@@ -388,7 +403,7 @@ def test_cylinder_requires_six_distinct_points() -> None:
 def test_cylinder_scale_and_translation_invariance() -> None:
     axis = np.array([1.0, 2.0, 3.0])
     axis /= np.linalg.norm(axis)
-    for scale in (1e-8, 1.0, 1e8):
+    for scale in (1e-16, 1e-8, 1.0, 1e8, 1e16):
         center = np.array([3.0, -2.0, 7.0]) * scale
         points = _cylinder_points(
             axis,
