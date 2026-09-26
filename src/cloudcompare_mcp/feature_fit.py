@@ -438,9 +438,8 @@ def _stable_basis_from_axis(axis: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return u, v
 
 
-def _fit_circle_2d_geometric(
-    xy: np.ndarray,
-) -> tuple[np.ndarray, float, int, np.ndarray]:
+def _fit_circle_2d_seed(xy: np.ndarray) -> tuple[np.ndarray, float]:
+    """Fast normalized algebraic circle seed used inside iterative axis search."""
     xy = np.asarray(xy, dtype=np.float64)
     if xy.ndim != 2 or xy.shape[1:] != (2,) or xy.shape[0] < 3:
         raise FeatureFitError("Projected circle fitting requires at least three 2D points")
@@ -482,9 +481,16 @@ def _fit_circle_2d_geometric(
         raise FeatureFitError("Circle fitting produced an invalid algebraic radius")
 
     center = center_seed * coordinate_scale
-    radius_seed = math.sqrt(radius_squared_seed) * coordinate_scale
+    radius = math.sqrt(radius_squared_seed) * coordinate_scale
+    return center, radius
+
+
+def _fit_circle_2d_geometric(
+    xy: np.ndarray,
+) -> tuple[np.ndarray, float, int, np.ndarray]:
+    center, radius_seed = _fit_circle_2d_seed(xy)
     center, radius, iterations = _refine_circle_2d(
-        xy,
+        np.asarray(xy, dtype=np.float64),
         center,
         radius_seed,
     )
@@ -564,6 +570,8 @@ def _cylinder_for_axis(
     xyz: np.ndarray,
     centroid: np.ndarray,
     direction: np.ndarray,
+    *,
+    refine_circle: bool = False,
 ) -> dict[str, Any]:
     direction = _orient_vector(
         np.asarray(direction, dtype=np.float64)
@@ -572,7 +580,11 @@ def _cylinder_for_axis(
     u, v = _stable_basis_from_axis(direction)
     centered = xyz - centroid
     xy = np.column_stack((centered @ u, centered @ v))
-    center2d, radius, iterations, radial_residual = _fit_circle_2d_geometric(xy)
+    if refine_circle:
+        center2d, radius, iterations, _ = _fit_circle_2d_geometric(xy)
+    else:
+        center2d, radius = _fit_circle_2d_seed(xy)
+        iterations = 0
 
     axis_point = centroid + center2d[0] * u + center2d[1] * v
     relative = xyz - axis_point
@@ -680,6 +692,15 @@ def fit_cylinder_3d(points: Iterable[Sequence[float]]) -> dict[str, Any]:
             current = best
         else:
             step *= 0.5
+
+    # The search uses the fast normalized algebraic circle seed. Refine the
+    # final cross-section geometrically once, after the axis direction is settled.
+    current = _cylinder_for_axis(
+        xyz,
+        centroid,
+        np.asarray(current["direction"], dtype=np.float64),
+        refine_circle=True,
+    )
 
     direction = np.asarray(current["direction"], dtype=np.float64)
     axis_point = np.asarray(current["axis_point"], dtype=np.float64)
