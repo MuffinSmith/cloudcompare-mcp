@@ -133,6 +133,17 @@ class LiveFeatureFitContractTests(unittest.TestCase):
         self.assertTrue(insufficient.isError)
         self.assertIn("At least 3", insufficient.content[0].text)
 
+    def test_circle_duplicate_spatial_picks_are_model_readable_error(self) -> None:
+        picks = _status(
+            [[1, 0, 0], [1, 0, 0], [0, 1, 0], [-1, 0, 0]]
+        )
+        with patch.object(server, "live_request", return_value=picks):
+            result = server.handle_fit_live_circle({})
+
+        self.assertIsInstance(result, CallToolResult)
+        self.assertTrue(result.isError)
+        self.assertIn("distinct", result.content[0].text)
+
     def test_capabilities_include_python_feature_fitting(self) -> None:
         native = {
             "plugin_version": "0.7.0",
