@@ -250,6 +250,55 @@ class LiveWorkflowContractTests(unittest.TestCase):
             timeout=900.0,
         )
 
+    def test_start_live_picking_forwards_defaults_and_allowlist(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_start_live_picking(
+                {"allowed_entity_ids": [10, 20], "max_picks": 3}
+            )
+        call.assert_called_once_with(
+            "metrology.pick.start",
+            {
+                "max_picks": 3,
+                "exclusive": True,
+                "allowed_entity_ids": [10, 20],
+            },
+        )
+
+    def test_live_pick_status_and_stop_use_native_session(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_get_live_picks({})
+            server.handle_stop_live_picking({})
+        self.assertEqual(
+            call.call_args_list,
+            [
+                unittest.mock.call("metrology.pick.status", {}),
+                unittest.mock.call("metrology.pick.stop", {}),
+            ],
+        )
+
+    def test_inspect_live_point_forwards_exact_index(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_inspect_live_point({"entity_id": 7, "point_index": 123})
+        call.assert_called_once_with(
+            "metrology.point_info",
+            {"entity_id": 7, "point_index": 123},
+        )
+
+    def test_picked_distance_defaults_to_last_two_native_picks(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_measure_live_picked_distance({})
+        call.assert_called_once_with("metrology.measure.picked_distance", {})
+
+    def test_picked_angle_forwards_explicit_pick_indexes(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_measure_live_picked_angle(
+                {"pick_a": 1, "pick_b": 3, "pick_c": 5}
+            )
+        call.assert_called_once_with(
+            "metrology.measure.picked_angle",
+            {"pick_a": 1, "pick_b": 3, "pick_c": 5},
+        )
+
     def test_ball_pivoting_forwards_result_name_and_destination(self) -> None:
         with patch(
             "cloudcompare_mcp.fusion_mesh.reconstruct_ball_pivoting",
