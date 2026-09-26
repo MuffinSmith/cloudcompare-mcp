@@ -1483,6 +1483,15 @@ bool registerPointPairs(
     ccGLMatrix transformMatrix =
         FromCCLibMatrix<double, float>( transform.R, transform.T, transform.s );
 
+    const double frameScale = dataSource->getGlobalScale();
+    const CCVector3d frameShift = dataSource->getGlobalShift();
+    const CCVector3d globalTranslation =
+        ( transform.R * frameShift ) * transform.s
+        + transform.T * ( 1.0 / frameScale )
+        - frameShift;
+    const ccGLMatrix globalTransformMatrix =
+        FromCCLibMatrix<double, float>( transform.R, globalTranslation, transform.s );
+
     std::vector<double> residuals;
     residuals.reserve( dataLocal.size() );
     for ( size_t i = 0; i < dataLocal.size(); ++i )
@@ -1505,6 +1514,8 @@ bool registerPointPairs(
     out[ "preview_only" ] = previewOnly;
     out[ "scale" ] = transform.s;
     out[ "transformation_matrix_column_major" ] = matrixJson( transformMatrix );
+    out[ "transformation_matrix_frame" ] = "data_native_local";
+    out[ "transformation_matrix_global_column_major" ] = matrixJson( globalTransformMatrix );
     out[ "pair_residuals_global_native" ] = numericStats( residuals );
     out[ "result_created" ] = false;
 
@@ -1639,6 +1650,7 @@ bool analyzeCloudToCloud(
     out[ "compared_source_preserved" ] = true;
     out[ "reference_source_preserved" ] = true;
     out[ "max_distance_native" ] = maxDistance;
+    out[ "distances_capped_by_max_distance" ] = maxDistance > 0.0;
     out[ "scalar_field_name" ] = scalarName;
     out[ "point_count" ] = static_cast<qint64>( working->size() );
     out[ "valid_distance_count" ] = numericStats( values ).value( "count" );
@@ -1782,6 +1794,7 @@ bool analyzeCloudToMesh(
     out[ "compared_source_preserved" ] = true;
     out[ "reference_source_preserved" ] = true;
     out[ "max_distance_native" ] = maxDistance;
+    out[ "distances_capped_by_max_distance" ] = maxDistance > 0.0;
     out[ "signed_distances" ] = signedDistances;
     out[ "flip_normals" ] = flipNormals;
     out[ "robust" ] = robust;
