@@ -169,11 +169,17 @@ qMCPBridge::qMCPBridge( QObject* parent )
 
 qMCPBridge::~qMCPBridge()
 {
+    qMCPFusionWorkflow::shutdownInteractiveState();
     stopServer();
 }
 
 void qMCPBridge::setMainAppInterface( ccMainAppInterface* app )
 {
+    if ( !app )
+    {
+        qMCPFusionWorkflow::shutdownInteractiveState();
+    }
+
     ccStdPluginInterface::setMainAppInterface( app );
 
     if ( m_app )
