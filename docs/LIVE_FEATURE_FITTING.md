@@ -30,6 +30,9 @@ The result includes:
 
 All fitting is performed in CloudCompare global coordinates. Distances remain
 reported in native coordinate units; the bridge does not invent physical units.
+The numerical implementation normalizes its degeneracy tests and circle seed by
+the actual sample scale, so changing the native coordinate unit does not by itself
+change whether otherwise equivalent geometry can be fitted.
 
 Plane and circle normals have no intrinsic positive direction. The fitter chooses a
 deterministic sign by forcing the normal's largest-magnitude component positive.
