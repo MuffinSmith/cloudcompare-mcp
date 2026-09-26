@@ -419,6 +419,37 @@ def test_cylinder_scale_and_translation_invariance() -> None:
         assert fit["radius"] == pytest.approx(4.0 * scale, rel=1e-10)
 
 
+@pytest.mark.parametrize("seed", [260934, 260935, 260936])
+def test_random_exact_cylinder_rotation_invariance(seed: int) -> None:
+    rng = np.random.default_rng(seed)
+    for _ in range(6):
+        axis = rng.normal(size=3)
+        axis /= np.linalg.norm(axis)
+        center = rng.normal(size=3) * 50.0
+        radius = 10.0 ** rng.uniform(-2.0, 2.0)
+        length = radius * rng.uniform(1.0, 8.0)
+        arc_degrees = rng.uniform(60.0, 360.0)
+        points = _cylinder_points(
+            axis,
+            center,
+            radius,
+            length,
+            theta_count=16,
+            axial_count=5,
+            arc_degrees=arc_degrees,
+            radial_noise=0.0,
+            seed=seed,
+        )
+        fit = fit_cylinder_3d(points)
+        got_axis = np.asarray(fit["axis_direction"])
+        assert abs(float(np.dot(got_axis, axis))) > 1 - 1e-10
+        axis_offset = np.linalg.norm(
+            np.cross(np.asarray(fit["axis_point"]) - center, axis)
+        )
+        assert axis_offset <= max(radius * 1e-10, 1e-12)
+        assert fit["radius"] == pytest.approx(radius, rel=1e-10, abs=1e-12)
+
+
 def test_project_points_to_section_known_frame_and_filter() -> None:
     points = [
         [1, 2, 0],
