@@ -221,7 +221,7 @@ def _arc_coverage_degrees(xy: np.ndarray, center: np.ndarray) -> float:
 
 def fit_circle_3d(points: Iterable[Sequence[float]]) -> dict[str, Any]:
     """Fit a circle to 3D points by plane projection + geometric 2D refinement."""
-    xyz = _points_array(points, minimum=3, label="Circle fitting")
+    xyz = _points_array(points, minimum=4, label="Circle fitting")
     plane = fit_plane(xyz)
     centroid = np.asarray(plane["centroid"], dtype=np.float64)
     normal = np.asarray(plane["normal"], dtype=np.float64)
@@ -409,7 +409,7 @@ def feature_fit_capabilities() -> dict[str, Any]:
         "circle": {
             "available": True,
             "method": "best-fit plane + geometric 2D least-squares circle",
-            "minimum_points": 3,
+            "minimum_points": 4,
             "diagnostics": [
                 "radial residuals",
                 "plane residuals",
