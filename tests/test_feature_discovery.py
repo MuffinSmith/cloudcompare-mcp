@@ -109,6 +109,43 @@ def test_plane_discovery_is_deterministic() -> None:
     assert a == b
 
 
+@pytest.mark.parametrize("seed", [261003, 261004, 261005])
+def test_plane_discovery_rotation_invariance(seed: int) -> None:
+    rng = np.random.default_rng(seed)
+    normal = rng.normal(size=3)
+    normal /= np.linalg.norm(normal)
+    basis_seed = np.eye(3)[int(np.argmin(np.abs(normal)))]
+    u = basis_seed - normal * float(np.dot(basis_seed, normal))
+    u /= np.linalg.norm(u)
+    v = np.cross(normal, u)
+    center = rng.uniform(-100, 100, 3)
+    a = rng.uniform(-20, 20, 800)
+    b = rng.uniform(-12, 12, 800)
+    surface = (
+        center
+        + a[:, None] * u
+        + b[:, None] * v
+        + rng.normal(0, 0.015, 800)[:, None] * normal
+    )
+    outliers = rng.uniform(-150, 150, (200, 3))
+    result = discover_planes(
+        np.vstack((surface, outliers)),
+        distance_threshold=0.05,
+        max_planes=1,
+        min_points=500,
+        min_inlier_fraction=0.5,
+        iterations=500,
+        random_seed=seed,
+    )
+    assert result["candidate_count"] == 1
+    fitted = np.asarray(result["candidates"][0]["plane"]["normal"])
+    angle = math.degrees(
+        math.acos(np.clip(abs(float(np.dot(fitted, normal))), -1.0, 1.0))
+    )
+    assert angle < 0.02
+    assert result["candidates"][0]["support_fraction_of_sample"] > 0.75
+
+
 def test_plane_discovery_rejects_invalid_controls() -> None:
     points = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]]
     with pytest.raises(FeatureFitError, match="distance_threshold"):
