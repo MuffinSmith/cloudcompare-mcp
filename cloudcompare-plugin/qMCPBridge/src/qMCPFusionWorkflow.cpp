@@ -1697,9 +1697,11 @@ bool queryCloudRegion(
         matchedCount > static_cast<quint64>( pointsJson.size() );
     out[ "max_points" ] = maxPoints;
     out[ "sample_strategy" ] =
-        matchedCount > static_cast<quint64>( pointsJson.size() )
-            ? "deterministic_reservoir"
-            : "all_matches";
+        pointsJson.isEmpty()
+            ? "summary_only"
+            : ( matchedCount > static_cast<quint64>( pointsJson.size() )
+                    ? "deterministic_reservoir"
+                    : "all_matches" );
     out[ "centroid_query_space" ] =
         vector3Json( sum / static_cast<double>( matchedCount ) );
     out[ "bounds_query_space" ] = bounds;
