@@ -1643,6 +1643,9 @@ bool analyzeCloudToCloud(
         static_cast<ccScalarField*>( working->getScalarField( scalarIndex ) );
     scalarField->computeMinAndMax();
     const std::vector<double> values = scalarValues( scalarField );
+    const QJsonObject distanceStats = numericStats( values );
+    const qint64 validDistanceCount =
+        static_cast<qint64>( distanceStats.value( "count" ).toDouble() );
 
     QJsonObject out;
     out[ "compared_id" ] = static_cast<qint64>( comparedId );
@@ -1653,8 +1656,10 @@ bool analyzeCloudToCloud(
     out[ "distances_capped_by_max_distance" ] = maxDistance > 0.0;
     out[ "scalar_field_name" ] = scalarName;
     out[ "point_count" ] = static_cast<qint64>( working->size() );
-    out[ "valid_distance_count" ] = numericStats( values ).value( "count" );
-    out[ "distance_stats_native" ] = numericStats( values );
+    out[ "valid_distance_count" ] = validDistanceCount;
+    out[ "invalid_distance_count" ] =
+        static_cast<qint64>( working->size() ) - validDistanceCount;
+    out[ "distance_stats_native" ] = distanceStats;
     out[ "result_created" ] = false;
 
     if ( createResult )
@@ -1787,6 +1792,9 @@ bool analyzeCloudToMesh(
         static_cast<ccScalarField*>( working->getScalarField( scalarIndex ) );
     scalarField->computeMinAndMax();
     const std::vector<double> values = scalarValues( scalarField );
+    const QJsonObject distanceStats = numericStats( values );
+    const qint64 validDistanceCount =
+        static_cast<qint64>( distanceStats.value( "count" ).toDouble() );
 
     QJsonObject out;
     out[ "compared_id" ] = static_cast<qint64>( comparedId );
@@ -1800,7 +1808,10 @@ bool analyzeCloudToMesh(
     out[ "robust" ] = robust;
     out[ "scalar_field_name" ] = scalarName;
     out[ "point_count" ] = static_cast<qint64>( working->size() );
-    out[ "distance_stats_native" ] = numericStats( values );
+    out[ "valid_distance_count" ] = validDistanceCount;
+    out[ "invalid_distance_count" ] =
+        static_cast<qint64>( working->size() ) - validDistanceCount;
+    out[ "distance_stats_native" ] = distanceStats;
     if ( signedDistances )
     {
         std::vector<double> absoluteValues;
