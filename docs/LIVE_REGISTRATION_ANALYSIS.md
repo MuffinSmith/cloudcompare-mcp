@@ -60,6 +60,14 @@ and result name can be supplied.
 search-distance behavior; callers should treat resulting statistics as capped by
 that search limit.
 
+For a fully separated pair whose axis-aligned bounding boxes are already at least
+`max_distance` apart, qMCPBridge can prove that every nearest-neighbor distance
+must be capped. In that case it fills the temporary result field directly with the
+cap instead of entering CCCoreLib 2.13.2's cropped-octree path. This avoids a
+CloudCompare 2.13.2 edge case where an empty cropped overlap slab can produce
+`ERROR_SYNCHRONIZE_OCTREES_FAILURE` even though the mathematically correct capped
+result is known.
+
 ## Cloud-to-mesh analysis
 
 `analyze_live_c2m` computes distance from a compared point cloud to a reference
