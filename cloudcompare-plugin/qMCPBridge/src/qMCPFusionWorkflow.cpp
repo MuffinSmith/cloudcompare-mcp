@@ -420,6 +420,39 @@ double percentileSorted( const std::vector<double>& sorted, double fraction )
     return sorted[lower] * ( 1.0 - weight ) + sorted[upper] * weight;
 }
 
+double minimumBoundingBoxDistanceSquared(
+    const ccBBox& a,
+    const ccBBox& b )
+{
+    if ( !a.isValid() || !b.isValid() )
+    {
+        return std::numeric_limits<double>::infinity();
+    }
+
+    const CCVector3& aMin = a.minCorner();
+    const CCVector3& aMax = a.maxCorner();
+    const CCVector3& bMin = b.minCorner();
+    const CCVector3& bMax = b.maxCorner();
+
+    double squared = 0.0;
+    for ( int axis = 0; axis < 3; ++axis )
+    {
+        double separation = 0.0;
+        if ( aMax.u[axis] < bMin.u[axis] )
+        {
+            separation =
+                static_cast<double>( bMin.u[axis] - aMax.u[axis] );
+        }
+        else if ( bMax.u[axis] < aMin.u[axis] )
+        {
+            separation =
+                static_cast<double>( aMin.u[axis] - bMax.u[axis] );
+        }
+        squared += separation * separation;
+    }
+    return squared;
+}
+
 QJsonObject numericStats( std::vector<double> values )
 {
     QJsonObject out;
@@ -1626,27 +1659,57 @@ bool analyzeCloudToCloud(
     }
     working->setCurrentScalarField( scalarIndex );
 
-    CCCoreLib::DistanceComputationTools::Cloud2CloudDistancesComputationParams distanceParams;
-    distanceParams.maxSearchDist = static_cast<ScalarType>( maxDistance );
-    distanceParams.multiThread = true;
-    distanceParams.maxThreadCount = 0;
-    distanceParams.localModel = CCCoreLib::NO_MODEL;
-    distanceParams.resetFormerDistances = true;
-
-    const int computationResult =
-        CCCoreLib::DistanceComputationTools::computeCloud2CloudDistances(
-            working.get(),
-            referenceSource,
-            distanceParams );
-    if ( computationResult < CCCoreLib::DistanceComputationTools::DISTANCE_COMPUTATION_RESULTS::SUCCESS )
+    ccScalarField* scalarField =
+        static_cast<ccScalarField*>( working->getScalarField( scalarIndex ) );
+    if ( !scalarField )
     {
-        error = QString( "CloudCompare C2C distance computation failed with code %1" )
-                    .arg( computationResult );
+        error = "Could not access the C2C distance scalar field";
         return true;
     }
 
-    ccScalarField* scalarField =
-        static_cast<ccScalarField*>( working->getScalarField( scalarIndex ) );
+    bool cappedByBoundingBoxes = false;
+    if ( maxDistance > 0.0 )
+    {
+        const double maxDistanceSquared = maxDistance * maxDistance;
+        const double boundsDistanceSquared =
+            minimumBoundingBoxDistanceSquared(
+                working->getOwnBB(),
+                referenceSource->getOwnBB() );
+
+        if ( boundsDistanceSquared >= maxDistanceSquared )
+        {
+            // Every possible point pair is at least maxDistance apart, therefore
+            // CloudCompare's capped-distance semantics are exactly maxDistance for
+            // every compared point. CCCoreLib 2.13.2 can otherwise fail while
+            // synchronizing octrees when the cropped overlap slab contains no
+            // source points (ERROR_SYNCHRONIZE_OCTREES_FAILURE / -968).
+            scalarField->fill( static_cast<ScalarType>( maxDistance ) );
+            cappedByBoundingBoxes = true;
+        }
+    }
+
+    if ( !cappedByBoundingBoxes )
+    {
+        CCCoreLib::DistanceComputationTools::Cloud2CloudDistancesComputationParams distanceParams;
+        distanceParams.maxSearchDist = static_cast<ScalarType>( maxDistance );
+        distanceParams.multiThread = true;
+        distanceParams.maxThreadCount = 0;
+        distanceParams.localModel = CCCoreLib::NO_MODEL;
+        distanceParams.resetFormerDistances = true;
+
+        const int computationResult =
+            CCCoreLib::DistanceComputationTools::computeCloud2CloudDistances(
+                working.get(),
+                referenceSource,
+                distanceParams );
+        if ( computationResult < CCCoreLib::DistanceComputationTools::DISTANCE_COMPUTATION_RESULTS::SUCCESS )
+        {
+            error = QString( "CloudCompare C2C distance computation failed with code %1" )
+                        .arg( computationResult );
+            return true;
+        }
+    }
+
     scalarField->computeMinAndMax();
     const std::vector<double> values = scalarValues( scalarField );
     const QJsonObject distanceStats = numericStats( values );
@@ -1660,6 +1723,7 @@ bool analyzeCloudToCloud(
     out[ "reference_source_preserved" ] = true;
     out[ "max_distance_native" ] = maxDistance;
     out[ "distances_capped_by_max_distance" ] = maxDistance > 0.0;
+    out[ "capped_by_bounding_box_short_circuit" ] = cappedByBoundingBoxes;
     out[ "scalar_field_name" ] = scalarName;
     out[ "point_count" ] = static_cast<qint64>( working->size() );
     out[ "valid_distance_count" ] = validDistanceCount;
