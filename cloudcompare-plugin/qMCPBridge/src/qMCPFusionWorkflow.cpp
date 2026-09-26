@@ -960,10 +960,19 @@ bool startMetrologyPicking(
             }
 
             const unsigned id = static_cast<unsigned>( raw );
-            if ( !findEntity( app, id ) )
+            ccHObject* allowedEntity = findEntity( app, id );
+            if ( !allowedEntity )
             {
                 error =
                     QString( "Allowed picking entity %1 was not found" )
+                        .arg( id );
+                return true;
+            }
+            if ( !allowedEntity->isKindOf( CC_TYPES::POINT_CLOUD )
+                 && !allowedEntity->isKindOf( CC_TYPES::MESH ) )
+            {
+                error =
+                    QString( "Allowed picking entity %1 is not pickable point-cloud or mesh geometry" )
                         .arg( id );
                 return true;
             }
