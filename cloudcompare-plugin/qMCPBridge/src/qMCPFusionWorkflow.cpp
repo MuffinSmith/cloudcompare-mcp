@@ -2060,6 +2060,38 @@ bool gridCloudRegion(
             / static_cast<double>( matchedCount );
         cellJson[ "centroid" ] = vector3Json( cell.mean );
 
+        CCVector3d nominalMin = requestedMin;
+        CCVector3d nominalMax = requestedMax;
+        const int indices[3] = { ix, iy, iz };
+        for ( int axis = 0; axis < 3; ++axis )
+        {
+            if ( effectiveDivisions[axis] <= 1 || spans[axis] == 0.0 )
+            {
+                nominalMin.u[axis] = requestedMin.u[axis];
+                nominalMax.u[axis] = requestedMax.u[axis];
+            }
+            else
+            {
+                nominalMin.u[axis] =
+                    requestedMin.u[axis]
+                    + static_cast<double>( indices[axis] ) * cellSize[axis];
+                nominalMax.u[axis] =
+                    indices[axis] + 1 == effectiveDivisions[axis]
+                        ? requestedMax.u[axis]
+                        : nominalMin.u[axis] + cellSize[axis];
+            }
+        }
+
+        QJsonObject nominalBounds;
+        nominalBounds[ "min" ] = vector3Json( nominalMin );
+        nominalBounds[ "max" ] = vector3Json( nominalMax );
+        nominalBounds[ "extent" ] = QJsonArray{
+            nominalMax.x - nominalMin.x,
+            nominalMax.y - nominalMin.y,
+            nominalMax.z - nominalMin.z
+        };
+        cellJson[ "cell_bounds_query_space" ] = nominalBounds;
+
         QJsonObject pointBounds;
         pointBounds[ "min" ] = vector3Json( cell.minimum );
         pointBounds[ "max" ] = vector3Json( cell.maximum );
