@@ -149,6 +149,107 @@ class LiveWorkflowContractTests(unittest.TestCase):
             timeout=900.0,
         )
 
+    def test_point_pair_registration_defaults_to_preview(self) -> None:
+        pairs_a = [[0, 0, 0], [1, 0, 0], [0, 1, 0]]
+        pairs_b = [[10, 0, 0], [11, 0, 0], [10, 1, 0]]
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_register_live_point_pairs(
+                {
+                    "data_id": 10,
+                    "model_id": 20,
+                    "data_points": pairs_a,
+                    "model_points": pairs_b,
+                }
+            )
+        call.assert_called_once_with(
+            "cloud.register_point_pairs",
+            {
+                "data_id": 10,
+                "model_id": 20,
+                "data_points": pairs_a,
+                "model_points": pairs_b,
+                "coordinate_space": "global",
+                "preview_only": True,
+            },
+            timeout=300.0,
+        )
+
+    def test_point_pair_registration_forwards_result_options(self) -> None:
+        pairs_a = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        pairs_b = [[2, 3, 4], [3, 3, 4], [2, 4, 4], [2, 3, 5]]
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_register_live_point_pairs(
+                {
+                    "data_id": 10,
+                    "model_id": 20,
+                    "data_points": pairs_a,
+                    "model_points": pairs_b,
+                    "coordinate_space": "native_local",
+                    "preview_only": False,
+                    "name": "coarse aligned",
+                    "destination_group_id": 42,
+                }
+            )
+        call.assert_called_once_with(
+            "cloud.register_point_pairs",
+            {
+                "data_id": 10,
+                "model_id": 20,
+                "data_points": pairs_a,
+                "model_points": pairs_b,
+                "coordinate_space": "native_local",
+                "preview_only": False,
+                "name": "coarse aligned",
+                "destination_group_id": 42,
+            },
+            timeout=300.0,
+        )
+
+    def test_live_c2c_defaults_to_stats_only(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_analyze_live_c2c({"compared_id": 10, "reference_id": 20})
+        call.assert_called_once_with(
+            "cloud.distance_c2c",
+            {
+                "compared_id": 10,
+                "reference_id": 20,
+                "max_distance": 0.0,
+                "create_result": False,
+            },
+            timeout=900.0,
+        )
+
+    def test_live_c2m_forwards_signed_result_options(self) -> None:
+        with patch.object(server, "_live_call", return_value=[]) as call:
+            server.handle_analyze_live_c2m(
+                {
+                    "compared_id": 10,
+                    "reference_mesh_id": 30,
+                    "max_distance": 5.0,
+                    "signed_distances": True,
+                    "flip_normals": True,
+                    "robust": False,
+                    "create_result": True,
+                    "name": "distance QA",
+                    "destination_group_id": 42,
+                }
+            )
+        call.assert_called_once_with(
+            "cloud.distance_c2m",
+            {
+                "compared_id": 10,
+                "reference_mesh_id": 30,
+                "max_distance": 5.0,
+                "signed_distances": True,
+                "flip_normals": True,
+                "robust": False,
+                "create_result": True,
+                "name": "distance QA",
+                "destination_group_id": 42,
+            },
+            timeout=900.0,
+        )
+
     def test_ball_pivoting_forwards_result_name_and_destination(self) -> None:
         with patch(
             "cloudcompare_mcp.fusion_mesh.reconstruct_ball_pivoting",
