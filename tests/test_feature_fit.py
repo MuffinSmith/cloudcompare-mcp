@@ -470,6 +470,36 @@ def test_project_points_to_section_known_frame_and_filter() -> None:
     assert section["signed_offset_stats"]["max_abs"] == pytest.approx(0.2)
 
 
+def test_section_uv_reconstructs_projected_points() -> None:
+    rng = np.random.default_rng(260937)
+    normal = np.array([0.31, -0.57, 0.76])
+    normal /= np.linalg.norm(normal)
+    origin = np.array([300.0, -200.0, 100.0])
+    points = origin + rng.normal(size=(100, 3)) * 15.0
+
+    section = project_points_to_section(points, origin, normal)
+    u = np.asarray(section["basis_u"])
+    v = np.asarray(section["basis_v"])
+    uv = np.asarray(section["uv"])
+    reconstructed = (
+        origin
+        + uv[:, 0, None] * u
+        + uv[:, 1, None] * v
+    )
+    projected = np.asarray(section["projected_points_global"])
+    assert np.allclose(reconstructed, projected, atol=1e-11)
+    assert abs(float(np.dot(u, normal))) < 1e-12
+    assert abs(float(np.dot(v, normal))) < 1e-12
+    assert abs(float(np.dot(u, v))) < 1e-12
+
+
+def test_section_rejects_invalid_thickness_and_normal() -> None:
+    with pytest.raises(FeatureFitError, match="half_thickness"):
+        project_points_to_section([[0, 0, 0]], [0, 0, 0], [0, 0, 1], half_thickness=-1)
+    with pytest.raises(FeatureFitError, match="zero length"):
+        project_points_to_section([[0, 0, 0]], [0, 0, 0], [0, 0, 0])
+
+
 @pytest.mark.parametrize("seed", [260929, 260930, 260931])
 def test_random_rotation_invariance(seed: int) -> None:
     rng = np.random.default_rng(seed)
