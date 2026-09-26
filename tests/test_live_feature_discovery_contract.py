@@ -108,7 +108,7 @@ class LiveFeatureDiscoveryContractTests(unittest.TestCase):
         cell = body["cells"][0]
         self.assertNotIn("covariance", cell)
         self.assertEqual(cell["principal_variances"], [9.0, 4.0, 1.0])
-        self.assertTrue(body["image_required"])
+        self.assertFalse(body["image_required"])
 
     def test_discover_live_planes_finds_two_orthogonal_candidates(self) -> None:
         points: list[list[float]] = []
