@@ -265,11 +265,11 @@ class LiveWorkflowContractTests(unittest.TestCase):
         )
 
     def test_live_pick_status_and_stop_use_native_session(self) -> None:
-        with patch.object(server, "_live_call", return_value=[]) as call:
+        with patch.object(server, "_live_call", return_value=[]) as live_call:
             server.handle_get_live_picks({})
             server.handle_stop_live_picking({})
         self.assertEqual(
-            call.call_args_list,
+            live_call.call_args_list,
             [
                 call("metrology.pick.status", {}),
                 call("metrology.pick.stop", {}),
