@@ -1378,6 +1378,344 @@ bool boundsEquivalent( const QJsonObject& a, const QJsonObject& b )
     return true;
 }
 
+bool queryCloudRegion(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned cloudId = 0;
+    if ( !readId( params, "cloud_id", cloudId ) )
+    {
+        error = "cloud.region_query requires a numeric cloud_id";
+        return true;
+    }
+
+    ccPointCloud* cloud = requireStandaloneCloud( app, cloudId, error );
+    if ( !cloud )
+    {
+        return true;
+    }
+    if ( cloud->size() == 0 )
+    {
+        error = "cloud.region_query requires a non-empty point cloud";
+        return true;
+    }
+
+    const QJsonValue regionValue = params.value( "region" );
+    if ( !regionValue.isObject() )
+    {
+        error = "cloud.region_query requires a region object";
+        return true;
+    }
+    const QJsonObject region = regionValue.toObject();
+    const QString type = region.value( "type" ).toString().trimmed().toLower();
+    if ( type != "sphere"
+         && type != "box"
+         && type != "slab"
+         && type != "nearest" )
+    {
+        error = "region.type must be 'sphere', 'box', 'slab', or 'nearest'";
+        return true;
+    }
+
+    const QString coordinateSpace =
+        params.value( "coordinate_space" ).toString( "global" ).trimmed().toLower();
+    if ( coordinateSpace != "global" && coordinateSpace != "native_local" )
+    {
+        error = "coordinate_space must be 'global' or 'native_local'";
+        return true;
+    }
+
+    int maxPoints = 2048;
+    if ( params.contains( "max_points" ) )
+    {
+        const QJsonValue maxPointsValue = params.value( "max_points" );
+        if ( !maxPointsValue.isDouble()
+             || std::floor( maxPointsValue.toDouble() ) != maxPointsValue.toDouble()
+             || maxPointsValue.toDouble() < 0.0
+             || maxPointsValue.toDouble() > 20000.0 )
+        {
+            error = "max_points must be an integer between 0 and 20000";
+            return true;
+        }
+        maxPoints = static_cast<int>( maxPointsValue.toDouble() );
+    }
+
+    CCVector3d center;
+    CCVector3d minimum;
+    CCVector3d maximum;
+    CCVector3d origin;
+    CCVector3d normal;
+    double radius = 0.0;
+    double halfThickness = 0.0;
+    double maxDistance = 0.0;
+
+    if ( type == "sphere" || type == "nearest" )
+    {
+        if ( !readVector3( region, "center", center, error ) )
+        {
+            return true;
+        }
+    }
+
+    if ( type == "sphere" )
+    {
+        radius = region.value( "radius" ).toDouble( -1.0 );
+        if ( !std::isfinite( radius ) || radius <= 0.0 )
+        {
+            error = "sphere region requires radius > 0";
+            return true;
+        }
+    }
+    else if ( type == "box" )
+    {
+        if ( !readVector3( region, "min", minimum, error )
+             || !readVector3( region, "max", maximum, error ) )
+        {
+            return true;
+        }
+        for ( int axis = 0; axis < 3; ++axis )
+        {
+            if ( maximum.u[axis] < minimum.u[axis] )
+            {
+                error = "box region requires max >= min on all axes";
+                return true;
+            }
+        }
+    }
+    else if ( type == "slab" )
+    {
+        if ( !readVector3( region, "origin", origin, error )
+             || !readVector3( region, "normal", normal, error ) )
+        {
+            return true;
+        }
+        const double normalNorm = normal.norm();
+        if ( !std::isfinite( normalNorm )
+             || normalNorm <= std::numeric_limits<double>::epsilon() )
+        {
+            error = "slab region normal must have non-zero length";
+            return true;
+        }
+        normal /= normalNorm;
+        halfThickness = region.value( "half_thickness" ).toDouble( -1.0 );
+        if ( !std::isfinite( halfThickness ) || halfThickness < 0.0 )
+        {
+            error = "slab region requires half_thickness >= 0";
+            return true;
+        }
+    }
+    else if ( type == "nearest" && region.contains( "max_distance" ) )
+    {
+        maxDistance = region.value( "max_distance" ).toDouble( -1.0 );
+        if ( !std::isfinite( maxDistance ) || maxDistance < 0.0 )
+        {
+            error = "nearest region max_distance must be >= 0 when supplied";
+            return true;
+        }
+    }
+
+    auto pointInQuerySpace =
+        [cloud, coordinateSpace]( const CCVector3& localPoint ) -> CCVector3d
+        {
+            return coordinateSpace == "global"
+                ? cloud->toGlobal3d<PointCoordinateType>( localPoint )
+                : localPoint.toDouble();
+        };
+
+    std::vector<unsigned> sampledIndices;
+    sampledIndices.reserve( static_cast<size_t>( maxPoints ) );
+
+    quint64 reservoirState = 0x9E3779B97F4A7C15ULL;
+    quint64 matchedCount = 0;
+    CCVector3d sum( 0.0, 0.0, 0.0 );
+    CCVector3d boundsMin;
+    CCVector3d boundsMax;
+    bool haveBounds = false;
+
+    unsigned nearestIndex = 0;
+    double nearestDistanceSquared = std::numeric_limits<double>::infinity();
+
+    for ( unsigned pointIndex = 0; pointIndex < cloud->size(); ++pointIndex )
+    {
+        const CCVector3* localPoint = cloud->getPoint( pointIndex );
+        if ( !localPoint )
+        {
+            continue;
+        }
+
+        const CCVector3d point = pointInQuerySpace( *localPoint );
+
+        if ( type == "nearest" )
+        {
+            const double distanceSquared = ( point - center ).norm2d();
+            if ( distanceSquared < nearestDistanceSquared )
+            {
+                nearestDistanceSquared = distanceSquared;
+                nearestIndex = pointIndex;
+            }
+            continue;
+        }
+
+        bool matches = false;
+        if ( type == "sphere" )
+        {
+            matches = ( point - center ).norm2d() <= radius * radius;
+        }
+        else if ( type == "box" )
+        {
+            matches =
+                point.x >= minimum.x && point.x <= maximum.x
+                && point.y >= minimum.y && point.y <= maximum.y
+                && point.z >= minimum.z && point.z <= maximum.z;
+        }
+        else
+        {
+            matches =
+                std::abs( ( point - origin ).dot( normal ) )
+                <= halfThickness;
+        }
+
+        if ( !matches )
+        {
+            continue;
+        }
+
+        ++matchedCount;
+        sum += point;
+        if ( !haveBounds )
+        {
+            boundsMin = point;
+            boundsMax = point;
+            haveBounds = true;
+        }
+        else
+        {
+            for ( int axis = 0; axis < 3; ++axis )
+            {
+                boundsMin.u[axis] = std::min( boundsMin.u[axis], point.u[axis] );
+                boundsMax.u[axis] = std::max( boundsMax.u[axis], point.u[axis] );
+            }
+        }
+
+        if ( maxPoints > 0 )
+        {
+            if ( sampledIndices.size() < static_cast<size_t>( maxPoints ) )
+            {
+                sampledIndices.push_back( pointIndex );
+            }
+            else
+            {
+                // Deterministic reservoir sampling keeps representative payloads
+                // bounded without making the result depend on point ordering alone.
+                reservoirState =
+                    reservoirState * 6364136223846793005ULL
+                    + 1442695040888963407ULL
+                    + static_cast<quint64>( pointIndex );
+                const quint64 slot = reservoirState % matchedCount;
+                if ( slot < static_cast<quint64>( maxPoints ) )
+                {
+                    sampledIndices[static_cast<size_t>( slot )] = pointIndex;
+                }
+            }
+        }
+    }
+
+    if ( type == "nearest" )
+    {
+        if ( !std::isfinite( nearestDistanceSquared ) )
+        {
+            error = "cloud.region_query could not inspect any source point";
+            return true;
+        }
+        if ( region.contains( "max_distance" )
+             && nearestDistanceSquared > maxDistance * maxDistance )
+        {
+            error = "No point was found within nearest.max_distance";
+            return true;
+        }
+
+        const CCVector3* localPoint = cloud->getPoint( nearestIndex );
+        const CCVector3d point = pointInQuerySpace( *localPoint );
+        matchedCount = 1;
+        sum = point;
+        boundsMin = point;
+        boundsMax = point;
+        haveBounds = true;
+        if ( maxPoints > 0 )
+        {
+            sampledIndices.push_back( nearestIndex );
+        }
+    }
+
+    if ( matchedCount == 0 )
+    {
+        error = "cloud.region_query selected no points";
+        return true;
+    }
+
+    std::sort( sampledIndices.begin(), sampledIndices.end() );
+
+    QJsonArray pointsJson;
+    for ( unsigned pointIndex : sampledIndices )
+    {
+        const CCVector3* localPoint = cloud->getPoint( pointIndex );
+        if ( !localPoint )
+        {
+            continue;
+        }
+
+        QJsonObject pointJson;
+        pointJson[ "point_index" ] = static_cast<qint64>( pointIndex );
+        pointJson[ "position_native_local" ] = vector3Json( *localPoint );
+        pointJson[ "position_global" ] =
+            vector3Json( cloud->toGlobal3d<PointCoordinateType>( *localPoint ) );
+        pointsJson.append( pointJson );
+    }
+
+    QJsonObject bounds;
+    if ( haveBounds )
+    {
+        bounds[ "min" ] = vector3Json( boundsMin );
+        bounds[ "max" ] = vector3Json( boundsMax );
+        bounds[ "extent" ] = QJsonArray{
+            boundsMax.x - boundsMin.x,
+            boundsMax.y - boundsMin.y,
+            boundsMax.z - boundsMin.z
+        };
+    }
+
+    QJsonObject out;
+    out[ "cloud_id" ] = static_cast<qint64>( cloudId );
+    out[ "cloud_name" ] = cloud->getName();
+    out[ "region_type" ] = type;
+    out[ "coordinate_space" ] = coordinateSpace;
+    out[ "matched_count" ] = static_cast<qint64>( matchedCount );
+    out[ "returned_count" ] = pointsJson.size();
+    out[ "truncated" ] =
+        matchedCount > static_cast<quint64>( pointsJson.size() );
+    out[ "max_points" ] = maxPoints;
+    out[ "sample_strategy" ] =
+        matchedCount > static_cast<quint64>( pointsJson.size() )
+            ? "deterministic_reservoir"
+            : "all_matches";
+    out[ "centroid_query_space" ] =
+        vector3Json( sum / static_cast<double>( matchedCount ) );
+    out[ "bounds_query_space" ] = bounds;
+    out[ "points" ] = pointsJson;
+    out[ "source_geometry_preserved" ] = true;
+    out[ "source_global_shift" ] = vector3Json( cloud->getGlobalShift() );
+    out[ "source_global_scale" ] = cloud->getGlobalScale();
+    if ( type == "nearest" )
+    {
+        out[ "nearest_distance" ] = std::sqrt( nearestDistanceSquared );
+    }
+
+    result = out;
+    return true;
+}
+
 bool createGroup(
     ccMainAppInterface* app,
     const QJsonObject& params,
@@ -2566,13 +2904,13 @@ QJsonObject capabilities()
 {
     QJsonObject result;
     result[ "protocol_version" ] = 1;
-    result[ "workflow_revision" ] = 5;
+    result[ "workflow_revision" ] = 6;
     result[ "units_policy" ] =
         "Coordinates are reported in native units. Units remain unknown unless supplied by the caller.";
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    result[ "plugin_version" ] = "0.7.0";
+    result[ "plugin_version" ] = "0.10.0";
 
     QJsonArray bridgeOperations{
         "ping",
@@ -2601,6 +2939,7 @@ QJsonObject capabilities()
         "cloud.register_point_pairs",
         "cloud.distance_c2c",
         "cloud.distance_c2m",
+        "cloud.region_query",
         "metrology.pick.start",
         "metrology.pick.status",
         "metrology.pick.clear",
@@ -2626,6 +2965,7 @@ QJsonObject capabilities()
         "cloud.register_point_pairs",
         "cloud.distance_c2c",
         "cloud.distance_c2m",
+        "cloud.region_query",
         "metrology.pick.start",
         "metrology.pick.status",
         "metrology.pick.clear",
@@ -2689,6 +3029,17 @@ QJsonObject capabilities()
     metrology[ "units_policy" ] =
         "Distances use CloudCompare native coordinate units; physical units remain caller-supplied.";
     result[ "metrology" ] = metrology;
+
+    QJsonObject regionQuery;
+    regionQuery[ "available" ] = true;
+    regionQuery[ "point_cloud_only" ] = true;
+    regionQuery[ "coordinate_spaces" ] = QJsonArray{ "global", "native_local" };
+    regionQuery[ "region_types" ] = QJsonArray{ "sphere", "box", "slab", "nearest" };
+    regionQuery[ "bounded_point_payload" ] = true;
+    regionQuery[ "max_returned_points" ] = 20000;
+    regionQuery[ "summary_over_all_matches" ] = true;
+    regionQuery[ "source_preserved" ] = true;
+    result[ "region_query" ] = regionQuery;
 
     QJsonArray meshing;
     {
@@ -3555,6 +3906,10 @@ bool dispatch(
     if ( method == "cloud.crop" )
     {
         return cropCloud( app, params, result, error );
+    }
+    if ( method == "cloud.region_query" )
+    {
+        return queryCloudRegion( app, params, result, error );
     }
     if ( method == "cloud.subsample" )
     {
