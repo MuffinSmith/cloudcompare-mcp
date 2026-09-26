@@ -801,8 +801,15 @@ def line_plane_relationship(
     if any(value.shape != (3,) or not np.isfinite(value).all() for value in (point, direction, normal, plane_point)):
         raise FeatureFitError("Line-plane inputs contain invalid coordinates")
 
-    direction /= np.linalg.norm(direction)
-    normal /= np.linalg.norm(normal)
+    direction_norm = float(np.linalg.norm(direction))
+    normal_norm = float(np.linalg.norm(normal))
+    if (
+        direction_norm <= np.finfo(np.float64).tiny
+        or normal_norm <= np.finfo(np.float64).tiny
+    ):
+        raise FeatureFitError("Line-plane relationship requires non-zero directions and normals")
+    direction /= direction_norm
+    normal /= normal_norm
     dot = float(np.clip(np.dot(direction, normal), -1.0, 1.0))
     angle_to_plane = math.degrees(math.asin(abs(dot)))
     signed_point_distance = float(np.dot(point - plane_point, normal))
