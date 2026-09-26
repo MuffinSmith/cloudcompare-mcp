@@ -1109,6 +1109,52 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="compare_live_cylinders",
+        description=(
+            "Fit two cylinders from captured surface-pick sets and compare their infinite axes, "
+            "including acute angle, shortest axis distance, closest axis points, and radius/diameter differences."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cylinder_a_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 6,
+                },
+                "cylinder_b_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 6,
+                },
+            },
+            "required": ["cylinder_a_pick_indices", "cylinder_b_pick_indices"],
+        },
+    ),
+    Tool(
+        name="compare_live_cylinder_to_plane",
+        description=(
+            "Fit a cylinder axis and a plane from captured picks and report axis-to-plane angle, "
+            "representative-axis-point distance, and intersection when one exists."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cylinder_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 6,
+                },
+                "plane_pick_indices": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0},
+                    "minItems": 3,
+                },
+            },
+            "required": ["cylinder_pick_indices", "plane_pick_indices"],
+        },
+    ),
+    Tool(
         name="project_live_picks_to_section",
         description=(
             "Fit a section plane from captured picks and project another captured-pick set into a stable "
@@ -2164,6 +2210,90 @@ def handle_compare_live_line_to_plane(args: dict) -> list[TextContent] | CallToo
         return _err(str(exc))
 
 
+def handle_compare_live_cylinders(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, fit_cylinder_3d, line_relationship
+
+    try:
+        points_a, indexes_a, picks_a = _selected_live_pick_points(
+            args["cylinder_a_pick_indices"],
+            minimum=6,
+        )
+        points_b, indexes_b, picks_b = _selected_live_pick_points(
+            args["cylinder_b_pick_indices"],
+            minimum=6,
+        )
+        cylinder_a = fit_cylinder_3d(points_a)
+        cylinder_b = fit_cylinder_3d(points_b)
+        relationship = line_relationship(cylinder_a, cylinder_b)
+        relationship["radius_difference"] = (
+            cylinder_b["radius"] - cylinder_a["radius"]
+        )
+        relationship["absolute_radius_difference"] = abs(
+            relationship["radius_difference"]
+        )
+        relationship["diameter_difference"] = (
+            cylinder_b["diameter"] - cylinder_a["diameter"]
+        )
+        relationship["absolute_diameter_difference"] = abs(
+            relationship["diameter_difference"]
+        )
+        return _ok(
+            {
+                "coordinate_space": "global",
+                "units": "native",
+                "units_confirmed": False,
+                "source_geometry_preserved": True,
+                "cylinder_a_pick_indices": indexes_a,
+                "cylinder_b_pick_indices": indexes_b,
+                "cylinder_a_source_picks": picks_a,
+                "cylinder_b_source_picks": picks_b,
+                "cylinder_a": cylinder_a,
+                "cylinder_b": cylinder_b,
+                "relationship": relationship,
+            }
+        )
+    except (FeatureFitError, LiveBridgeError, KeyError, TypeError, ValueError) as exc:
+        return _err(str(exc))
+
+
+def handle_compare_live_cylinder_to_plane(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import (
+        FeatureFitError,
+        fit_cylinder_3d,
+        fit_plane,
+        line_plane_relationship,
+    )
+
+    try:
+        cylinder_points, cylinder_indexes, cylinder_picks = _selected_live_pick_points(
+            args["cylinder_pick_indices"],
+            minimum=6,
+        )
+        plane_points, plane_indexes, plane_picks = _selected_live_pick_points(
+            args["plane_pick_indices"],
+            minimum=3,
+        )
+        cylinder = fit_cylinder_3d(cylinder_points)
+        plane = fit_plane(plane_points)
+        return _ok(
+            {
+                "coordinate_space": "global",
+                "units": "native",
+                "units_confirmed": False,
+                "source_geometry_preserved": True,
+                "cylinder_pick_indices": cylinder_indexes,
+                "plane_pick_indices": plane_indexes,
+                "cylinder_source_picks": cylinder_picks,
+                "plane_source_picks": plane_picks,
+                "cylinder_fit": cylinder,
+                "plane_fit": plane,
+                "relationship": line_plane_relationship(cylinder, plane),
+            }
+        )
+    except (FeatureFitError, LiveBridgeError, KeyError, TypeError, ValueError) as exc:
+        return _err(str(exc))
+
+
 def handle_project_live_picks_to_section(args: dict) -> list[TextContent] | CallToolResult:
     from .feature_fit import FeatureFitError, fit_plane, project_points_to_section
 
@@ -2498,6 +2628,8 @@ async def call_tool(
         "fit_live_cylinder": handle_fit_live_cylinder,
         "compare_live_picked_lines": handle_compare_live_picked_lines,
         "compare_live_line_to_plane": handle_compare_live_line_to_plane,
+        "compare_live_cylinders": handle_compare_live_cylinders,
+        "compare_live_cylinder_to_plane": handle_compare_live_cylinder_to_plane,
         "project_live_picks_to_section": handle_project_live_picks_to_section,
         "clone_live_entities": handle_clone_live_entities,
         "merge_live_clouds": handle_merge_live_clouds,
