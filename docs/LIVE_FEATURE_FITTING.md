@@ -31,6 +31,12 @@ The result includes:
 All fitting is performed in CloudCompare global coordinates. Distances remain
 reported in native coordinate units; the bridge does not invent physical units.
 
+Plane and circle normals have no intrinsic positive direction. The fitter chooses a
+deterministic sign by forcing the normal's largest-magnitude component positive.
+Consequently, the sign from `measure_live_pick_to_plane` is deterministic but
+should not be interpreted as an outward/inward surface orientation unless the caller
+has independently established that orientation.
+
 ## Circle / hole fitting
 
 `fit_live_circle` fits a 3D circle from captured picks.
