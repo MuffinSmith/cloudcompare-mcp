@@ -76,6 +76,16 @@ has the same point+direction representation.
 These are intended for shaft-to-face perpendicularity, centerline offsets, slot
 directions, and related CAD measurements.
 
+`compare_live_cylinders` applies the same axis relationship calculation to two
+independently fitted cylinders and additionally reports signed/absolute
+radius and diameter differences. This is useful for bore/shaft concentricity,
+parallel-axis offsets, and stepped diameters.
+
+`compare_live_cylinder_to_plane` fits a cylinder and plane in one call, then
+reports the cylinder-axis relationship to the plane. This is useful for checking
+whether a bore/shaft axis is perpendicular to a mounting face and where the
+infinite fitted axis intersects that face.
+
 ## Picked cross-section projection
 
 `project_live_picks_to_section` fits a section plane from one pick set, then
