@@ -32,6 +32,8 @@
 #include <ccGLMatrix.h>
 
 #include "ccMainAppInterface.h"
+#include <ccPickingHub.h>
+#include <ccPickingListener.h>
 
 #include <algorithm>
 #include <cmath>
@@ -593,6 +595,633 @@ ccGenericMesh* requireMesh(
         return nullptr;
     }
     return mesh;
+}
+
+QJsonObject pointCloudPointDescription(
+    ccPointCloud* cloud,
+    unsigned pointIndex )
+{
+    QJsonObject out;
+    if ( !cloud || pointIndex >= cloud->size() )
+    {
+        return out;
+    }
+
+    const CCVector3* point = cloud->getPoint( pointIndex );
+    if ( !point )
+    {
+        return out;
+    }
+
+    out[ "entity_id" ] = static_cast<qint64>( cloud->getUniqueID() );
+    out[ "entity_name" ] = cloud->getName();
+    out[ "point_index" ] = static_cast<qint64>( pointIndex );
+    out[ "position_native_local" ] = vector3Json( *point );
+    out[ "position_global" ] =
+        vector3Json( cloud->toGlobal3d<PointCoordinateType>( *point ) );
+    out[ "global_shift" ] = vector3Json( cloud->getGlobalShift() );
+    out[ "global_scale" ] = cloud->getGlobalScale();
+
+    if ( cloud->hasColors() )
+    {
+        const ccColor::Rgba& color = cloud->getPointColor( pointIndex );
+        QJsonObject colorJson;
+        colorJson[ "r" ] = static_cast<int>( color.r );
+        colorJson[ "g" ] = static_cast<int>( color.g );
+        colorJson[ "b" ] = static_cast<int>( color.b );
+        colorJson[ "a" ] = static_cast<int>( color.a );
+        out[ "rgba" ] = colorJson;
+    }
+
+    if ( cloud->hasNormals() )
+    {
+        out[ "normal" ] = vector3Json( cloud->getPointNormal( pointIndex ) );
+    }
+
+    QJsonObject scalarValuesJson;
+    for ( unsigned fieldIndex = 0;
+          fieldIndex < cloud->getNumberOfScalarFields();
+          ++fieldIndex )
+    {
+        const CCCoreLib::ScalarField* field =
+            cloud->getScalarField( static_cast<int>( fieldIndex ) );
+        if ( !field || pointIndex >= field->currentSize() )
+        {
+            continue;
+        }
+
+        const QString fieldName = QString::fromStdString( field->getName() );
+        const double value =
+            static_cast<double>( field->getValue( pointIndex ) );
+        if ( std::isfinite( value ) )
+        {
+            scalarValuesJson[ fieldName ] = value;
+        }
+        else
+        {
+            scalarValuesJson[ fieldName ] = QJsonValue();
+        }
+    }
+    out[ "scalar_values" ] = scalarValuesJson;
+    return out;
+}
+
+struct StoredPick
+{
+    QJsonObject json;
+    CCVector3d globalPosition;
+};
+
+QJsonObject pickedItemDescription(
+    const ccPickingListener::PickedItem& item,
+    CCVector3d& globalPosition )
+{
+    QJsonObject out;
+    ccHObject* entity = item.entity;
+    if ( !entity )
+    {
+        return out;
+    }
+
+    out[ "entity_id" ] = static_cast<qint64>( entity->getUniqueID() );
+    out[ "entity_name" ] = entity->getName();
+    out[ "entity_kind" ] = kindOf( entity );
+    out[ "item_index" ] = static_cast<qint64>( item.itemIndex );
+    out[ "entity_center" ] = item.entityCenter;
+
+    QJsonObject click;
+    click[ "x" ] = item.clickPoint.x();
+    click[ "y" ] = item.clickPoint.y();
+    out[ "click" ] = click;
+
+    ccGenericPointCloud* coordinateCloud = nullptr;
+
+    if ( entity->isA( CC_TYPES::POINT_CLOUD ) )
+    {
+        ccPointCloud* cloud = static_cast<ccPointCloud*>( entity );
+        coordinateCloud = cloud;
+
+        if ( !item.entityCenter && item.itemIndex < cloud->size() )
+        {
+            QJsonObject pointInfo =
+                pointCloudPointDescription( cloud, item.itemIndex );
+            for ( auto it = pointInfo.begin(); it != pointInfo.end(); ++it )
+            {
+                out[ it.key() ] = it.value();
+            }
+
+            const QJsonArray globalArray =
+                out.value( "position_global" ).toArray();
+            if ( globalArray.size() == 3 )
+            {
+                globalPosition = CCVector3d(
+                    globalArray.at( 0 ).toDouble(),
+                    globalArray.at( 1 ).toDouble(),
+                    globalArray.at( 2 ).toDouble() );
+            }
+        }
+    }
+    else if ( entity->isKindOf( CC_TYPES::MESH ) )
+    {
+        ccGenericMesh* mesh = ccHObjectCaster::ToGenericMesh( entity );
+        if ( mesh )
+        {
+            coordinateCloud = mesh->getAssociatedCloud();
+        }
+
+        out[ "triangle_index" ] = static_cast<qint64>( item.itemIndex );
+        out[ "barycentric" ] =
+            QJsonArray{ item.uvw.x, item.uvw.y, item.uvw.z };
+    }
+
+    if ( !out.contains( "position_native_local" ) )
+    {
+        out[ "position_native_local" ] = vector3Json( item.P3D );
+        if ( coordinateCloud )
+        {
+            globalPosition =
+                coordinateCloud->toGlobal3d<PointCoordinateType>( item.P3D );
+            out[ "position_global" ] = vector3Json( globalPosition );
+            out[ "global_shift" ] =
+                vector3Json( coordinateCloud->getGlobalShift() );
+            out[ "global_scale" ] = coordinateCloud->getGlobalScale();
+        }
+        else
+        {
+            globalPosition = item.P3D.toDouble();
+            out[ "position_global" ] = vector3Json( globalPosition );
+        }
+    }
+
+    return out;
+}
+
+class MetrologyPickingSession final : public ccPickingListener
+{
+public:
+    ~MetrologyPickingSession() override
+    {
+        stop();
+    }
+
+    bool start(
+        ccMainAppInterface* app,
+        int maxPicks,
+        bool exclusive,
+        const QSet<unsigned>& allowedIds,
+        QString& error )
+    {
+        if ( m_active )
+        {
+            error =
+                "A metrology picking session is already active; stop it before starting another.";
+            return false;
+        }
+
+        m_hub = app ? app->pickingHub() : nullptr;
+        if ( !m_hub )
+        {
+            error = "CloudCompare does not expose a picking hub to qMCPBridge.";
+            return false;
+        }
+        if ( !m_hub->activeWindow() )
+        {
+            error = "No active CloudCompare 3D window is available for point picking.";
+            return false;
+        }
+
+        m_picks.clear();
+        m_allowedIds = allowedIds;
+        m_maxPicks = maxPicks;
+        m_exclusive = exclusive;
+
+        if ( !m_hub->addListener(
+                 this,
+                 exclusive,
+                 true,
+                 ccGLWindowInterface::POINT_OR_TRIANGLE_PICKING ) )
+        {
+            m_hub = nullptr;
+            error =
+                "CloudCompare rejected the picking listener. Close other exclusive picking tools and try again.";
+            return false;
+        }
+
+        m_active = true;
+        return true;
+    }
+
+    void stop()
+    {
+        if ( m_active && m_hub )
+        {
+            m_hub->removeListener( this, true );
+        }
+        m_active = false;
+        m_hub = nullptr;
+    }
+
+    void clear()
+    {
+        m_picks.clear();
+    }
+
+    bool active() const
+    {
+        return m_active;
+    }
+
+    size_t count() const
+    {
+        return m_picks.size();
+    }
+
+    const StoredPick* pick( int index ) const
+    {
+        if ( index < 0 || index >= static_cast<int>( m_picks.size() ) )
+        {
+            return nullptr;
+        }
+        return &m_picks[static_cast<size_t>( index )];
+    }
+
+    QJsonObject status() const
+    {
+        QJsonObject out;
+        out[ "active" ] = m_active;
+        out[ "pick_count" ] = static_cast<qint64>( m_picks.size() );
+        out[ "max_picks" ] = m_maxPicks;
+        out[ "exclusive" ] = m_exclusive;
+
+        QJsonArray allowed;
+        for ( unsigned id : m_allowedIds )
+        {
+            allowed.append( static_cast<qint64>( id ) );
+        }
+        out[ "allowed_entity_ids" ] = allowed;
+
+        QJsonArray picksJson;
+        for ( size_t i = 0; i < m_picks.size(); ++i )
+        {
+            QJsonObject pickJson = m_picks[i].json;
+            pickJson[ "pick_index" ] = static_cast<qint64>( i );
+            picksJson.append( pickJson );
+        }
+        out[ "picks" ] = picksJson;
+        return out;
+    }
+
+    void onItemPicked( const PickedItem& item ) override
+    {
+        if ( !m_active || !item.entity )
+        {
+            return;
+        }
+
+        const unsigned entityId = item.entity->getUniqueID();
+        if ( !m_allowedIds.isEmpty()
+             && !m_allowedIds.contains( entityId ) )
+        {
+            return;
+        }
+
+        CCVector3d globalPosition;
+        QJsonObject json =
+            pickedItemDescription( item, globalPosition );
+        if ( json.isEmpty() )
+        {
+            return;
+        }
+
+        StoredPick stored;
+        stored.json = json;
+        stored.globalPosition = globalPosition;
+        m_picks.push_back( stored );
+
+        if ( m_maxPicks > 0
+             && static_cast<int>( m_picks.size() ) >= m_maxPicks )
+        {
+            if ( m_hub )
+            {
+                m_hub->removeListener( this, true );
+            }
+            m_active = false;
+            m_hub = nullptr;
+        }
+    }
+
+private:
+    ccPickingHub* m_hub = nullptr;
+    std::vector<StoredPick> m_picks;
+    QSet<unsigned> m_allowedIds;
+    int m_maxPicks = 0;
+    bool m_active = false;
+    bool m_exclusive = true;
+};
+
+MetrologyPickingSession g_metrologyPickingSession;
+
+bool startMetrologyPicking(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    const int maxPicks = params.value( "max_picks" ).toInt( 8 );
+    if ( maxPicks < 1 || maxPicks > 100 )
+    {
+        error = "max_picks must be between 1 and 100";
+        return true;
+    }
+
+    QSet<unsigned> allowedIds;
+    if ( params.contains( "allowed_entity_ids" ) )
+    {
+        const QJsonArray values =
+            params.value( "allowed_entity_ids" ).toArray();
+        for ( const QJsonValue& value : values )
+        {
+            if ( !value.isDouble() )
+            {
+                error =
+                    "allowed_entity_ids must contain numeric entity IDs";
+                return true;
+            }
+
+            const double raw = value.toDouble();
+            if ( raw < 0.0
+                 || raw > static_cast<double>(
+                        std::numeric_limits<unsigned>::max() )
+                 || std::floor( raw ) != raw )
+            {
+                error =
+                    "allowed_entity_ids must contain valid entity IDs";
+                return true;
+            }
+
+            const unsigned id = static_cast<unsigned>( raw );
+            if ( !findEntity( app, id ) )
+            {
+                error =
+                    QString( "Allowed picking entity %1 was not found" )
+                        .arg( id );
+                return true;
+            }
+            allowedIds.insert( id );
+        }
+    }
+
+    const bool exclusive =
+        params.value( "exclusive" ).toBool( true );
+    if ( !g_metrologyPickingSession.start(
+             app,
+             maxPicks,
+             exclusive,
+             allowedIds,
+             error ) )
+    {
+        return true;
+    }
+
+    QJsonObject out = g_metrologyPickingSession.status();
+    out[ "instruction" ] =
+        "Point picking is active in the current CloudCompare 3D window. Click visible cloud points or mesh triangles.";
+    result = out;
+    return true;
+}
+
+bool metrologyPickingStatus(
+    QJsonValue& result )
+{
+    result = g_metrologyPickingSession.status();
+    return true;
+}
+
+bool clearMetrologyPicks(
+    QJsonValue& result )
+{
+    g_metrologyPickingSession.clear();
+    result = g_metrologyPickingSession.status();
+    return true;
+}
+
+bool stopMetrologyPicking(
+    QJsonValue& result )
+{
+    g_metrologyPickingSession.stop();
+    result = g_metrologyPickingSession.status();
+    return true;
+}
+
+bool inspectCloudPoint(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned entityId = 0;
+    if ( !readId( params, "entity_id", entityId ) )
+    {
+        error = "metrology.point_info requires numeric entity_id";
+        return true;
+    }
+
+    ccPointCloud* cloud =
+        requireStandaloneCloud( app, entityId, error );
+    if ( !cloud )
+    {
+        return true;
+    }
+
+    const QJsonValue indexValue = params.value( "point_index" );
+    if ( !indexValue.isDouble() )
+    {
+        error = "point_index must be a non-negative integer";
+        return true;
+    }
+
+    const double rawIndex = indexValue.toDouble();
+    if ( rawIndex < 0.0
+         || rawIndex >= static_cast<double>( cloud->size() )
+         || std::floor( rawIndex ) != rawIndex )
+    {
+        error = QString(
+            "point_index must be between 0 and %1" )
+                    .arg(
+                        cloud->size() == 0
+                            ? 0
+                            : cloud->size() - 1 );
+        return true;
+    }
+
+    result = pointCloudPointDescription(
+        cloud,
+        static_cast<unsigned>( rawIndex ) );
+    return true;
+}
+
+bool readPickIndex(
+    const QJsonObject& params,
+    const char* key,
+    int defaultIndex,
+    int& index,
+    QString& error )
+{
+    if ( !params.contains( key ) )
+    {
+        index = defaultIndex;
+        return true;
+    }
+
+    const QJsonValue value =
+        params.value( QLatin1String( key ) );
+    if ( !value.isDouble() )
+    {
+        error = QString( "%1 must be an integer pick index" ).arg( key );
+        return false;
+    }
+
+    const double raw = value.toDouble();
+    if ( raw < 0.0
+         || raw > static_cast<double>(
+                std::numeric_limits<int>::max() )
+         || std::floor( raw ) != raw )
+    {
+        error = QString( "%1 must be a non-negative integer pick index" ).arg( key );
+        return false;
+    }
+
+    index = static_cast<int>( raw );
+    return true;
+}
+
+bool measurePickedDistance(
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    const int count =
+        static_cast<int>( g_metrologyPickingSession.count() );
+    if ( count < 2 )
+    {
+        error = "At least two captured picks are required for a distance measurement";
+        return true;
+    }
+
+    int aIndex = count - 2;
+    int bIndex = count - 1;
+    if ( !readPickIndex( params, "pick_a", aIndex, aIndex, error )
+         || !readPickIndex( params, "pick_b", bIndex, bIndex, error ) )
+    {
+        return true;
+    }
+
+    const StoredPick* a = g_metrologyPickingSession.pick( aIndex );
+    const StoredPick* b = g_metrologyPickingSession.pick( bIndex );
+    if ( !a || !b )
+    {
+        error = "Requested pick index is outside the captured pick list";
+        return true;
+    }
+
+    const CCVector3d delta =
+        b->globalPosition - a->globalPosition;
+    const double distance =
+        std::sqrt( delta.norm2d() );
+    const double distanceXY =
+        std::sqrt( delta.x * delta.x + delta.y * delta.y );
+
+    QJsonObject out;
+    out[ "coordinate_space" ] = "global";
+    out[ "units" ] = "native";
+    out[ "units_confirmed" ] = false;
+    out[ "pick_a" ] = aIndex;
+    out[ "pick_b" ] = bIndex;
+    out[ "point_a" ] = vector3Json( a->globalPosition );
+    out[ "point_b" ] = vector3Json( b->globalPosition );
+    out[ "delta" ] = vector3Json( delta );
+    out[ "absolute_delta" ] =
+        QJsonArray{
+            std::abs( delta.x ),
+            std::abs( delta.y ),
+            std::abs( delta.z )
+        };
+    out[ "distance_native" ] = distance;
+    out[ "distance_xy_native" ] = distanceXY;
+    result = out;
+    return true;
+}
+
+bool measurePickedAngle(
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    const int count =
+        static_cast<int>( g_metrologyPickingSession.count() );
+    if ( count < 3 )
+    {
+        error = "At least three captured picks are required for an angle measurement";
+        return true;
+    }
+
+    int aIndex = count - 3;
+    int bIndex = count - 2;
+    int cIndex = count - 1;
+    if ( !readPickIndex( params, "pick_a", aIndex, aIndex, error )
+         || !readPickIndex( params, "pick_b", bIndex, bIndex, error )
+         || !readPickIndex( params, "pick_c", cIndex, cIndex, error ) )
+    {
+        return true;
+    }
+
+    const StoredPick* a = g_metrologyPickingSession.pick( aIndex );
+    const StoredPick* b = g_metrologyPickingSession.pick( bIndex );
+    const StoredPick* c = g_metrologyPickingSession.pick( cIndex );
+    if ( !a || !b || !c )
+    {
+        error = "Requested pick index is outside the captured pick list";
+        return true;
+    }
+
+    const CCVector3d ba =
+        a->globalPosition - b->globalPosition;
+    const CCVector3d bc =
+        c->globalPosition - b->globalPosition;
+    const double baLength = std::sqrt( ba.norm2d() );
+    const double bcLength = std::sqrt( bc.norm2d() );
+    if ( baLength <= std::numeric_limits<double>::epsilon()
+         || bcLength <= std::numeric_limits<double>::epsilon() )
+    {
+        error =
+            "Angle measurement requires three distinct points with non-zero legs";
+        return true;
+    }
+
+    double cosine =
+        ( ba.x * bc.x + ba.y * bc.y + ba.z * bc.z )
+        / ( baLength * bcLength );
+    cosine = std::max( -1.0, std::min( 1.0, cosine ) );
+    const double radians = std::acos( cosine );
+    const double degrees =
+        radians * 180.0 / std::acos( -1.0 );
+
+    QJsonObject out;
+    out[ "coordinate_space" ] = "global";
+    out[ "units" ] = "native";
+    out[ "units_confirmed" ] = false;
+    out[ "pick_a" ] = aIndex;
+    out[ "pick_b_vertex" ] = bIndex;
+    out[ "pick_c" ] = cIndex;
+    out[ "point_a" ] = vector3Json( a->globalPosition );
+    out[ "point_b" ] = vector3Json( b->globalPosition );
+    out[ "point_c" ] = vector3Json( c->globalPosition );
+    out[ "leg_ba_native" ] = baLength;
+    out[ "leg_bc_native" ] = bcLength;
+    out[ "angle_radians" ] = radians;
+    out[ "angle_degrees" ] = degrees;
+    result = out;
+    return true;
 }
 
 QJsonArray partialCloneWarnings( int warnings )
@@ -1923,13 +2552,13 @@ QJsonObject capabilities()
 {
     QJsonObject result;
     result[ "protocol_version" ] = 1;
-    result[ "workflow_revision" ] = 4;
+    result[ "workflow_revision" ] = 5;
     result[ "units_policy" ] =
         "Coordinates are reported in native units. Units remain unknown unless supplied by the caller.";
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    result[ "plugin_version" ] = "0.6.0";
+    result[ "plugin_version" ] = "0.7.0";
 
     QJsonArray bridgeOperations{
         "ping",
@@ -1957,7 +2586,14 @@ QJsonObject capabilities()
         "cloud.register_icp",
         "cloud.register_point_pairs",
         "cloud.distance_c2c",
-        "cloud.distance_c2m"
+        "cloud.distance_c2m",
+        "metrology.pick.start",
+        "metrology.pick.status",
+        "metrology.pick.clear",
+        "metrology.pick.stop",
+        "metrology.point_info",
+        "metrology.measure.picked_distance",
+        "metrology.measure.picked_angle"
     };
     result[ "bridge_operations" ] = bridgeOperations;
 
@@ -1975,7 +2611,14 @@ QJsonObject capabilities()
         "cloud.register_icp",
         "cloud.register_point_pairs",
         "cloud.distance_c2c",
-        "cloud.distance_c2m"
+        "cloud.distance_c2m",
+        "metrology.pick.start",
+        "metrology.pick.status",
+        "metrology.pick.clear",
+        "metrology.pick.stop",
+        "metrology.point_info",
+        "metrology.measure.picked_distance",
+        "metrology.measure.picked_angle"
     };
     result[ "workflow_operations" ] = workflowOperations;
 
@@ -2019,6 +2662,19 @@ QJsonObject capabilities()
     };
     comparison[ "signed_c2m" ] = true;
     result[ "comparison" ] = comparison;
+
+    QJsonObject metrology;
+    metrology[ "interactive_point_picking" ] = true;
+    metrology[ "point_or_triangle_picking" ] = true;
+    metrology[ "entity_filtering" ] = true;
+    metrology[ "auto_stop_after_max_picks" ] = true;
+    metrology[ "point_attribute_inspection" ] = true;
+    metrology[ "picked_point_distance" ] = true;
+    metrology[ "picked_three_point_angle" ] = true;
+    metrology[ "coordinate_space" ] = "global";
+    metrology[ "units_policy" ] =
+        "Distances use CloudCompare native coordinate units; physical units remain caller-supplied.";
+    result[ "metrology" ] = metrology;
 
     QJsonArray meshing;
     {
@@ -2908,6 +3564,34 @@ bool dispatch(
     if ( method == "cloud.distance_c2m" )
     {
         return analyzeCloudToMesh( app, params, result, error );
+    }
+    if ( method == "metrology.pick.start" )
+    {
+        return startMetrologyPicking( app, params, result, error );
+    }
+    if ( method == "metrology.pick.status" )
+    {
+        return metrologyPickingStatus( result );
+    }
+    if ( method == "metrology.pick.clear" )
+    {
+        return clearMetrologyPicks( result );
+    }
+    if ( method == "metrology.pick.stop" )
+    {
+        return stopMetrologyPicking( result );
+    }
+    if ( method == "metrology.point_info" )
+    {
+        return inspectCloudPoint( app, params, result, error );
+    }
+    if ( method == "metrology.measure.picked_distance" )
+    {
+        return measurePickedDistance( params, result, error );
+    }
+    if ( method == "metrology.measure.picked_angle" )
+    {
+        return measurePickedAngle( params, result, error );
     }
     if ( method == "entity.clone" )
     {
