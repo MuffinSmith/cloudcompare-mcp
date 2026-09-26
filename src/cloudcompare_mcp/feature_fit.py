@@ -989,6 +989,8 @@ def feature_fit_capabilities() -> dict[str, Any]:
             "plane_to_plane_angle_and_offset": True,
             "line_to_line": True,
             "line_or_axis_to_plane": True,
+            "cylinder_to_cylinder": True,
+            "cylinder_to_plane": True,
         },
         "visible_fit_overlays": False,
     }
