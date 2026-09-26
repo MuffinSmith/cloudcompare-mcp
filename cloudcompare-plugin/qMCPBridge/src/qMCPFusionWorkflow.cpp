@@ -1750,7 +1750,7 @@ bool gridCloudRegion(
         return true;
     }
 
-    int divisions[3] = { 6, 6, 6 };
+    int divisions[3] = { 4, 4, 4 };
     if ( params.contains( "divisions" ) )
     {
         const QJsonArray values = params.value( "divisions" ).toArray();
@@ -1791,7 +1791,7 @@ bool gridCloudRegion(
         minCount = static_cast<int>( value.toDouble() );
     }
 
-    int maxCells = 256;
+    int maxCells = 64;
     if ( params.contains( "max_cells" ) )
     {
         const QJsonValue value = params.value( "max_cells" );
