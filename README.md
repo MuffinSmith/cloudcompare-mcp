@@ -25,6 +25,9 @@ documented in [docs/LIVE_METROLOGY.md](docs/LIVE_METROLOGY.md).
 Plane/circle fitting and derived metrology from captured picks are documented in
 [docs/LIVE_FEATURE_FITTING.md](docs/LIVE_FEATURE_FITTING.md).
 
+Line/cylinder fitting and picked cross-section projection are documented in
+[docs/LIVE_CYLINDER_SECTIONS.md](docs/LIVE_CYLINDER_SECTIONS.md).
+
 ## Features
 
 ### Native tools (no CloudCompare required)
@@ -71,6 +74,11 @@ These tools operate on the **CloudCompare instance that is already open** instea
 | `fit_live_circle` | Fit a 3D circle/hole with diameter and residual diagnostics |
 | `measure_live_pick_to_plane` | Measure a captured point to a fitted picked plane |
 | `compare_live_picked_planes` | Compare fitted plane angle and normal-direction offsets |
+| `fit_live_line` | Fit a 3D line/edge from captured global picks |
+| `fit_live_cylinder` | Fit a cylinder/bore/shaft axis and diameter with residual diagnostics |
+| `compare_live_picked_lines` | Compare fitted line/axis angle and shortest distance |
+| `compare_live_line_to_plane` | Compare a fitted line/axis with a fitted plane |
+| `project_live_picks_to_section` | Project captured profile picks into a fitted 2D section frame |
 
 The plugin source is included under `cloudcompare-plugin/qMCPBridge`. It runs a newline-delimited JSON control server bound to `127.0.0.1:8765` by default. See that directory's README for CloudCompare build/install instructions.
 
