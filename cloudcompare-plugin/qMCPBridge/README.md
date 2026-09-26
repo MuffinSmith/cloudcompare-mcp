@@ -19,6 +19,10 @@ The listener binds only to `127.0.0.1` and defaults to TCP port `8765`.
 - report point/triangle counts, attributes, hierarchy, native/global bounds, and global shift/scale
 - export live binary PLY point clouds and face-bearing OBJ meshes with read-back validation
 - expose cautious 2.5D meshing plus capability discovery for optional full-3D reconstruction/simplification
+- preview/apply rigid ICP and point-pair coarse registration on preserved source geometry
+- live C2C/C2M quality analysis on temporary/result clones
+- interactive point/triangle picking through CloudCompare's picking hub
+- exact point inspection plus picked-point distance and three-point angle measurements
 
 The Fusion-oriented workflow and its optional PyMeshLab backend are documented in
 `docs/FUSION_REFERENCE_WORKFLOW.md`.
