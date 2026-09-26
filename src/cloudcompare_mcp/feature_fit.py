@@ -140,6 +140,7 @@ def fit_plane(points: Iterable[Sequence[float]]) -> dict[str, Any]:
         "sample_count": int(xyz.shape[0]),
         "centroid": _vector3(centroid),
         "normal": _vector3(normal),
+        "normal_orientation_policy": "largest_absolute_component_positive",
         "basis_u": _vector3(u),
         "basis_v": _vector3(v),
         "equation": {
@@ -282,6 +283,7 @@ def fit_circle_3d(points: Iterable[Sequence[float]]) -> dict[str, Any]:
         "sample_count": int(xyz.shape[0]),
         "center": _vector3(center3d),
         "normal": _vector3(normal),
+        "normal_orientation_policy": "largest_absolute_component_positive",
         "radius": float(radius),
         "diameter": float(2.0 * radius),
         "basis_u": _vector3(u),
@@ -391,6 +393,7 @@ def feature_fit_capabilities() -> dict[str, Any]:
         "built_in": True,
         "coordinate_policy": "fit inputs are CloudCompare global coordinates",
         "units_policy": "unit-neutral native coordinates",
+        "normal_orientation_policy": "largest absolute normal component is forced positive",
         "plane": {
             "available": True,
             "method": "orthogonal least squares / PCA",
