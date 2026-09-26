@@ -109,6 +109,65 @@ class LiveCylinderSectionContractTests(unittest.TestCase):
         for got, expected in zip(relationship["intersection_point"], [2.0, 3.0, 0.0]):
             self.assertAlmostEqual(got, expected, places=10)
 
+    def test_compare_live_cylinders_reports_axis_offset_and_diameter_delta(self) -> None:
+        points: list[list[float]] = []
+        first: list[int] = []
+        second: list[int] = []
+        for center_x, radius, bucket in ((0.0, 5.0, first), (2.0, 6.0, second)):
+            for z in (-4.0, 0.0, 4.0):
+                for i in range(8):
+                    theta = i * 2.0 * math.pi / 8.0
+                    bucket.append(len(points))
+                    points.append(
+                        [
+                            center_x + radius * math.cos(theta),
+                            radius * math.sin(theta),
+                            z,
+                        ]
+                    )
+
+        with patch.object(server, "live_request", return_value=_status(points)):
+            result = server.handle_compare_live_cylinders(
+                {
+                    "cylinder_a_pick_indices": first,
+                    "cylinder_b_pick_indices": second,
+                }
+            )
+
+        body = _body(result)
+        relationship = body["relationship"]
+        self.assertAlmostEqual(relationship["acute_angle_degrees"], 0.0, places=8)
+        self.assertAlmostEqual(relationship["shortest_distance"], 2.0, places=7)
+        self.assertAlmostEqual(relationship["diameter_difference"], 2.0, places=7)
+
+    def test_compare_live_cylinder_to_plane_known_perpendicular_axis(self) -> None:
+        points: list[list[float]] = []
+        cylinder: list[int] = []
+        for z in (-4.0, 0.0, 4.0):
+            for i in range(8):
+                theta = i * 2.0 * math.pi / 8.0
+                cylinder.append(len(points))
+                points.append([2.0 + 5.0 * math.cos(theta), 3.0 + 5.0 * math.sin(theta), z])
+
+        plane = []
+        for point in ([0, 0, 0], [10, 0, 0], [0, 10, 0], [10, 10, 0]):
+            plane.append(len(points))
+            points.append(point)
+
+        with patch.object(server, "live_request", return_value=_status(points)):
+            result = server.handle_compare_live_cylinder_to_plane(
+                {
+                    "cylinder_pick_indices": cylinder,
+                    "plane_pick_indices": plane,
+                }
+            )
+
+        body = _body(result)
+        relationship = body["relationship"]
+        self.assertAlmostEqual(relationship["angle_to_plane_degrees"], 90.0, places=7)
+        for got, expected in zip(relationship["intersection_point"], [2.0, 3.0, 0.0]):
+            self.assertAlmostEqual(got, expected, places=6)
+
     def test_project_live_picks_to_section_filters_profile(self) -> None:
         picks = _status(
             [
