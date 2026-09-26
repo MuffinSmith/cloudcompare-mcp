@@ -8,9 +8,14 @@ import pytest
 from cloudcompare_mcp.feature_fit import (
     FeatureFitError,
     fit_circle_3d,
+    fit_cylinder_3d,
+    fit_line_3d,
     fit_plane,
+    line_plane_relationship,
+    line_relationship,
     plane_relationship,
     point_to_plane,
+    project_points_to_section,
 )
 
 
@@ -217,6 +222,206 @@ def test_unit_neutral_scale_invariance(scale: float) -> None:
     circle = fit_circle_3d(circle_points)
     assert circle["radius"] == pytest.approx(radius, rel=1e-12)
     assert np.allclose(circle["center"], center, rtol=1e-12, atol=abs(scale) * 1e-12)
+
+
+def _cylinder_points(
+    axis: np.ndarray,
+    center: np.ndarray,
+    radius: float,
+    length: float,
+    *,
+    theta_count: int = 24,
+    axial_count: int = 7,
+    arc_degrees: float = 360.0,
+    radial_noise: float = 0.0,
+    seed: int = 260932,
+) -> np.ndarray:
+    axis = axis / np.linalg.norm(axis)
+    u, v = _basis(axis)
+    theta = np.linspace(
+        0.0,
+        math.radians(arc_degrees),
+        theta_count,
+        endpoint=False,
+    )
+    axial = np.linspace(-length / 2.0, length / 2.0, axial_count)
+    rng = np.random.default_rng(seed)
+    points = []
+    for z in axial:
+        for angle in theta:
+            noisy_radius = radius + rng.normal(0.0, radial_noise)
+            points.append(
+                center
+                + z * axis
+                + noisy_radius * math.cos(angle) * u
+                + noisy_radius * math.sin(angle) * v
+            )
+    return np.asarray(points)
+
+
+def test_exact_line_fit() -> None:
+    origin = np.array([2.0, -3.0, 5.0])
+    direction = np.array([1.0, 2.0, -4.0])
+    direction /= np.linalg.norm(direction)
+    t = np.linspace(-12.0, 8.0, 31)
+    points = origin + t[:, None] * direction
+
+    fit = fit_line_3d(points)
+    got = np.asarray(fit["direction"])
+    assert abs(float(np.dot(got, direction))) > 1 - 1e-13
+    assert fit["residuals"]["rms"] < 1e-12
+    assert fit["axial_span"] == pytest.approx(20.0, abs=1e-12)
+
+
+def test_line_relationship_skew_and_parallel() -> None:
+    line_a = fit_line_3d([[0, 0, 0], [10, 0, 0], [20, 0, 0]])
+    line_b = fit_line_3d([[0, 3, 4], [10, 3, 4], [20, 3, 4]])
+    parallel = line_relationship(line_a, line_b)
+    assert parallel["acute_angle_degrees"] == pytest.approx(0.0, abs=1e-12)
+    assert parallel["shortest_distance"] == pytest.approx(5.0, abs=1e-12)
+    assert parallel["parallel"]
+
+    line_c = fit_line_3d([[0, 0, 2], [0, 1, 2], [0, 2, 2]])
+    skew = line_relationship(line_a, line_c)
+    assert skew["acute_angle_degrees"] == pytest.approx(90.0, abs=1e-12)
+    assert skew["shortest_distance"] == pytest.approx(2.0, abs=1e-12)
+
+
+def test_line_plane_relationship_known_cases() -> None:
+    plane = fit_plane([[0, 0, 0], [4, 0, 0], [0, 4, 0], [4, 4, 0]])
+
+    perpendicular = fit_line_3d([[2, 3, -5], [2, 3, 5], [2, 3, 10]])
+    rel = line_plane_relationship(perpendicular, plane)
+    assert rel["angle_to_plane_degrees"] == pytest.approx(90.0, abs=1e-12)
+    assert np.allclose(rel["intersection_point"], [2, 3, 0], atol=1e-12)
+
+    parallel = fit_line_3d([[0, 0, 7], [5, 0, 7], [10, 0, 7]])
+    rel2 = line_plane_relationship(parallel, plane)
+    assert rel2["angle_to_plane_degrees"] == pytest.approx(0.0, abs=1e-12)
+    assert rel2["axis_point_absolute_distance"] == pytest.approx(7.0, abs=1e-12)
+    assert rel2["intersection_point"] is None
+
+
+def test_exact_rotated_cylinder() -> None:
+    axis = np.array([0.31, -0.57, 0.76])
+    axis /= np.linalg.norm(axis)
+    center = np.array([12.0, -8.0, 3.0])
+    points = _cylinder_points(axis, center, 5.5, 18.0)
+
+    fit = fit_cylinder_3d(points)
+    got_axis = np.asarray(fit["axis_direction"])
+    angle = math.degrees(
+        math.acos(np.clip(abs(float(np.dot(got_axis, axis))), -1, 1))
+    )
+    axis_offset = np.linalg.norm(
+        np.cross(np.asarray(fit["axis_point"]) - center, axis)
+    )
+    assert angle < 1e-8
+    assert axis_offset < 1e-10
+    assert fit["radius"] == pytest.approx(5.5, abs=1e-10)
+    assert fit["radial_residuals"]["rms"] < 1e-10
+    assert fit["axial_span"] == pytest.approx(18.0, abs=1e-9)
+    assert fit["angular_coverage_degrees"] > 340
+
+
+def test_noisy_partial_cylinder_fit() -> None:
+    axis = np.array([0.2, 0.4, 0.89442719])
+    axis /= np.linalg.norm(axis)
+    center = np.array([2.0, 4.0, -1.0])
+    points = _cylinder_points(
+        axis,
+        center,
+        10.0,
+        35.0,
+        theta_count=28,
+        axial_count=8,
+        arc_degrees=210.0,
+        radial_noise=0.02,
+        seed=260933,
+    )
+
+    fit = fit_cylinder_3d(points)
+    got_axis = np.asarray(fit["axis_direction"])
+    angle = math.degrees(
+        math.acos(np.clip(abs(float(np.dot(got_axis, axis))), -1, 1))
+    )
+    axis_offset = np.linalg.norm(
+        np.cross(np.asarray(fit["axis_point"]) - center, axis)
+    )
+    assert angle < 0.1
+    assert abs(fit["radius"] - 10.0) < 0.02
+    assert axis_offset < 0.02
+    assert 0.01 < fit["radial_residuals"]["rms"] < 0.03
+    assert 190 < fit["angular_coverage_degrees"] < 215
+
+
+def test_low_coverage_cylinder_warns() -> None:
+    axis = np.array([0.0, 0.0, 1.0])
+    points = _cylinder_points(
+        axis,
+        np.zeros(3),
+        5.0,
+        10.0,
+        theta_count=12,
+        axial_count=6,
+        arc_degrees=60.0,
+    )
+    fit = fit_cylinder_3d(points)
+    assert fit["angular_coverage_degrees"] < 120.0
+    assert any("coverage" in warning for warning in fit["quality_warnings"])
+
+
+def test_cylinder_requires_six_distinct_points() -> None:
+    with pytest.raises(FeatureFitError, match="6 distinct"):
+        fit_cylinder_3d(
+            [
+                [1, 0, 0],
+                [1, 0, 0],
+                [0, 1, 0],
+                [-1, 0, 0],
+                [0, -1, 0],
+                [1, 0, 1],
+            ]
+        )
+
+
+def test_cylinder_scale_and_translation_invariance() -> None:
+    axis = np.array([1.0, 2.0, 3.0])
+    axis /= np.linalg.norm(axis)
+    for scale in (1e-8, 1.0, 1e8):
+        center = np.array([3.0, -2.0, 7.0]) * scale
+        points = _cylinder_points(
+            axis,
+            center,
+            4.0 * scale,
+            12.0 * scale,
+            theta_count=18,
+            axial_count=6,
+        )
+        fit = fit_cylinder_3d(points)
+        got_axis = np.asarray(fit["axis_direction"])
+        assert abs(float(np.dot(got_axis, axis))) > 1 - 1e-10
+        assert fit["radius"] == pytest.approx(4.0 * scale, rel=1e-10)
+
+
+def test_project_points_to_section_known_frame_and_filter() -> None:
+    points = [
+        [1, 2, 0],
+        [3, 4, 0.1],
+        [-2, 5, -0.2],
+        [9, 9, 2.0],
+    ]
+    section = project_points_to_section(
+        points,
+        [0, 0, 0],
+        [0, 0, 1],
+        half_thickness=0.25,
+    )
+    assert section["selected_count"] == 3
+    assert section["source_indices"] == [0, 1, 2]
+    projected = np.asarray(section["projected_points_global"])
+    assert np.allclose(projected[:, 2], 0.0, atol=1e-12)
+    assert section["signed_offset_stats"]["max_abs"] == pytest.approx(0.2)
 
 
 @pytest.mark.parametrize("seed", [260929, 260930, 260931])
