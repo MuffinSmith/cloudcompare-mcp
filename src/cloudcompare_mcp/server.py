@@ -2098,7 +2098,36 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
 
         native["python_backends"] = backend_capabilities()
         from .feature_fit import feature_fit_capabilities
-        native["python_feature_fitting"] = feature_fit_capabilities()
+
+        feature_fitting = feature_fit_capabilities()
+        region_query = native.get("region_query")
+        region_available = (
+            isinstance(region_query, dict)
+            and bool(region_query.get("available"))
+        )
+        if region_available:
+            cross_section = feature_fitting.get("cross_section_projection")
+            if isinstance(cross_section, dict):
+                cross_section["full_cloud_slab_extraction"] = True
+                cross_section["full_cloud_slab_extraction_mode"] = (
+                    "native full-cloud scan with bounded deterministic point sample "
+                    "and exact all-match summaries"
+                )
+
+        native["python_feature_fitting"] = feature_fitting
+        native["live_region_fitting"] = {
+            "available": region_available,
+            "image_required": False,
+            "manual_picking_required": False,
+            "region_types": (
+                region_query.get("region_types", [])
+                if isinstance(region_query, dict)
+                else []
+            ),
+            "direct_region_fits": ["plane", "circle", "cylinder"],
+            "full_cloud_section_sample": region_available,
+            "raw_point_payload_bounded": True,
+        }
         return _ok(native)
     except (LiveBridgeError, Exception) as exc:
         return _err(str(exc))
