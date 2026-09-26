@@ -260,6 +260,14 @@ class LiveRegionContractTests(unittest.TestCase):
             body["region_query"]["region_types"],
             ["sphere", "box", "slab", "nearest"],
         )
+        self.assertTrue(body["live_region_fitting"]["available"])
+        self.assertFalse(body["live_region_fitting"]["image_required"])
+        self.assertFalse(body["live_region_fitting"]["manual_picking_required"])
+        self.assertTrue(
+            body["python_feature_fitting"]["cross_section_projection"][
+                "full_cloud_slab_extraction"
+            ]
+        )
 
     def test_truncated_region_fit_reports_sampling_warning(self) -> None:
         points = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]]
