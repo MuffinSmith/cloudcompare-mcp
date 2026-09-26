@@ -175,6 +175,39 @@ class LiveRegionContractTests(unittest.TestCase):
         self.assertNotIn("points_global", body)
         self.assertAlmostEqual(body["signed_offset_stats"]["max_abs"], 0.2)
 
+    def test_section_preview_uses_projection_source_mapping(self) -> None:
+        native = _native_region(
+            [
+                [1, 2, 0.0],
+                [9, 9, 2.0],
+                [3, 4, 0.1],
+                [-2, 5, -0.2],
+            ],
+            matched_count=4,
+        )
+        with patch.object(server, "live_request", return_value=native):
+            result = server.handle_extract_live_section(
+                {
+                    "cloud_id": 7,
+                    "origin": [0, 0, 0],
+                    "normal": [0, 0, 1],
+                    "half_thickness": 0.25,
+                    "sample_limit": 4,
+                    "preview_points": 3,
+                }
+            )
+
+        body = _body(result)
+        self.assertEqual(body["projected_sample_count"], 3)
+        self.assertEqual(
+            [point["point_index"] for point in body["profile_preview"]],
+            [0, 2, 3],
+        )
+        self.assertEqual(
+            [point["signed_offset"] for point in body["profile_preview"]],
+            [0.0, 0.1, -0.2],
+        )
+
     def test_region_fit_rejects_malformed_or_insufficient_native_samples(self) -> None:
         malformed = _native_region([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
         malformed["points"][1]["position_global"] = [math.nan, 0, 0]
