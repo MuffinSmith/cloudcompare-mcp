@@ -597,6 +597,11 @@ ccGenericMesh* requireMesh(
     return mesh;
 }
 
+ccPointCloud* requireStandaloneCloud(
+    ccMainAppInterface* app,
+    unsigned id,
+    QString& error );
+
 QJsonObject pointCloudPointDescription(
     ccPointCloud* cloud,
     unsigned pointIndex )
