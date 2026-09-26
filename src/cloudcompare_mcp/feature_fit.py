@@ -202,9 +202,12 @@ def _refine_circle_2d(
             ) from exc
 
         parameters += step
-        if float(np.linalg.norm(step)) <= 1.0e-12 * max(
-            1.0, abs(float(parameters[2]))
-        ):
+        parameter_scale = max(
+            float(np.linalg.norm(parameters)),
+            abs(float(parameters[2])),
+            np.finfo(np.float64).tiny,
+        )
+        if float(np.linalg.norm(step)) <= 1.0e-12 * parameter_scale:
             break
 
     if not np.isfinite(parameters).all() or parameters[2] <= 0:
@@ -683,7 +686,13 @@ def fit_cylinder_3d(points: Iterable[Sequence[float]]) -> dict[str, Any]:
                     trial = _cylinder_for_axis(xyz, centroid, trial_direction)
                 except FeatureFitError:
                     continue
-                tolerance = max(1.0e-15, current["rms"] * 1.0e-12)
+                tolerance = max(
+                    np.finfo(np.float64).tiny,
+                    current["rms"] * 1.0e-12,
+                    abs(float(current["radius"]))
+                    * np.finfo(np.float64).eps
+                    * 64.0,
+                )
                 if trial["rms"] + tolerance < best["rms"]:
                     best = trial
                     improved = True
@@ -777,7 +786,8 @@ def line_relationship(
     cross = np.cross(d1, d2)
     cross_norm = float(np.linalg.norm(cross))
 
-    if cross_norm <= 1.0e-12:
+    parallel_threshold = math.sqrt(np.finfo(np.float64).eps)
+    if cross_norm <= parallel_threshold:
         offset = p2 - p1
         perpendicular = offset - d1 * float(np.dot(offset, d1))
         distance = float(np.linalg.norm(perpendicular))
@@ -836,7 +846,8 @@ def line_plane_relationship(
     signed_point_distance = float(np.dot(point - plane_point, normal))
 
     intersection = None
-    if abs(dot) > 1.0e-12:
+    parallel_threshold = math.sqrt(np.finfo(np.float64).eps)
+    if abs(dot) > parallel_threshold:
         parameter = float(np.dot(plane_point - point, normal) / dot)
         intersection = _vector3(point + parameter * direction)
 
@@ -844,7 +855,7 @@ def line_plane_relationship(
         "angle_to_plane_degrees": float(angle_to_plane),
         "axis_point_signed_distance": signed_point_distance,
         "axis_point_absolute_distance": abs(signed_point_distance),
-        "parallel_to_plane": bool(abs(dot) <= 1.0e-12),
+        "parallel_to_plane": bool(abs(dot) <= parallel_threshold),
         "perpendicular_to_plane_within_1_degree": bool(angle_to_plane >= 89.0),
         "intersection_point": intersection,
     }
