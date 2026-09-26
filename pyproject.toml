@@ -38,8 +38,8 @@ cloudcompare-mcp = "cloudcompare_mcp.server:main"
 
 [project.urls]
 Homepage = "https://github.com/MuffinSmith/cloudcompare-mcp"
-Repository = "https://github.com/yufeioptimal/cloudcompare-mcp"
-Issues = "https://github.com/yufeioptimal/cloudcompare-mcp/issues"
+Repository = "https://github.com/MuffinSmith/cloudcompare-mcp"
+Issues = "https://github.com/MuffinSmith/cloudcompare-mcp/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cloudcompare_mcp"]
