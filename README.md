@@ -22,6 +22,9 @@ Coarse point-pair registration plus live C2C/C2M quality analysis are documented
 Interactive viewport picking, point inspection, distance and angle measurements are
 documented in [docs/LIVE_METROLOGY.md](docs/LIVE_METROLOGY.md).
 
+Plane/circle fitting and derived metrology from captured picks are documented in
+[docs/LIVE_FEATURE_FITTING.md](docs/LIVE_FEATURE_FITTING.md).
+
 ## Features
 
 ### Native tools (no CloudCompare required)
@@ -64,6 +67,10 @@ These tools operate on the **CloudCompare instance that is already open** instea
 | `inspect_live_point` | Inspect exact coordinates/RGB/normal/scalars for a point index |
 | `measure_live_picked_distance` | Measure distance and XYZ deltas between captured picks |
 | `measure_live_picked_angle` | Measure a three-point angle from captured picks |
+| `fit_live_plane` | Fit an orthogonal least-squares plane to captured global picks |
+| `fit_live_circle` | Fit a 3D circle/hole with diameter and residual diagnostics |
+| `measure_live_pick_to_plane` | Measure a captured point to a fitted picked plane |
+| `compare_live_picked_planes` | Compare fitted plane angle and normal-direction offsets |
 
 The plugin source is included under `cloudcompare-plugin/qMCPBridge`. It runs a newline-delimited JSON control server bound to `127.0.0.1:8765` by default. See that directory's README for CloudCompare build/install instructions.
 
