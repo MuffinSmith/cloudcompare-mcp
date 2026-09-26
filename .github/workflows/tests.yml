@@ -8,6 +8,7 @@ on:
       - feature/live-registration
       - feature/live-registration-analysis
       - feature/live-metrology
+      - feature/live-feature-fitting
   pull_request:
 
 jobs:
