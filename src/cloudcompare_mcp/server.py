@@ -921,10 +921,10 @@ TOOLS: list[Tool] = [
                     "items": {"type": "integer", "minimum": 1, "maximum": 32},
                     "minItems": 3,
                     "maxItems": 3,
-                    "default": [6, 6, 6]
+                    "default": [4, 4, 4]
                 },
                 "min_count": {"type": "integer", "minimum": 1, "default": 1},
-                "max_cells": {"type": "integer", "minimum": 0, "maximum": 1024, "default": 256}
+                "max_cells": {"type": "integer", "minimum": 0, "maximum": 1024, "default": 64}
             },
             "required": ["cloud_id"]
         },
@@ -2524,9 +2524,9 @@ def handle_describe_live_region_grid(args: dict) -> list[TextContent] | CallTool
         params = {
             "cloud_id": int(args["cloud_id"]),
             "coordinate_space": args.get("coordinate_space", "global"),
-            "divisions": args.get("divisions", [6, 6, 6]),
+            "divisions": args.get("divisions", [4, 4, 4]),
             "min_count": int(args.get("min_count", 1)),
-            "max_cells": int(args.get("max_cells", 256)),
+            "max_cells": int(args.get("max_cells", 64)),
         }
         if "min" in args or "max" in args:
             if "min" not in args or "max" not in args:
