@@ -903,6 +903,101 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="describe_live_region_grid",
+        description=(
+            "Describe a live point cloud numerically as a coarse 3D grid with exact per-cell counts, "
+            "centroids, bounds, covariance-derived linearity/planarity/scattering, and RMS thickness. "
+            "Use this as an image-free spatial view and recursively query smaller bounds to zoom in."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "coordinate_space": {"type": "string", "enum": ["global", "native_local"], "default": "global"},
+                "min": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "max": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "divisions": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 1, "maximum": 32},
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "default": [6, 6, 6]
+                },
+                "min_count": {"type": "integer", "minimum": 1, "default": 1},
+                "max_cells": {"type": "integer", "minimum": 0, "maximum": 1024, "default": 256}
+            },
+            "required": ["cloud_id"]
+        },
+    ),
+    Tool(
+        name="discover_live_planes",
+        description=(
+            "Discover dominant planar patches inside a live point-cloud region without screenshots or manual picks. "
+            "Uses a deterministic bounded region sample, RANSAC candidate discovery, orthogonal least-squares refinement, "
+            "and returns support fraction plus residual/extent diagnostics for each candidate."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "region": {
+                    "type": "object",
+                    "description": (
+                        "Region selector. type=sphere uses center/radius; type=box uses min/max; "
+                        "type=slab uses origin/normal/half_thickness; type=nearest uses center and optional max_distance."
+                    ),
+                    "properties": {
+                        "type": {"type": "string", "enum": ["sphere", "box", "slab", "nearest"]},
+                        "center": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "radius": {"type": "number", "exclusiveMinimum": 0},
+                        "min": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "max": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "origin": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "normal": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "half_thickness": {"type": "number", "minimum": 0},
+                        "max_distance": {"type": "number", "minimum": 0}
+                    },
+                    "required": ["type"]
+                },
+                "coordinate_space": {"type": "string", "enum": ["global", "native_local"], "default": "global"},
+                "sample_limit": {"type": "integer", "minimum": 3, "maximum": 20000, "default": 5000},
+                "distance_threshold": {"type": "number", "exclusiveMinimum": 0},
+                "max_planes": {"type": "integer", "minimum": 1, "maximum": 16, "default": 5},
+                "min_points": {"type": "integer", "minimum": 3, "default": 30},
+                "min_inlier_fraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.05},
+                "iterations": {"type": "integer", "minimum": 10, "maximum": 5000, "default": 400}
+            },
+            "required": ["cloud_id", "region"]
+        },
+    ),
+    Tool(
+        name="describe_live_section_grid",
+        description=(
+            "Create a compact sparse 2D occupancy map of a full-cloud slab section without returning an image or raw profile. "
+            "The bridge scans the full cloud, samples the slab deterministically, projects to a stable U/V frame, and bins that sample."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "origin": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "normal": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "half_thickness": {"type": "number", "minimum": 0},
+                "sample_limit": {"type": "integer", "minimum": 1, "maximum": 20000, "default": 20000},
+                "divisions": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 1, "maximum": 128},
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "default": [24, 24]
+                },
+                "min_count": {"type": "integer", "minimum": 1, "default": 1},
+                "max_cells": {"type": "integer", "minimum": 0, "maximum": 4096, "default": 512}
+            },
+            "required": ["cloud_id", "origin", "normal", "half_thickness"]
+        },
+    ),
+    Tool(
         name="create_live_group",
         description=(
             "Create an empty group in the open CloudCompare DB tree for organizing MCP working results. "
@@ -2115,6 +2210,8 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
                 )
 
         native["python_feature_fitting"] = feature_fitting
+        from .feature_discovery import discovery_capabilities
+        native["python_feature_discovery"] = discovery_capabilities()
         native["live_region_fitting"] = {
             "available": region_available,
             "image_required": False,
@@ -2408,6 +2505,147 @@ def handle_extract_live_section(args: dict) -> list[TextContent] | CallToolResul
                 "projected_bounds": projection["projected_bounds"],
                 "signed_offset_stats": projection["signed_offset_stats"],
                 "profile_preview": preview,
+            }
+        )
+    except (
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return _err(str(exc))
+
+
+def handle_describe_live_region_grid(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_discovery import FeatureFitError, enrich_region_grid
+
+    try:
+        params = {
+            "cloud_id": int(args["cloud_id"]),
+            "coordinate_space": args.get("coordinate_space", "global"),
+            "divisions": args.get("divisions", [6, 6, 6]),
+            "min_count": int(args.get("min_count", 1)),
+            "max_cells": int(args.get("max_cells", 256)),
+        }
+        if "min" in args or "max" in args:
+            if "min" not in args or "max" not in args:
+                raise FeatureFitError("Both min and max are required for explicit grid bounds")
+            params["min"] = args["min"]
+            params["max"] = args["max"]
+
+        native = live_request("cloud.region_grid", params, timeout=300.0)
+        enriched = enrich_region_grid(native)
+        enriched["image_required"] = False
+        enriched["source_geometry_preserved"] = True
+        return _ok(enriched)
+    except (FeatureFitError, LiveBridgeError, KeyError, TypeError, ValueError) as exc:
+        return _err(str(exc))
+
+
+def handle_discover_live_planes(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_discovery import FeatureFitError, discover_planes
+
+    try:
+        sample_limit = int(args.get("sample_limit", 5000))
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region=args["region"],
+            coordinate_space=args.get("coordinate_space", "global"),
+            max_points=sample_limit,
+        )
+        positions = _region_positions_global(native, minimum=3)
+        kwargs = {
+            "max_planes": int(args.get("max_planes", 5)),
+            "min_points": int(args.get("min_points", 30)),
+            "min_inlier_fraction": float(args.get("min_inlier_fraction", 0.05)),
+            "iterations": int(args.get("iterations", 400)),
+            "random_seed": 0,
+        }
+        if "distance_threshold" in args:
+            kwargs["distance_threshold"] = float(args["distance_threshold"])
+
+        discovery = discover_planes(positions, **kwargs)
+        discovery["coordinate_space"] = "global"
+        discovery["units"] = "native"
+        discovery["units_confirmed"] = False
+        discovery["source_cloud_id"] = int(args["cloud_id"])
+        discovery["source_geometry_preserved"] = True
+        discovery["region"] = args["region"]
+        discovery["region_coordinate_space"] = args.get("coordinate_space", "global")
+        discovery["region_match_count"] = native.get("matched_count")
+        discovery["region_sample_count"] = native.get("returned_count")
+        discovery["region_sample_truncated"] = native.get("truncated")
+        discovery["region_sample_strategy"] = native.get("sample_strategy")
+        discovery["image_required"] = False
+        if native.get("truncated"):
+            discovery["sampling_warning"] = (
+                "Plane discovery used a deterministic bounded sample of a larger matching region."
+            )
+        return _ok(discovery)
+    except (
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return _err(str(exc))
+
+
+def handle_describe_live_section_grid(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_discovery import FeatureFitError, occupancy_grid_2d
+    from .feature_fit import project_points_to_section
+
+    try:
+        sample_limit = int(args.get("sample_limit", 20000))
+        origin = args["origin"]
+        normal = args["normal"]
+        half_thickness = float(args["half_thickness"])
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region={
+                "type": "slab",
+                "origin": origin,
+                "normal": normal,
+                "half_thickness": half_thickness,
+            },
+            coordinate_space="global",
+            max_points=sample_limit,
+        )
+        positions = _region_positions_global(native, minimum=1)
+        projection = project_points_to_section(
+            positions,
+            origin,
+            normal,
+            half_thickness=half_thickness,
+        )
+        grid = occupancy_grid_2d(
+            projection["uv"],
+            divisions=args.get("divisions", [24, 24]),
+            min_count=int(args.get("min_count", 1)),
+            max_cells=int(args.get("max_cells", 512)),
+        )
+        return _ok(
+            {
+                "type": "live_section_occupancy",
+                "source_cloud_id": int(args["cloud_id"]),
+                "coordinate_space": "global",
+                "units": "native",
+                "units_confirmed": False,
+                "source_geometry_preserved": True,
+                "image_required": False,
+                "origin": projection["origin"],
+                "normal": projection["normal"],
+                "basis_u": projection["basis_u"],
+                "basis_v": projection["basis_v"],
+                "half_thickness": half_thickness,
+                "matched_count": native.get("matched_count"),
+                "sampled_count": native.get("returned_count"),
+                "sample_truncated": native.get("truncated"),
+                "sample_strategy": native.get("sample_strategy"),
+                "signed_offset_stats": projection.get("signed_offset_stats"),
+                "occupancy": grid,
             }
         )
     except (
@@ -3258,6 +3496,9 @@ async def call_tool(
         "fit_live_region_circle": handle_fit_live_region_circle,
         "fit_live_region_cylinder": handle_fit_live_region_cylinder,
         "extract_live_section": handle_extract_live_section,
+        "describe_live_region_grid": handle_describe_live_region_grid,
+        "discover_live_planes": handle_discover_live_planes,
+        "describe_live_section_grid": handle_describe_live_section_grid,
         "create_live_group": handle_create_live_group,
         "crop_live_cloud": handle_crop_live_cloud,
         "subsample_live_cloud": handle_subsample_live_cloud,
