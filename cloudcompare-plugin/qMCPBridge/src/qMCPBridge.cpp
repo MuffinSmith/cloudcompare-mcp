@@ -390,7 +390,7 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         QJsonObject result;
         result[ "protocol_version" ] = 1;
         result[ "plugin" ] = "qMCPBridge";
-        result[ "plugin_version" ] = "0.10.0";
+        result[ "plugin_version" ] = "0.11.0";
         result[ "process_id" ] = QCoreApplication::applicationPid();
         addApplicationVersion( result );
         result[ "port" ] = static_cast<int>( m_port );
