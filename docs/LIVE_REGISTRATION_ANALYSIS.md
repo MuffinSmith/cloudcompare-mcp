@@ -25,6 +25,12 @@ The default is `preview_only=true`. Preview returns the rigid transform and
 point-pair residual statistics without adding geometry. Applied mode creates a new
 transformed clone of the data cloud; neither source is modified.
 
+The response returns two transform representations. `transformation_matrix_column_major`
+maps the data cloud's stored local coordinates into the aligned local coordinates used
+for the live clone. `transformation_matrix_global_column_major` expresses the
+equivalent transform in CloudCompare global coordinates, including the common
+shift/scale frame conversion.
+
 Point-pair registration is intended to get badly displaced scans close enough for
 ICP. It is not a replacement for ICP refinement.
 
