@@ -15,6 +15,8 @@
 #include <PlyFilter.h>
 #include <CloudSamplingTools.h>
 #include <CCConst.h>
+#include <DistanceComputationTools.h>
+#include <PointCloud.h>
 #include <ReferenceCloud.h>
 #include <RegistrationTools.h>
 #include <ccBBox.h>
@@ -340,6 +342,219 @@ QJsonArray matrixJson( const ccGLMatrix& matrix )
         out.append( static_cast<double>( values[i] ) );
     }
     return out;
+}
+
+bool readPointList(
+    const QJsonObject& object,
+    const char* key,
+    std::vector<CCVector3d>& points,
+    QString& error )
+{
+    const QJsonValue value = object.value( QLatin1String( key ) );
+    if ( !value.isArray() )
+    {
+        error = QString( "%1 must be an array of [x,y,z] points" ).arg( key );
+        return false;
+    }
+
+    const QJsonArray array = value.toArray();
+    if ( array.size() < 3 )
+    {
+        error = QString( "%1 must contain at least three points" ).arg( key );
+        return false;
+    }
+
+    points.clear();
+    points.reserve( static_cast<size_t>( array.size() ) );
+    for ( int pointIndex = 0; pointIndex < array.size(); ++pointIndex )
+    {
+        const QJsonArray point = array.at( pointIndex ).toArray();
+        if ( point.size() != 3 )
+        {
+            error = QString( "%1[%2] must contain exactly three numeric values" )
+                        .arg( key )
+                        .arg( pointIndex );
+            return false;
+        }
+
+        double coordinates[3];
+        for ( int axis = 0; axis < 3; ++axis )
+        {
+            if ( !point.at( axis ).isDouble() )
+            {
+                error = QString( "%1[%2] must contain exactly three numeric values" )
+                            .arg( key )
+                            .arg( pointIndex );
+                return false;
+            }
+            coordinates[axis] = point.at( axis ).toDouble();
+            if ( !std::isfinite( coordinates[axis] ) )
+            {
+                error = QString( "%1[%2] coordinates must be finite" )
+                            .arg( key )
+                            .arg( pointIndex );
+                return false;
+            }
+        }
+        points.emplace_back( coordinates[0], coordinates[1], coordinates[2] );
+    }
+
+    return true;
+}
+
+double percentileSorted( const std::vector<double>& sorted, double fraction )
+{
+    if ( sorted.empty() )
+    {
+        return 0.0;
+    }
+    const double position = fraction * static_cast<double>( sorted.size() - 1 );
+    const size_t lower = static_cast<size_t>( std::floor( position ) );
+    const size_t upper = static_cast<size_t>( std::ceil( position ) );
+    if ( lower == upper )
+    {
+        return sorted[lower];
+    }
+    const double weight = position - static_cast<double>( lower );
+    return sorted[lower] * ( 1.0 - weight ) + sorted[upper] * weight;
+}
+
+QJsonObject numericStats( std::vector<double> values )
+{
+    QJsonObject out;
+    values.erase(
+        std::remove_if(
+            values.begin(),
+            values.end(),
+            []( double value ) { return !std::isfinite( value ); } ),
+        values.end() );
+
+    out[ "count" ] = static_cast<qint64>( values.size() );
+    if ( values.empty() )
+    {
+        return out;
+    }
+
+    double sum = 0.0;
+    double sumSquares = 0.0;
+    for ( double value : values )
+    {
+        sum += value;
+        sumSquares += value * value;
+    }
+
+    std::sort( values.begin(), values.end() );
+    const double mean = sum / static_cast<double>( values.size() );
+    double varianceSum = 0.0;
+    for ( double value : values )
+    {
+        const double delta = value - mean;
+        varianceSum += delta * delta;
+    }
+
+    out[ "min" ] = values.front();
+    out[ "max" ] = values.back();
+    out[ "mean" ] = mean;
+    out[ "rms" ] = std::sqrt( sumSquares / static_cast<double>( values.size() ) );
+    out[ "stddev" ] = std::sqrt( varianceSum / static_cast<double>( values.size() ) );
+    out[ "median" ] = percentileSorted( values, 0.50 );
+    out[ "p95" ] = percentileSorted( values, 0.95 );
+    out[ "p99" ] = percentileSorted( values, 0.99 );
+
+    const int histogramBins = 20;
+    QJsonArray edges;
+    QJsonArray counts;
+    const double minimum = values.front();
+    const double maximum = values.back();
+    if ( maximum > minimum )
+    {
+        std::vector<qint64> binCounts( histogramBins, 0 );
+        for ( double value : values )
+        {
+            int bin = static_cast<int>(
+                ( value - minimum ) / ( maximum - minimum ) * histogramBins );
+            if ( bin >= histogramBins )
+                bin = histogramBins - 1;
+            if ( bin < 0 )
+                bin = 0;
+            ++binCounts[static_cast<size_t>( bin )];
+        }
+        for ( int i = 0; i <= histogramBins; ++i )
+        {
+            edges.append(
+                minimum
+                + ( maximum - minimum )
+                    * static_cast<double>( i ) / static_cast<double>( histogramBins ) );
+        }
+        for ( qint64 count : binCounts )
+        {
+            counts.append( count );
+        }
+    }
+    else
+    {
+        edges.append( minimum );
+        edges.append( maximum );
+        counts.append( static_cast<qint64>( values.size() ) );
+    }
+
+    QJsonObject histogram;
+    histogram[ "bin_edges" ] = edges;
+    histogram[ "counts" ] = counts;
+    out[ "histogram" ] = histogram;
+    return out;
+}
+
+std::vector<double> scalarValues( const ccScalarField* field )
+{
+    std::vector<double> values;
+    if ( !field )
+    {
+        return values;
+    }
+    values.reserve( field->currentSize() );
+    for ( unsigned i = 0; i < field->currentSize(); ++i )
+    {
+        values.push_back( static_cast<double>( field->getValue( i ) ) );
+    }
+    return values;
+}
+
+QString uniqueScalarFieldName( ccPointCloud* cloud, const QString& baseName )
+{
+    QString candidate = baseName;
+    int suffix = 2;
+    while ( cloud->getScalarFieldIndexByName( candidate.toStdString() ) >= 0 )
+    {
+        candidate = QString( "%1 %2" ).arg( baseName ).arg( suffix++ );
+    }
+    return candidate;
+}
+
+ccGenericMesh* requireMesh(
+    ccMainAppInterface* app,
+    unsigned id,
+    QString& error )
+{
+    ccHObject* entity = findEntity( app, id );
+    if ( !entity )
+    {
+        error = QString( "Entity %1 was not found" ).arg( id );
+        return nullptr;
+    }
+    if ( !entity->isKindOf( CC_TYPES::MESH ) )
+    {
+        error = QString( "Entity %1 is not a triangle mesh" ).arg( id );
+        return nullptr;
+    }
+
+    ccGenericMesh* mesh = ccHObjectCaster::ToGenericMesh( entity );
+    if ( !mesh || !mesh->getAssociatedCloud() )
+    {
+        error = QString( "Entity %1 does not expose usable mesh geometry" ).arg( id );
+        return nullptr;
+    }
+    return mesh;
 }
 
 QJsonArray partialCloneWarnings( int warnings )
@@ -1140,17 +1355,486 @@ bool registerCloudsICP(
     return true;
 }
 
+bool registerPointPairs(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned dataId = 0;
+    unsigned modelId = 0;
+    if ( !readId( params, "data_id", dataId ) || !readId( params, "model_id", modelId ) )
+    {
+        error = "cloud.register_point_pairs requires numeric data_id and model_id";
+        return true;
+    }
+    if ( dataId == modelId )
+    {
+        error = "cloud.register_point_pairs requires different data and model entities";
+        return true;
+    }
+
+    ccPointCloud* dataSource = requireStandaloneCloud( app, dataId, error );
+    if ( !dataSource )
+        return true;
+    ccPointCloud* modelSource = requireStandaloneCloud( app, modelId, error );
+    if ( !modelSource )
+        return true;
+
+    if ( !compatibleFrames( dataSource, modelSource ) )
+    {
+        error =
+            "Point-pair registration currently requires data and model clouds to share "
+            "the same CloudCompare global shift/scale frame.";
+        return true;
+    }
+
+    std::vector<CCVector3d> dataPoints;
+    std::vector<CCVector3d> modelPoints;
+    if ( !readPointList( params, "data_points", dataPoints, error )
+         || !readPointList( params, "model_points", modelPoints, error ) )
+    {
+        return true;
+    }
+    if ( dataPoints.size() != modelPoints.size() )
+    {
+        error = "data_points and model_points must contain the same number of correspondences";
+        return true;
+    }
+
+    const QString coordinateSpace = params.value( "coordinate_space" ).toString( "global" );
+    if ( coordinateSpace != "global" && coordinateSpace != "native_local" )
+    {
+        error = "coordinate_space must be 'global' or 'native_local'";
+        return true;
+    }
+
+    const bool previewOnly = params.value( "preview_only" ).toBool( true );
+    QString requestedName;
+    if ( params.contains( "name" ) )
+    {
+        requestedName = params.value( "name" ).toString().trimmed();
+        if ( requestedName.isEmpty() )
+        {
+            error = "cloud.register_point_pairs name must be non-empty when supplied";
+            return true;
+        }
+    }
+
+    ccHObject* destination = nullptr;
+    if ( !resolveDestination( app, params, destination, error ) )
+        return true;
+
+    CCCoreLib::PointCloud alignedPoints;
+    CCCoreLib::PointCloud referencePoints;
+    if ( !alignedPoints.reserve( static_cast<unsigned>( dataPoints.size() ) )
+         || !referencePoints.reserve( static_cast<unsigned>( modelPoints.size() ) ) )
+    {
+        error = "Could not allocate point-pair registration correspondences";
+        return true;
+    }
+
+    std::vector<CCVector3d> dataLocal;
+    std::vector<CCVector3d> modelLocalInDataFrame;
+    std::vector<CCVector3d> modelGlobal;
+    dataLocal.reserve( dataPoints.size() );
+    modelLocalInDataFrame.reserve( modelPoints.size() );
+    modelGlobal.reserve( modelPoints.size() );
+
+    for ( size_t i = 0; i < dataPoints.size(); ++i )
+    {
+        CCVector3d dataGlobalPoint;
+        CCVector3d modelGlobalPoint;
+        if ( coordinateSpace == "global" )
+        {
+            dataGlobalPoint = dataPoints[i];
+            modelGlobalPoint = modelPoints[i];
+        }
+        else
+        {
+            dataGlobalPoint =
+                dataSource->toGlobal3d<PointCoordinateType>( dataPoints[i].toPC() );
+            modelGlobalPoint =
+                modelSource->toGlobal3d<PointCoordinateType>( modelPoints[i].toPC() );
+        }
+
+        const CCVector3d dataLocalPoint = dataSource->toLocal3d<double>( dataGlobalPoint );
+        const CCVector3d targetLocalPoint = dataSource->toLocal3d<double>( modelGlobalPoint );
+        dataLocal.push_back( dataLocalPoint );
+        modelLocalInDataFrame.push_back( targetLocalPoint );
+        modelGlobal.push_back( modelGlobalPoint );
+        alignedPoints.addPoint( dataLocalPoint.toPC() );
+        referencePoints.addPoint( targetLocalPoint.toPC() );
+    }
+
+    CCCoreLib::PointProjectionTools::Transformation transform;
+    if ( !CCCoreLib::HornRegistrationTools::FindAbsoluteOrientation(
+             &alignedPoints,
+             &referencePoints,
+             transform,
+             true ) )
+    {
+        error =
+            "Point-pair registration failed. Correspondences may be collinear, duplicated, "
+            "or otherwise geometrically degenerate.";
+        return true;
+    }
+
+    ccGLMatrix transformMatrix =
+        FromCCLibMatrix<double, float>( transform.R, transform.T, transform.s );
+
+    std::vector<double> residuals;
+    residuals.reserve( dataLocal.size() );
+    for ( size_t i = 0; i < dataLocal.size(); ++i )
+    {
+        const CCVector3d predictedLocal =
+            ( transform.R * dataLocal[i] ) * transform.s + transform.T;
+        const CCVector3d predictedGlobal =
+            dataSource->toGlobal3d<PointCoordinateType>( predictedLocal.toPC() );
+        residuals.push_back(
+            std::sqrt( ( predictedGlobal - modelGlobal[i] ).norm2d() ) );
+    }
+
+    QJsonObject out;
+    out[ "data_id" ] = static_cast<qint64>( dataId );
+    out[ "model_id" ] = static_cast<qint64>( modelId );
+    out[ "correspondence_count" ] = static_cast<qint64>( dataPoints.size() );
+    out[ "coordinate_space" ] = coordinateSpace;
+    out[ "data_source_preserved" ] = true;
+    out[ "model_source_preserved" ] = true;
+    out[ "preview_only" ] = previewOnly;
+    out[ "scale" ] = transform.s;
+    out[ "transformation_matrix_column_major" ] = matrixJson( transformMatrix );
+    out[ "pair_residuals_global_native" ] = numericStats( residuals );
+    out[ "result_created" ] = false;
+
+    if ( !previewOnly )
+    {
+        std::unique_ptr<ccPointCloud> aligned( dataSource->cloneThis( nullptr, true ) );
+        if ( !aligned )
+        {
+            error = "Point-pair registration succeeded but the aligned result clone could not be allocated";
+            return true;
+        }
+        aligned->applyGLTransformation_recursive( &transformMatrix );
+        aligned->setName(
+            requestedName.isEmpty()
+                ? dataSource->getName() + ".mcp_point_pair_aligned"
+                : requestedName );
+        aligned->setVisible( true );
+        aligned->setEnabled( true );
+
+        ccPointCloud* liveAligned = aligned.release();
+        attachToDestination( app, liveAligned, destination );
+        app->refreshAll();
+        app->updateUI();
+        out[ "result_created" ] = true;
+        out[ "result_entity" ] = entityDescription( liveAligned, false );
+    }
+
+    result = out;
+    return true;
+}
+
+bool analyzeCloudToCloud(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned comparedId = 0;
+    unsigned referenceId = 0;
+    if ( !readId( params, "compared_id", comparedId )
+         || !readId( params, "reference_id", referenceId ) )
+    {
+        error = "cloud.distance_c2c requires numeric compared_id and reference_id";
+        return true;
+    }
+
+    ccPointCloud* comparedSource = requireStandaloneCloud( app, comparedId, error );
+    if ( !comparedSource )
+        return true;
+    ccPointCloud* referenceSource = requireStandaloneCloud( app, referenceId, error );
+    if ( !referenceSource )
+        return true;
+    if ( comparedSource->size() == 0 || referenceSource->size() == 0 )
+    {
+        error = "C2C distance analysis requires non-empty compared and reference clouds";
+        return true;
+    }
+    if ( !compatibleFrames( comparedSource, referenceSource ) )
+    {
+        error =
+            "C2C distance analysis currently requires identical CloudCompare global "
+            "shift/scale metadata.";
+        return true;
+    }
+
+    const double maxDistance = params.value( "max_distance" ).toDouble( 0.0 );
+    if ( !std::isfinite( maxDistance ) || maxDistance < 0.0 )
+    {
+        error = "max_distance must be non-negative in native coordinate units";
+        return true;
+    }
+
+    const bool createResult = params.value( "create_result" ).toBool( false );
+    QString requestedName;
+    if ( params.contains( "name" ) )
+    {
+        requestedName = params.value( "name" ).toString().trimmed();
+        if ( requestedName.isEmpty() )
+        {
+            error = "cloud.distance_c2c name must be non-empty when supplied";
+            return true;
+        }
+    }
+
+    ccHObject* destination = nullptr;
+    if ( !resolveDestination( app, params, destination, error ) )
+        return true;
+
+    std::unique_ptr<ccPointCloud> working( comparedSource->cloneThis( nullptr, true ) );
+    if ( !working )
+    {
+        error = "Could not allocate the C2C analysis working clone";
+        return true;
+    }
+
+    const QString scalarName = uniqueScalarFieldName( working.get(), "MCP C2C distance" );
+    const int scalarIndex = working->addScalarField( scalarName.toStdString() );
+    if ( scalarIndex < 0 )
+    {
+        error = "Could not allocate the C2C distance scalar field";
+        return true;
+    }
+    working->setCurrentScalarField( scalarIndex );
+
+    CCCoreLib::DistanceComputationTools::Cloud2CloudDistancesComputationParams distanceParams;
+    distanceParams.maxSearchDist = static_cast<ScalarType>( maxDistance );
+    distanceParams.multiThread = true;
+    distanceParams.maxThreadCount = 0;
+    distanceParams.localModel = CCCoreLib::NO_MODEL;
+    distanceParams.resetFormerDistances = true;
+
+    const int computationResult =
+        CCCoreLib::DistanceComputationTools::computeCloud2CloudDistances(
+            working.get(),
+            referenceSource,
+            distanceParams );
+    if ( computationResult < CCCoreLib::DistanceComputationTools::DISTANCE_COMPUTATION_RESULTS::SUCCESS )
+    {
+        error = QString( "CloudCompare C2C distance computation failed with code %1" )
+                    .arg( computationResult );
+        return true;
+    }
+
+    ccScalarField* scalarField =
+        static_cast<ccScalarField*>( working->getScalarField( scalarIndex ) );
+    scalarField->computeMinAndMax();
+    const std::vector<double> values = scalarValues( scalarField );
+
+    QJsonObject out;
+    out[ "compared_id" ] = static_cast<qint64>( comparedId );
+    out[ "reference_id" ] = static_cast<qint64>( referenceId );
+    out[ "compared_source_preserved" ] = true;
+    out[ "reference_source_preserved" ] = true;
+    out[ "max_distance_native" ] = maxDistance;
+    out[ "scalar_field_name" ] = scalarName;
+    out[ "point_count" ] = static_cast<qint64>( working->size() );
+    out[ "valid_distance_count" ] = numericStats( values ).value( "count" );
+    out[ "distance_stats_native" ] = numericStats( values );
+    out[ "result_created" ] = false;
+
+    if ( createResult )
+    {
+        working->setCurrentDisplayedScalarField( scalarIndex );
+        working->showSF( true );
+        working->showColors( false );
+        working->setName(
+            requestedName.isEmpty()
+                ? comparedSource->getName() + ".mcp_c2c"
+                : requestedName );
+        working->setVisible( true );
+        working->setEnabled( true );
+
+        ccPointCloud* liveResult = working.release();
+        attachToDestination( app, liveResult, destination );
+        app->refreshAll();
+        app->updateUI();
+        out[ "result_created" ] = true;
+        out[ "result_entity" ] = entityDescription( liveResult, false );
+    }
+
+    result = out;
+    return true;
+}
+
+bool analyzeCloudToMesh(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned comparedId = 0;
+    unsigned meshId = 0;
+    if ( !readId( params, "compared_id", comparedId )
+         || !readId( params, "reference_mesh_id", meshId ) )
+    {
+        error = "cloud.distance_c2m requires numeric compared_id and reference_mesh_id";
+        return true;
+    }
+
+    ccPointCloud* comparedSource = requireStandaloneCloud( app, comparedId, error );
+    if ( !comparedSource )
+        return true;
+    ccGenericMesh* referenceMesh = requireMesh( app, meshId, error );
+    if ( !referenceMesh )
+        return true;
+    if ( comparedSource->size() == 0 || referenceMesh->size() == 0 )
+    {
+        error = "C2M distance analysis requires a non-empty cloud and mesh";
+        return true;
+    }
+
+    ccGenericPointCloud* meshCloud = referenceMesh->getAssociatedCloud();
+    if ( !compatibleFrames( comparedSource, meshCloud ) )
+    {
+        error =
+            "C2M distance analysis currently requires the cloud and mesh to share "
+            "identical CloudCompare global shift/scale metadata.";
+        return true;
+    }
+
+    const double maxDistance = params.value( "max_distance" ).toDouble( 0.0 );
+    if ( !std::isfinite( maxDistance ) || maxDistance < 0.0 )
+    {
+        error = "max_distance must be non-negative in native coordinate units";
+        return true;
+    }
+
+    const bool signedDistances = params.value( "signed_distances" ).toBool( false );
+    const bool flipNormals = params.value( "flip_normals" ).toBool( false );
+    const bool robust = params.value( "robust" ).toBool( true );
+    const bool createResult = params.value( "create_result" ).toBool( false );
+
+    QString requestedName;
+    if ( params.contains( "name" ) )
+    {
+        requestedName = params.value( "name" ).toString().trimmed();
+        if ( requestedName.isEmpty() )
+        {
+            error = "cloud.distance_c2m name must be non-empty when supplied";
+            return true;
+        }
+    }
+
+    ccHObject* destination = nullptr;
+    if ( !resolveDestination( app, params, destination, error ) )
+        return true;
+
+    std::unique_ptr<ccPointCloud> working( comparedSource->cloneThis( nullptr, true ) );
+    if ( !working )
+    {
+        error = "Could not allocate the C2M analysis working clone";
+        return true;
+    }
+
+    const QString scalarName = uniqueScalarFieldName(
+        working.get(),
+        signedDistances ? "MCP C2M signed distance" : "MCP C2M distance" );
+    const int scalarIndex = working->addScalarField( scalarName.toStdString() );
+    if ( scalarIndex < 0 )
+    {
+        error = "Could not allocate the C2M distance scalar field";
+        return true;
+    }
+    working->setCurrentScalarField( scalarIndex );
+
+    CCCoreLib::DistanceComputationTools::Cloud2MeshDistancesComputationParams distanceParams;
+    distanceParams.maxSearchDist = static_cast<ScalarType>( maxDistance );
+    distanceParams.useDistanceMap = false;
+    distanceParams.signedDistances = signedDistances;
+    distanceParams.flipNormals = flipNormals;
+    distanceParams.multiThread = true;
+    distanceParams.maxThreadCount = 0;
+    distanceParams.robust = robust;
+
+    const int computationResult =
+        CCCoreLib::DistanceComputationTools::computeCloud2MeshDistances(
+            working.get(),
+            referenceMesh,
+            distanceParams );
+    if ( computationResult < CCCoreLib::DistanceComputationTools::DISTANCE_COMPUTATION_RESULTS::SUCCESS )
+    {
+        error = QString( "CloudCompare C2M distance computation failed with code %1" )
+                    .arg( computationResult );
+        return true;
+    }
+
+    ccScalarField* scalarField =
+        static_cast<ccScalarField*>( working->getScalarField( scalarIndex ) );
+    scalarField->computeMinAndMax();
+    const std::vector<double> values = scalarValues( scalarField );
+
+    QJsonObject out;
+    out[ "compared_id" ] = static_cast<qint64>( comparedId );
+    out[ "reference_mesh_id" ] = static_cast<qint64>( meshId );
+    out[ "compared_source_preserved" ] = true;
+    out[ "reference_source_preserved" ] = true;
+    out[ "max_distance_native" ] = maxDistance;
+    out[ "signed_distances" ] = signedDistances;
+    out[ "flip_normals" ] = flipNormals;
+    out[ "robust" ] = robust;
+    out[ "scalar_field_name" ] = scalarName;
+    out[ "point_count" ] = static_cast<qint64>( working->size() );
+    out[ "distance_stats_native" ] = numericStats( values );
+    if ( signedDistances )
+    {
+        std::vector<double> absoluteValues;
+        absoluteValues.reserve( values.size() );
+        for ( double value : values )
+        {
+            absoluteValues.push_back( std::abs( value ) );
+        }
+        out[ "absolute_distance_stats_native" ] = numericStats( absoluteValues );
+    }
+    out[ "result_created" ] = false;
+
+    if ( createResult )
+    {
+        working->setCurrentDisplayedScalarField( scalarIndex );
+        working->showSF( true );
+        working->showColors( false );
+        working->setName(
+            requestedName.isEmpty()
+                ? comparedSource->getName() + ".mcp_c2m"
+                : requestedName );
+        working->setVisible( true );
+        working->setEnabled( true );
+
+        ccPointCloud* liveResult = working.release();
+        attachToDestination( app, liveResult, destination );
+        app->refreshAll();
+        app->updateUI();
+        out[ "result_created" ] = true;
+        out[ "result_entity" ] = entityDescription( liveResult, false );
+    }
+
+    result = out;
+    return true;
+}
+
 QJsonObject capabilities()
 {
     QJsonObject result;
     result[ "protocol_version" ] = 1;
-    result[ "workflow_revision" ] = 3;
+    result[ "workflow_revision" ] = 4;
     result[ "units_policy" ] =
         "Coordinates are reported in native units. Units remain unknown unless supplied by the caller.";
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    result[ "plugin_version" ] = "0.5.0";
+    result[ "plugin_version" ] = "0.6.0";
 
     QJsonArray bridgeOperations{
         "ping",
@@ -1175,7 +1859,10 @@ QJsonObject capabilities()
         "cloud.subsample",
         "cloud.filter_sor",
         "cloud.compute_normals",
-        "cloud.register_icp"
+        "cloud.register_icp",
+        "cloud.register_point_pairs",
+        "cloud.distance_c2c",
+        "cloud.distance_c2m"
     };
     result[ "bridge_operations" ] = bridgeOperations;
 
@@ -1190,7 +1877,10 @@ QJsonObject capabilities()
         "cloud.subsample",
         "cloud.filter_sor",
         "cloud.compute_normals",
-        "cloud.register_icp"
+        "cloud.register_icp",
+        "cloud.register_point_pairs",
+        "cloud.distance_c2c",
+        "cloud.distance_c2m"
     };
     result[ "workflow_operations" ] = workflowOperations;
 
@@ -1219,7 +1909,21 @@ QJsonObject capabilities()
         "name",
         "destination_group_id"
     };
+    registration[ "point_pair_registration" ] = true;
+    registration[ "point_pair_coordinate_spaces" ] = QJsonArray{ "global", "native_local" };
+    registration[ "point_pair_minimum_correspondences" ] = 3;
     result[ "registration" ] = registration;
+
+    QJsonObject comparison;
+    comparison[ "cloud_to_cloud" ] = true;
+    comparison[ "cloud_to_mesh" ] = true;
+    comparison[ "stats_only_default" ] = true;
+    comparison[ "optional_scalar_field_result" ] = true;
+    comparison[ "statistics" ] = QJsonArray{
+        "min", "max", "mean", "rms", "stddev", "median", "p95", "p99", "histogram"
+    };
+    comparison[ "signed_c2m" ] = true;
+    result[ "comparison" ] = comparison;
 
     QJsonArray meshing;
     {
@@ -2097,6 +2801,18 @@ bool dispatch(
     if ( method == "cloud.register_icp" )
     {
         return registerCloudsICP( app, params, result, error );
+    }
+    if ( method == "cloud.register_point_pairs" )
+    {
+        return registerPointPairs( app, params, result, error );
+    }
+    if ( method == "cloud.distance_c2c" )
+    {
+        return analyzeCloudToCloud( app, params, result, error );
+    }
+    if ( method == "cloud.distance_c2m" )
+    {
+        return analyzeCloudToMesh( app, params, result, error );
     }
     if ( method == "entity.clone" )
     {
