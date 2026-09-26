@@ -44,9 +44,10 @@ has independently established that orientation.
 
 `fit_live_circle` fits a 3D circle from captured picks.
 
-At least four captured samples are required. Three points define an exact circle
-but provide no useful redundancy for assessing fit quality; the four-point minimum
-also matches CloudCompare 2.13.2's native circle-fit input requirement.
+At least four distinct captured samples are required. Three points define an exact
+circle but provide no useful redundancy for assessing fit quality; repeated picks
+of the same spatial point therefore do not count as additional fit evidence. The
+four-point minimum also matches CloudCompare 2.13.2's native circle-fit input requirement.
 
 The algorithm:
 
