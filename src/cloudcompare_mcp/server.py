@@ -976,7 +976,7 @@ TOOLS: list[Tool] = [
                 "pick_indices": {
                     "type": "array",
                     "items": {"type": "integer", "minimum": 0},
-                    "minItems": 3,
+                    "minItems": 4,
                     "description": "Optional captured-pick indexes. Omit to use every currently captured pick.",
                 },
             },
@@ -1868,7 +1868,7 @@ def handle_fit_live_circle(args: dict) -> list[TextContent] | CallToolResult:
     try:
         points, indexes, selected = _selected_live_pick_points(
             args.get("pick_indices"),
-            minimum=3,
+            minimum=4,
         )
         return _ok(
             _decorate_feature_fit(
