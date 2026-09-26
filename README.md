@@ -31,6 +31,9 @@ Line/cylinder fitting and picked cross-section projection are documented in
 Structured point-cloud region queries, direct region fitting, and image-free slab
 sections are documented in [docs/LIVE_REGION_FITTING.md](docs/LIVE_REGION_FITTING.md).
 
+Image-free spatial grids, plane discovery, and section occupancy are documented in
+[docs/LIVE_FEATURE_DISCOVERY.md](docs/LIVE_FEATURE_DISCOVERY.md).
+
 ## Features
 
 ### Native tools (no CloudCompare required)
@@ -89,6 +92,9 @@ These tools operate on the **CloudCompare instance that is already open** instea
 | `fit_live_region_circle` | Fit a circle/hole directly to a live-cloud region |
 | `fit_live_region_cylinder` | Fit a cylinder/bore/shaft directly to a live-cloud region |
 | `extract_live_section` | Extract and project a full-cloud slab into a compact 2D section summary |
+| `describe_live_region_grid` | Numerical 3D spatial view with exact cell counts and shape metrics |
+| `discover_live_planes` | Discover dominant planar patches inside a live-cloud region |
+| `describe_live_section_grid` | Compact sparse 2D occupancy summary of a full-cloud slab section |
 
 The plugin source is included under `cloudcompare-plugin/qMCPBridge`. It runs a newline-delimited JSON control server bound to `127.0.0.1:8765` by default. See that directory's README for CloudCompare build/install instructions.
 
