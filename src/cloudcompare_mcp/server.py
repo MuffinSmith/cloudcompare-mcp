@@ -989,10 +989,10 @@ TOOLS: list[Tool] = [
                     "items": {"type": "integer", "minimum": 1, "maximum": 128},
                     "minItems": 2,
                     "maxItems": 2,
-                    "default": [24, 24]
+                    "default": [16, 16]
                 },
                 "min_count": {"type": "integer", "minimum": 1, "default": 1},
-                "max_cells": {"type": "integer", "minimum": 0, "maximum": 4096, "default": 512}
+                "max_cells": {"type": "integer", "minimum": 0, "maximum": 4096, "default": 128}
             },
             "required": ["cloud_id", "origin", "normal", "half_thickness"]
         },
@@ -2622,9 +2622,9 @@ def handle_describe_live_section_grid(args: dict) -> list[TextContent] | CallToo
         )
         grid = occupancy_grid_2d(
             projection["uv"],
-            divisions=args.get("divisions", [24, 24]),
+            divisions=args.get("divisions", [16, 16]),
             min_count=int(args.get("min_count", 1)),
-            max_cells=int(args.get("max_cells", 512)),
+            max_cells=int(args.get("max_cells", 128)),
         )
         return _ok(
             {
