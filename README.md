@@ -16,6 +16,9 @@ normal computation/orientation, and working groups. See
 Live rigid registration now supports preview-only and clone-producing point-cloud
 ICP. See [docs/LIVE_REGISTRATION.md](docs/LIVE_REGISTRATION.md).
 
+Coarse point-pair registration plus live C2C/C2M quality analysis are documented in
+[docs/LIVE_REGISTRATION_ANALYSIS.md](docs/LIVE_REGISTRATION_ANALYSIS.md).
+
 ## Features
 
 ### Native tools (no CloudCompare required)
@@ -48,6 +51,9 @@ These tools operate on the **CloudCompare instance that is already open** instea
 | `filter_live_cloud_sor` | Create a Statistical Outlier Removal filtered working cloud |
 | `compute_live_normals` | Compute normals on a working copy with optional MST orientation |
 | `register_live_icp` | Preview or create a non-destructive rigid ICP-aligned working copy |
+| `register_live_point_pairs` | Coarse rigid alignment from explicit corresponding point pairs |
+| `analyze_live_c2c` | Live cloud-to-cloud distance statistics and optional scalar-field result |
+| `analyze_live_c2m` | Live cloud-to-mesh distance statistics and optional scalar-field result |
 
 The plugin source is included under `cloudcompare-plugin/qMCPBridge`. It runs a newline-delimited JSON control server bound to `127.0.0.1:8765` by default. See that directory's README for CloudCompare build/install instructions.
 
