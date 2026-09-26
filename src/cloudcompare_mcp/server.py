@@ -2324,25 +2324,35 @@ def handle_extract_live_section(args: dict) -> list[TextContent] | CallToolResul
         uv = projection.get("uv", [])
         projected = projection.get("projected_points_global", [])
         offsets = projection.get("signed_offsets", [])
+        selected_source_indices = projection.get("source_indices", [])
         source_points = native.get("points", [])
         preview = []
-        for index in range(
-            min(
-                preview_points,
-                len(uv),
-                len(projected),
-                len(offsets),
-                len(source_points) if isinstance(source_points, list) else 0,
-            )
-        ):
-            source = source_points[index]
+        preview_count = min(
+            preview_points,
+            len(uv),
+            len(projected),
+            len(offsets),
+            len(selected_source_indices),
+        )
+        for projected_index in range(preview_count):
+            source_index = selected_source_indices[projected_index]
+            if (
+                not isinstance(source_points, list)
+                or not isinstance(source_index, int)
+                or source_index < 0
+                or source_index >= len(source_points)
+            ):
+                raise FeatureFitError(
+                    "Section projection returned an invalid source-index mapping"
+                )
+            source = source_points[source_index]
             preview.append(
                 {
                     "point_index": source.get("point_index"),
                     "position_global": source.get("position_global"),
-                    "uv": uv[index],
-                    "projected_position_global": projected[index],
-                    "signed_offset": offsets[index],
+                    "uv": uv[projected_index],
+                    "projected_position_global": projected[projected_index],
+                    "signed_offset": offsets[projected_index],
                 }
             )
 
@@ -2361,6 +2371,7 @@ def handle_extract_live_section(args: dict) -> list[TextContent] | CallToolResul
                 "half_thickness": half_thickness,
                 "matched_count": native.get("matched_count"),
                 "sampled_count": native.get("returned_count"),
+                "projected_sample_count": projection.get("selected_count"),
                 "sample_truncated": native.get("truncated"),
                 "sample_strategy": native.get("sample_strategy"),
                 "projected_bounds": projection["projected_bounds"],
