@@ -853,6 +853,98 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="start_live_picking",
+        description=(
+            "Start an interactive CloudCompare point/triangle picking session in the active 3D viewport. "
+            "The caller or GUI operator can then click visible geometry; use get_live_picks to retrieve exact "
+            "picked coordinates and attributes. The session can optionally ignore entities outside an allowlist."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "max_picks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 8,
+                    "description": "Automatically stop picking after this many accepted picks.",
+                },
+                "allowed_entity_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Optional entity allowlist; clicks on other entities are ignored.",
+                },
+                "exclusive": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Request exclusive use of CloudCompare's picking hub.",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="get_live_picks",
+        description=(
+            "Return the current interactive metrology picking-session state and all captured picks, "
+            "including entity/item IDs, native-local and global coordinates, and point attributes when available."
+        ),
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="clear_live_picks",
+        description="Clear captured picks while leaving an active picking session running.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="stop_live_picking",
+        description="Stop interactive picking and return the picks captured so far.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="inspect_live_point",
+        description=(
+            "Inspect one exact point of a standalone live point cloud by zero-based point index. "
+            "Returns native-local/global coordinates plus RGB, normal, and scalar-field values when present."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_id": {"type": "integer"},
+                "point_index": {"type": "integer", "minimum": 0},
+            },
+            "required": ["entity_id", "point_index"],
+        },
+    ),
+    Tool(
+        name="measure_live_picked_distance",
+        description=(
+            "Measure Euclidean distance and XYZ deltas between two captured interactive picks in CloudCompare "
+            "global coordinates. Defaults to the two most recent picks."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "pick_a": {"type": "integer", "minimum": 0},
+                "pick_b": {"type": "integer", "minimum": 0},
+            },
+        },
+    ),
+    Tool(
+        name="measure_live_picked_angle",
+        description=(
+            "Measure the A-B-C angle from three captured interactive picks, with B as the vertex. "
+            "Defaults to the three most recent picks."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "pick_a": {"type": "integer", "minimum": 0},
+                "pick_b": {"type": "integer", "minimum": 0},
+                "pick_c": {"type": "integer", "minimum": 0},
+            },
+        },
+    ),
+    Tool(
         name="clone_live_entities",
         description=(
             "Deep-clone explicitly chosen live point clouds or triangle meshes without modifying the sources. "
@@ -1555,6 +1647,54 @@ def handle_analyze_live_c2m(args: dict) -> list[TextContent]:
     return _live_call("cloud.distance_c2m", params, timeout=900.0)
 
 
+def handle_start_live_picking(args: dict) -> list[TextContent]:
+    params = {
+        "max_picks": int(args.get("max_picks", 8)),
+        "exclusive": bool(args.get("exclusive", True)),
+    }
+    if "allowed_entity_ids" in args:
+        params["allowed_entity_ids"] = args["allowed_entity_ids"]
+    return _live_call("metrology.pick.start", params)
+
+
+def handle_get_live_picks(_args: dict) -> list[TextContent]:
+    return _live_call("metrology.pick.status", {})
+
+
+def handle_clear_live_picks(_args: dict) -> list[TextContent]:
+    return _live_call("metrology.pick.clear", {})
+
+
+def handle_stop_live_picking(_args: dict) -> list[TextContent]:
+    return _live_call("metrology.pick.stop", {})
+
+
+def handle_inspect_live_point(args: dict) -> list[TextContent]:
+    return _live_call(
+        "metrology.point_info",
+        {
+            "entity_id": args["entity_id"],
+            "point_index": args["point_index"],
+        },
+    )
+
+
+def handle_measure_live_picked_distance(args: dict) -> list[TextContent]:
+    params = {}
+    for key in ("pick_a", "pick_b"):
+        if key in args:
+            params[key] = args[key]
+    return _live_call("metrology.measure.picked_distance", params)
+
+
+def handle_measure_live_picked_angle(args: dict) -> list[TextContent]:
+    params = {}
+    for key in ("pick_a", "pick_b", "pick_c"):
+        if key in args:
+            params[key] = args[key]
+    return _live_call("metrology.measure.picked_angle", params)
+
+
 def handle_clone_live_entities(args: dict) -> list[TextContent]:
     params = {
         "ids": args["ids"],
@@ -1825,6 +1965,13 @@ async def call_tool(
         "register_live_point_pairs": handle_register_live_point_pairs,
         "analyze_live_c2c": handle_analyze_live_c2c,
         "analyze_live_c2m": handle_analyze_live_c2m,
+        "start_live_picking": handle_start_live_picking,
+        "get_live_picks": handle_get_live_picks,
+        "clear_live_picks": handle_clear_live_picks,
+        "stop_live_picking": handle_stop_live_picking,
+        "inspect_live_point": handle_inspect_live_point,
+        "measure_live_picked_distance": handle_measure_live_picked_distance,
+        "measure_live_picked_angle": handle_measure_live_picked_angle,
         "clone_live_entities": handle_clone_live_entities,
         "merge_live_clouds": handle_merge_live_clouds,
         "reconstruct_live_mesh": handle_reconstruct_live_mesh,
