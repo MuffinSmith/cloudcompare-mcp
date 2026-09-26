@@ -2,6 +2,7 @@
 
 #include "qMCPFusionWorkflow.h"
 
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -524,11 +525,15 @@ QString uniqueScalarFieldName( ccPointCloud* cloud, const QString& baseName )
 {
     QString candidate = baseName;
     int suffix = 2;
-    while ( cloud->getScalarFieldIndexByName( candidate.toStdString() ) >= 0 )
+    while ( true )
     {
+        const QByteArray candidateUtf8 = candidate.toUtf8();
+        if ( cloud->getScalarFieldIndexByName( candidateUtf8.constData() ) < 0 )
+        {
+            return candidate;
+        }
         candidate = QString( "%1 %2" ).arg( baseName ).arg( suffix++ );
     }
-    return candidate;
 }
 
 ccGenericMesh* requireMesh(
@@ -1612,7 +1617,8 @@ bool analyzeCloudToCloud(
     }
 
     const QString scalarName = uniqueScalarFieldName( working.get(), "MCP C2C distance" );
-    const int scalarIndex = working->addScalarField( scalarName.toStdString() );
+    const QByteArray scalarNameUtf8 = scalarName.toUtf8();
+    const int scalarIndex = working->addScalarField( scalarNameUtf8.constData() );
     if ( scalarIndex < 0 )
     {
         error = "Could not allocate the C2C distance scalar field";
@@ -1759,7 +1765,8 @@ bool analyzeCloudToMesh(
     const QString scalarName = uniqueScalarFieldName(
         working.get(),
         signedDistances ? "MCP C2M signed distance" : "MCP C2M distance" );
-    const int scalarIndex = working->addScalarField( scalarName.toStdString() );
+    const QByteArray scalarNameUtf8 = scalarName.toUtf8();
+    const int scalarIndex = working->addScalarField( scalarNameUtf8.constData() );
     if ( scalarIndex < 0 )
     {
         error = "Could not allocate the C2M distance scalar field";
