@@ -148,12 +148,14 @@ def test_plane_discovery_rotation_invariance(seed: int) -> None:
 
 def test_plane_discovery_rejects_invalid_controls() -> None:
     points = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]]
+    # Keep min_points valid when exercising independent controls so the test
+    # reaches the validation branch it actually intends to assert.
     with pytest.raises(FeatureFitError, match="distance_threshold"):
-        discover_planes(points, distance_threshold=0)
+        discover_planes(points, distance_threshold=0, min_points=3)
     with pytest.raises(FeatureFitError, match="min_points exceeds"):
         discover_planes(points, min_points=100)
     with pytest.raises(FeatureFitError, match="min_inlier_fraction"):
-        discover_planes(points, min_inlier_fraction=0)
+        discover_planes(points, min_inlier_fraction=0, min_points=3)
 
 
 def test_occupancy_grid_2d_counts_and_truncation() -> None:
