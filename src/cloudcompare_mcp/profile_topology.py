@@ -201,8 +201,14 @@ def _trace_component(
 
 
 def _signed_area(points: np.ndarray) -> float:
-    x = points[:, 0]
-    y = points[:, 1]
+    # Area is translation-invariant.  Remove a nearby origin before the
+    # shoelace products so small profiles at large global coordinates do not
+    # lose their area to cancellation.
+    relative = points - points[0]
+    if not np.isfinite(relative).all():
+        raise ProfileTopologyError("Loop coordinate differences overflow float64")
+    x = relative[:, 0]
+    y = relative[:, 1]
     return 0.5 * float(
         np.sum(x * np.roll(y, -1) - y * np.roll(x, -1))
     )
