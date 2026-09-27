@@ -472,8 +472,21 @@ def discover_circles(
             )
             mask = residual <= threshold
 
+        if refined is None:
+            break
+
+        refined = fit_circle_3d(subset[mask])
+        center = np.asarray(refined["center"], dtype=np.float64)
+        normal = np.asarray(refined["normal"], dtype=np.float64)
+        residual_all = _circle_residuals(
+            subset,
+            center,
+            normal,
+            float(refined["radius"]),
+        )
+        mask = residual_all <= threshold
         support_count = int(np.count_nonzero(mask))
-        if refined is None or support_count < min_points:
+        if support_count < min_points:
             break
         support_fraction = support_count / float(xyz.shape[0])
         if support_fraction < min_inlier_fraction:
@@ -735,8 +748,18 @@ def discover_cylinders(
             )
             mask = residual <= threshold
 
+        if refined is None:
+            break
+
+        residual_all = _cylinder_residuals(
+            subset,
+            np.asarray(refined["axis_point"], dtype=np.float64),
+            np.asarray(refined["axis_direction"], dtype=np.float64),
+            float(refined["radius"]),
+        )
+        mask = residual_all <= threshold
         support_count = int(np.count_nonzero(mask))
-        if refined is None or support_count < min_points:
+        if support_count < min_points:
             break
         support_fraction = support_count / float(xyz.shape[0])
         if support_fraction < min_inlier_fraction:
