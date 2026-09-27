@@ -1,66 +1,95 @@
 # Repository work and interruption recovery
 
-## Active 0.15.2 filled-section boundary extraction lane (not accepted or merged)
+## Accepted 0.15.2 filled-section boundary extraction (merge authorized)
 
-Continue `feature/live-cad-section-boundary-extraction`, created deliberately from
-accepted main `2747bdd54cbe4260e3b37382f2afbadc2b677694`. Python is 0.15.2.
-qMCPBridge remains accepted 0.12.0 / workflow revision 8 and is unchanged.
+The user explicitly authorized merging `feature/live-cad-section-boundary-extraction`
+into `main` after recording Windows acceptance and verifying CI remains green, then
+starting `feature/live-cad-section-layer-isolation` for Python 0.15.3. This does NOT
+authorize merging the future 0.15.3 branch. Preserve all retained feature branches.
 
-The purpose of this lane is to turn an ordinary projected scan section containing
-interior/material samples into trustworthy, explicitly resolution-dependent boundary
-evidence before reusing the accepted 0.15.1 topology and primitive-fit layers.
+The exact Windows-tested 0.15.2 HEAD is
+`7610eceff68704132ff44086d8d070fbb10b5c38`; the runtime/product checkpoint is
+`0fd59d19156f6d80087e1c43b2096482aa85715f`. Only AGENTS.md changed between them.
+The accepted-main parent before this increment is
+`2747bdd54cbe4260e3b37382f2afbadc2b677694`. Python is 0.15.2. qMCPBridge remains
+accepted 0.12.0 / workflow revision 8: no native source change or DLL rebuild.
 
-New MCP surface:
+Real Windows/CloudCompare acceptance is COMPLETE: generated fixtures and all
+applicable safety gates PASS; only the bounded real fan profile is BLOCKED by
+ambiguous geometry, not by a product defect. Do not repeat the completed gate
+because a chat restarted, because documentation changed, or to force the fan through.
+No reproducible product defect was found and no defect issue was required.
 
-- snapshot `extract_section_boundary_evidence`
-- snapshot `reconstruct_filled_section_profile`
-- read-only live `reconstruct_live_filled_section_profile`
+Checkout/runtime, full regression, compileall and `git diff --check` PASS. Windows
+Python regression: 490 passed, 16 compiler-gated native policy tests initially
+skipped; all 16 subsequently PASSed under the configured MSVC environment.
+All three tools were present through real MCP stdio:
+`extract_section_boundary_evidence`, `reconstruct_filled_section_profile`, and
+`reconstruct_live_filled_section_profile`.
 
-The implementation uses caller-selected native-unit occupancy `cell_size`, traces
-exposed 4-neighbor cell edges, associates them back to original source samples,
-reports per-cell support, half-cell grid-origin sensitivity, and a diagnostic-only
-single-cell erosion/dilation sensitivity check, and refuses ambiguous
-diagonal/non-manifold connectivity rather than morphologically repairing it.
-Composite reconstruction also reports the measured two-neighbor locality lower bound,
-then reuses `reconstruct_profile_topology_2d`; do not replace
-the accepted 0.15.1 solver casually.
+Both exact generated snapshot and real-live original/transformed fixtures recovered
+`outer -> hole -> island`, depths `0 -> 1 -> 2`, with 2 material components and 3
+contours. Retain these actual checkpoint measurements (not the older boundary-only
+0.15.1 measurements):
 
-Live reconstruction reuses the existing native `cloud.region_query` slab method.
-It requires complete acquisition (no reservoir-truncated occupancy), is capped at
-20,000 samples for this increment, preserves source shift/scale bookkeeping, and
-rejects strong evidence of multiple/thick projected layers. No native method or DLL
-change is intended.
+| Evidence | Points | Raw/supported cells | Boundary cells/edges | Support min/median/P90/max; CV | Minimum topology radius | Margin against 1.10 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Original snapshot | 6,438 | 1,032 / 1,032 | 198 / 224 | 1 / 6 / 9 / 9; 0.29945 | 0.800000 | 0.300000 |
+| Rotated/translated snapshot | 6,438 | 1,118 / 1,118 | 175 / 282 | 1 / 6 / 7 / 8; 0.24955 | 1.077033 | 0.022967 |
+| Original live | 6,438 matched / sampled | 1,076 / 1,076 | 200 / 226 | not recorded here | 0.894427 | 0.205573 |
+| Rotated/translated live | 6,438 matched / sampled | 1,118 / 1,118 | 175 / 282 | not recorded here | 1.077043 | 0.022957 |
 
-Reusable exact-file fixtures are generated outside Git by
-`scripts/make_filled_section_boundary_fixtures.py`: original and arbitrary
-rotated/large-translated filled profiles, nonuniform density, a narrow feature, and
-an overlapping-layer ambiguity case. Tests must read those generated PLY files and
-exercise the product code.
+Nonuniform density, narrow feature and permutation determinism PASS. Narrow-feature
+grid area 188 versus bounding rectangle 192 confirms the notch was retained.
+Half-cell origin perturbations preserved component/contour counts. One-cell
+erosion/dilation diagnostics warned on some fixtures as intended, but were never
+used to repair geometry. Overlapping-layer live safety PASSed by explicit refusal.
 
-The accepted 0.15.1 real-Windows topology gate at
-`e0043eab698e407cdb5df05ea4e827b6f05b1802` remains completed. PR #15 merged it
-at `cf213649fea5717d9a9d5e6c1104240dc8b6f668`. Do not repeat that gate merely
-because this chat or CI restarted. The old fan BLOCKED result is design evidence for
-this lane, not an outstanding 0.15.1 failure.
+Source integrity PASSed at metadata coverage only. No full source-point export/hash
+integrity gate was performed. Generator translation was
+`[100000000,-200000000,300000000]`; actual CloudCompare global shift was
+`[-100000000,199999000,-299999000]`, global scale 1. Preserve shift/scale without
+applying them twice. No real-host nonunit global-scale coverage exists yet.
 
-Before requesting Windows testing, require full Python regression, compileall,
-MCP/schema/stdio coverage, exact generated fixture-file tests, `git diff --check`,
-a final diff proving no qMCPBridge source change, and green CI.
+The real fan slab was complete: 5,605 matched / 5,605 sampled, no truncation,
+with substantial support on both sides of the plane. Signed depths were approximately
+min -0.4995117, P10 -0.3979523, median -0.0027161, P90 +0.3963745,
+max +0.4999237. Independent 2D occupancy found five diagonal-only connections.
+The implementation correctly refused to invent a CAD outline. Do not weaken 0.15.2,
+choose one depth sign, delete one side, or tune parameters until this fan looks clean.
+This is design evidence for coherent depth-aware layer isolation BEFORE flattening.
 
-Internal development validation reached runtime checkpoint
-`0fd59d19156f6d80087e1c43b2096482aa85715f`. GitHub Actions run
-`36345421522` passed with 506 tests, `compileall`, and `git diff --check`.
-The exact generated PLY fixture tests are included in that count. The final diff
-against accepted main `2747bdd54cbe4260e3b37382f2afbadc2b677694` contained no
-`cloudcompare-plugin`/qMCPBridge source change. This is internal/synthetic
-validation only; it is ready for the focused Windows/CloudCompare gate, not accepted
-real-host evidence.
+CI at Windows-tested HEAD: Actions run `36345528913`, success. Earlier runtime
+checkpoint run `36345421522` passed 506 tests, compileall and diff checking.
+Acceptance-record commits must receive their own green CI before merging. Record
+exact PR and merge SHA here after the merge. Start 0.15.3 only from current merged
+main, never by continuing runtime work on this accepted 0.15.2 branch.
 
 Read `docs/LIVE_CAD_SECTION_BOUNDARY_EXTRACTION.md` and
-`docs/WINDOWS_SECTION_BOUNDARY_ACCEPTANCE.md`.
+`docs/WINDOWS_SECTION_BOUNDARY_ACCEPTANCE.md`. The latter is a reusable procedure,
+not an outstanding gate. Detailed acceptance reports and raw evidence stay outside Git.
 
-Do not merge this lane without a new targeted real-Windows acceptance report and
-explicit user approval.
+## Stream-disconnect recovery and next-stage boundary
+
+Work in small coherent commits; verify each returned SHA and persist it remotely
+before substantial next work. Inspect current remote heads, recent commits, open
+issues/PRs and CI before resuming. Never reset, clean, force-push, delete retained
+branches, or recreate a branch merely because a chat disconnected. After a failed
+write, re-query the branch HEAD rather than guessing whether it succeeded.
+
+Keep this file current with the active branch, exact last coherent runtime checkpoint,
+CI, native-change status and remaining Windows scope. Retrieve focused diffs/log
+excerpts rather than giant responses. Save before long tests; do not poll CI in a
+rapid unbounded loop. Continue independent review while CI runs.
+
+The next deliberate branch is `feature/live-cad-section-layer-isolation`, Python
+0.15.3, from current accepted main after the authorized merge. Prefer no native
+change. Retain complete slab `(u,v,signed_depth)` evidence, analyze explicit local
+spatial/depth coherence, return compact deterministic candidates and overlap/crossing/
+merging ambiguity, then hand only a safe or explicitly selected usable layer to the
+accepted 0.15.2 occupancy / 0.15.1 topology / primitive fitter. No sign-based selection,
+no silently discarded unsupported geometry, no truncation as topology proof, no
+Fusion 360 integration, and no automatic 0.15.3 merge. A fan result may remain BLOCKED.
 
 ## Accepted 0.15.1 profile topology increment (merge authorized)
 
@@ -177,8 +206,6 @@ Do not reopen or repeat accepted 0.14 testing for documentation-only changes or
 chat restarts. Future work should branch deliberately from current accepted main,
 preserve this evidence attribution, and require a new targeted Windows gate only
 for behavior actually changed by that later stage.
-
-
 
 ## Current accepted baseline
 
