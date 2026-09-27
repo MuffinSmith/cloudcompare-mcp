@@ -30,6 +30,29 @@ multi-loop/non-star-shaped boundary ordering, self-intersection/topology repair,
 symmetry solving and spline fallback. These should be added deliberately rather than
 hidden behind overconfident heuristics.
 
+### Recovered first-increment development checkpoint
+
+An interrupted session left the exact first-increment product tree in verified Git
+blobs rather than as the branch tree. Recovery preserved the existing branch and
+promoted that exact tree (tree `6885090ad5c0d719f7b09e7702ae6e70e6f09cfc`) at
+`4de587d1c287844eeb6018115f4bc36a5ae5b74e`; do not recreate or replace this lane.
+The earlier handoff-workflow failures were infrastructure/test-launcher failures, not
+product failures. Standard CI now invokes the suite with `python -m pytest`.
+
+Review then found one real provenance omission in the live wrapper: accepted native
+`cloud.region_query` already returns source global shift/scale, but the compact
+profile result had not preserved them. Runtime commit
+`edb245a482039c77b213183e2274365240a96adf` now validates and retains source cloud
+name plus query coordinate space/global shift/global scale as bookkeeping only,
+without reapplying them to already-global geometry. Tests and acceptance guidance
+cover malformed bookkeeping and double-application prevention.
+
+Development checkpoint `f478a33879afc89f7137cc7f02ccb2c5a1e27b90` passed
+the full Linux CI suite: **444 passed in 17.02 s**, with compileall and exact-source
+archive steps also passing. qMCPBridge remains byte-for-source unchanged from accepted
+0.14. This is development validation only; real Windows/CloudCompare acceptance is
+still required before any 0.15 merge.
+
 ## Accepted 0.14 baseline
 
 The user explicitly approved merging the accepted 0.14 increment. PR #12 merged
