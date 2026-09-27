@@ -2557,7 +2557,7 @@ def handle_fit_live_region_circle(args: dict) -> list[TextContent] | CallToolRes
             max_points=sample_limit,
         )
         fit = fit_circle_3d(_region_positions_global(native, minimum=4))
-        return _ok(_decorate_region_fit(fit, native, args))
+        return _ok_compact(_decorate_region_fit(fit, native, args))
     except (
         FeatureFitError,
         LiveBridgeError,
@@ -2580,7 +2580,7 @@ def handle_fit_live_region_cylinder(args: dict) -> list[TextContent] | CallToolR
             max_points=sample_limit,
         )
         fit = fit_cylinder_3d(_region_positions_global(native, minimum=6))
-        return _ok(_decorate_region_fit(fit, native, args))
+        return _ok_compact(_decorate_region_fit(fit, native, args))
     except (
         FeatureFitError,
         LiveBridgeError,
