@@ -1042,8 +1042,8 @@ TOOLS: list[Tool] = [
                 "max_cylinders": {"type": "integer", "minimum": 1, "maximum": 8, "default": 3},
                 "min_points": {"type": "integer", "minimum": 6, "default": 24},
                 "min_inlier_fraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.05},
-                "restarts": {"type": "integer", "minimum": 1, "maximum": 64, "default": 12},
-                "subset_size": {"type": "integer", "minimum": 6, "maximum": 512, "default": 64},
+                "restarts": {"type": "integer", "minimum": 1, "maximum": 128, "default": 32},
+                "seed_size": {"type": "integer", "minimum": 6, "maximum": 24, "default": 6},
                 "min_angular_coverage_degrees": {"type": "number", "minimum": 0, "maximum": 360, "default": 90},
                 "min_radius": {"type": "number", "exclusiveMinimum": 0},
                 "max_radius": {"type": "number", "exclusiveMinimum": 0}
@@ -2872,8 +2872,8 @@ def handle_discover_live_cylinders(args: dict) -> list[TextContent] | CallToolRe
             "max_cylinders": int(args.get("max_cylinders", 3)),
             "min_points": int(args.get("min_points", 24)),
             "min_inlier_fraction": float(args.get("min_inlier_fraction", 0.05)),
-            "restarts": int(args.get("restarts", 12)),
-            "subset_size": int(args.get("subset_size", 64)),
+            "restarts": int(args.get("restarts", 32)),
+            "seed_size": int(args.get("seed_size", 6)),
             "min_angular_coverage_degrees": float(
                 args.get("min_angular_coverage_degrees", 90.0)
             ),
