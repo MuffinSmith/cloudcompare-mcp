@@ -15,6 +15,9 @@ on:
       - feature/live-feature-candidates-overlays
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   python:
     runs-on: ubuntu-latest
@@ -27,3 +30,16 @@ jobs:
       - run: pip install -e ".[test]"
       - run: python -m compileall -q src scripts tests
       - run: pytest -q tests
+      # Only tracked public source is archived. Do not include the workspace,
+      # credentials, local evidence, or the user's fan_project.bin fixture.
+      - name: Archive exact tested source
+        if: always()
+        run: git archive --format=tar --output=cloudcompare-source.tar HEAD
+      - name: Publish source snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tested-source-${{ github.sha }}
+          path: cloudcompare-source.tar
+          if-no-files-found: error
+          retention-days: 3
