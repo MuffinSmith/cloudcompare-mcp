@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import socket
 from typing import Any
@@ -30,8 +31,8 @@ def _config() -> tuple[str, int, float, str | None]:
         timeout = float(os.environ.get("CLOUDCOMPARE_MCP_TIMEOUT", str(DEFAULT_TIMEOUT)))
     except ValueError as exc:
         raise LiveBridgeError("CLOUDCOMPARE_MCP_TIMEOUT must be numeric") from exc
-    if timeout <= 0:
-        raise LiveBridgeError("CLOUDCOMPARE_MCP_TIMEOUT must be greater than zero")
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise LiveBridgeError("CLOUDCOMPARE_MCP_TIMEOUT must be finite and greater than zero")
 
     token = os.environ.get("CLOUDCOMPARE_MCP_TOKEN") or None
     return host, port, timeout, token
@@ -48,9 +49,12 @@ def request(
     A longer timeout can be supplied for explicitly long-running geometry operations.
     """
     host, port, configured_timeout, token = _config()
-    timeout = configured_timeout if timeout is None else float(timeout)
-    if timeout <= 0:
-        raise LiveBridgeError("timeout must be greater than zero")
+    try:
+        timeout = configured_timeout if timeout is None else float(timeout)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise LiveBridgeError("timeout must be numeric") from exc
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise LiveBridgeError("timeout must be finite and greater than zero")
     payload: dict[str, Any] = {
         "id": 1,
         "method": method,
@@ -59,7 +63,10 @@ def request(
     if token:
         payload["token"] = token
 
-    wire = (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
+    try:
+        wire = (json.dumps(payload, separators=(",", ":"), allow_nan=False) + "\n").encode("utf-8")
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise LiveBridgeError("Live bridge request must contain finite JSON values") from exc
 
     try:
         with socket.create_connection((host, port), timeout=timeout) as sock:
