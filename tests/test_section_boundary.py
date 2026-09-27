@@ -84,6 +84,29 @@ def test_filled_outer_hole_and_island_extract_three_contours():
     assert public["source_boundary_evidence"]["point_count"] <= 2048
 
 
+def test_two_disjoint_material_regions_remain_separate_outer_contours():
+    spacing = 0.2
+    regions = []
+    for xmin, xmax in ((-7.0, -3.0), (3.0, 7.0)):
+        xs = np.arange(xmin, xmax + spacing * 0.25, spacing)
+        ys = np.arange(-2.0, 2.0 + spacing * 0.25, spacing)
+        regions.extend((float(x), float(y)) for y in ys for x in xs)
+    evidence = extract(np.asarray(regions, dtype=np.float64))
+    assert evidence.public["material_component_count"] == 2
+    assert evidence.public["connected_contour_count"] == 2
+    assert all(
+        contour["facing_candidate"] == "material_exterior"
+        for contour in evidence.public["contours"]
+    )
+
+
+def test_boundary_extraction_does_not_mutate_source_array():
+    points = filled_fixture()
+    before = points.copy()
+    extract(points)
+    assert np.array_equal(points, before)
+
+
 def test_arbitrary_point_permutation_preserves_geometry_diagnostics():
     points = filled_fixture()
     shuffled = points[np.random.default_rng(15201).permutation(len(points))]
