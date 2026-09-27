@@ -12,6 +12,7 @@ on:
       - feature/live-cylinder-sections
       - feature/live-region-fitting
       - feature/live-feature-discovery
+      - feature/live-feature-candidates-overlays
   pull_request:
 
 jobs:
