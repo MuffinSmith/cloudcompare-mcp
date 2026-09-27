@@ -1,0 +1,56 @@
+name: one-shot section layer registration
+on:
+  push:
+    branches: [feature/live-cad-section-layer-isolation]
+    paths: [.github/workflows/register-section-layer-tools-once.yml]
+permissions:
+  contents: read
+jobs:
+  register:
+    if: contains(github.event.head_commit.message, '[register-layer-tools-once]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Verify exact source and apply nine-line registration
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='feature/live-cad-section-layer-isolation'
+          test "$(git rev-parse HEAD^)" = '055fc189c5559e02f740d364f989ca9620dea3a0'
+          git fetch origin "$target"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          p = Path('src/cloudcompare_mcp/server.py')
+          before = p.read_bytes()
+          assert hashlib.sha256(before).hexdigest() == 'a7d31076ddd82f6e7e89ece641ef5c93f32de9f5f1ee17c681e61372d384460c'
+          text = before.decode('utf-8')
+          marker = '# ── CloudCompare binary discovery'
+          edits = [
+              (marker, 'from .section_layer_tools import (\n    capabilities as section_layer_capabilities,\n    tools as section_layer_tools,\n    handlers as section_layer_handlers,\n)\n\n' + marker),
+              ('        native["python_cad_profiles"] = profile\n', '        native["python_cad_profiles"] = profile\n        native["python_section_layers"] = section_layer_capabilities(live_available=region_available)\n'),
+              ('TOOLS.extend(section_boundary_tools())\n', 'TOOLS.extend(section_boundary_tools())\nTOOLS.extend(section_layer_tools())\n'),
+              ('    try:\n        handler = dispatch.get(name)', '    dispatch.update(section_layer_handlers(live_request))\n    try:\n        handler = dispatch.get(name)'),
+          ]
+          for old, new in edits:
+              assert text.count(old) == 1
+              text = text.replace(old, new)
+          after = text.encode('utf-8')
+          assert hashlib.sha256(after).hexdigest() == '1118a85d03d7521d388ecf804498e11f600eb8dd7eb8f6f7a833a230b38cca7b'
+          p.write_bytes(after)
+          PY
+          python -m compileall -q src
+          git diff --check
+          test "$(git diff --name-only)" = 'src/cloudcompare_mcp/server.py'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/cloudcompare_mcp/server.py
+          git commit -m 'Register 0.15.3 layer tools without changing accepted handlers'
+          git push origin "HEAD:refs/heads/$target"
