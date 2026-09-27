@@ -341,8 +341,8 @@ def test_cylinder_discovery_recovers_dominant_noisy_cylinder() -> None:
         max_cylinders=1,
         min_points=100,
         min_inlier_fraction=0.5,
-        restarts=8,
-        subset_size=48,
+        restarts=32,
+        seed_size=6,
         min_angular_coverage_degrees=180.0,
         min_radius=3.0,
         max_radius=7.0,
@@ -377,8 +377,8 @@ def test_cylinder_discovery_controls_are_validated() -> None:
     )
     with pytest.raises(FeatureFitError, match="distance_threshold"):
         discover_cylinders(points, distance_threshold=0, min_points=6)
-    with pytest.raises(FeatureFitError, match="subset_size"):
-        discover_cylinders(points, subset_size=5, min_points=6)
+    with pytest.raises(FeatureFitError, match="seed_size"):
+        discover_cylinders(points, seed_size=5, min_points=6)
     with pytest.raises(FeatureFitError, match="max_radius"):
         discover_cylinders(
             points,
