@@ -786,7 +786,7 @@ def reconstruct_profile_2d(
 
     return {
         "type": "cad_section_profile",
-        "version": "0.15.0",
+        "version": "0.15.1",
         "coordinate_space": "section_uv",
         "units": "native",
         "state": "inferred_candidate",
