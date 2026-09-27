@@ -112,7 +112,7 @@ def test_rotated_filled_section_hands_off_to_accepted_topology():
     result = reconstruct_filled_section_profile_2d(
         filled_fixture(angle_degrees=31.0),
         cell_size=0.5,
-        max_edge_length=0.95,
+        max_edge_length=1.05,
         fit_tolerance=0.35,
         min_cell_support=1,
         max_cells=20_000,
