@@ -29,8 +29,17 @@ def region_response(points, *, truncated=False):
         row=np.asarray(points[i],dtype=float)
         xyz=[float(row[0]),float(row[1]),float(row[2]) if row.shape[0] >= 3 else 0.0]
         sample.append({"point_index":int(i), "position_global":xyz})
-    return {"matched_count":len(points),"returned_count":len(points),"truncated":truncated,
-            "sample_strategy":"deterministic_stride","points":sample}
+    return {
+        "cloud_name": "profile-fixture",
+        "coordinate_space": "global",
+        "source_global_shift": [1234.5, -6789.25, 100000.125],
+        "source_global_scale": 2.5,
+        "matched_count": len(points),
+        "returned_count": len(points),
+        "truncated": truncated,
+        "sample_strategy": "deterministic_stride",
+        "points": sample,
+    }
 
 
 def body(result): return json.loads(result[0].text)
@@ -51,6 +60,12 @@ def test_live_profile_keeps_raw_points_server_side_and_finds_slot():
     assert candidate["centerline_length"]==20.0
     assert parsed["source_geometry_preserved"] and parsed["live_connection_used"]
     assert parsed["scene_mutations_requested"] is False
+    assert parsed["source_cloud_name"] == "profile-fixture"
+    assert parsed["source_coordinate_bookkeeping"] == {
+        "query_coordinate_space": "global",
+        "global_shift": [1234.5, -6789.25, 100000.125],
+        "global_scale": 2.5,
+    }
     assert parsed["acquisition"]["raw_points_returned"] is False
     dumped=json.dumps(parsed)
     assert 'position_global' not in dumped and 'points_uv' not in dumped
@@ -134,3 +149,29 @@ def test_live_invalid_profile_options_fail_before_native_io():
             result = server.handle_reconstruct_live_section_profile(args)
         native.assert_not_called()
         assert isinstance(result, CallToolResult) and result.isError
+
+
+@pytest.mark.parametrize(
+    "field,value,match",
+    [
+        ("coordinate_space", "native_local", "expected global"),
+        ("source_global_shift", [0, float("nan"), 0], "non-finite"),
+        ("source_global_shift", [0, 0], "malformed"),
+        ("source_global_scale", 0, "finite and positive"),
+        ("source_global_scale", float("inf"), "finite and positive"),
+    ],
+)
+def test_live_profile_rejects_malformed_native_coordinate_bookkeeping(field, value, match):
+    response = region_response(slot_uv())
+    response[field] = value
+    with patch.object(server, "live_request", return_value=response):
+        result = server.handle_reconstruct_live_section_profile({
+            "cloud_id": 77,
+            "origin": [0, 0, 0],
+            "normal": [0, 0, 1],
+            "half_thickness": 0.01,
+            "closed": True,
+            "fit_tolerance": 1e-8,
+        })
+    assert isinstance(result, CallToolResult) and result.isError
+    assert match in result.content[0].text
