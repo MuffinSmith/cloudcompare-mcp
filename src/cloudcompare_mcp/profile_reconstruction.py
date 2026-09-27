@@ -348,12 +348,14 @@ def _rotation_break(points: np.ndarray) -> int:
     change = np.abs(turns - np.roll(turns, 1))
     index = int(np.argmax(change))
     previous = (index - 1) % n
-    # The larger-turn endpoint is the actual shared boundary sample.  At a
-    # polygon corner it is the corner itself; at a tangent line/arc transition
-    # it carries roughly half the neighboring arc turn while the first interior
-    # line sample carries zero turn.  Cutting at the smaller-turn sample splits
-    # one real primitive across the cyclic start/end and creates a tiny sliver.
-    return index if turns[index] >= turns[previous] else previous
+    # A sharp polygon corner lives at the larger-turn endpoint.  At a smooth
+    # line/arc transition the boundary sample carries roughly half the local
+    # arc turn, so choose the smaller-turn endpoint instead.  This keeps the
+    # cyclic cut on a natural primitive boundary instead of leaving a tiny
+    # wrap-around fragment.
+    if max(float(turns[index]), float(turns[previous])) >= math.radians(30.0):
+        return index if turns[index] >= turns[previous] else previous
+    return index if turns[index] <= turns[previous] else previous
 
 
 def _serialize_primitive(model: dict[str, Any], *, start_index: int, end_index: int, source_order: np.ndarray) -> dict[str, Any]:
@@ -679,6 +681,50 @@ def reconstruct_profile_2d(
                 min_arc_degrees=min_arc,
                 max_segments=max_segments,
             )
+
+            # Recursive splitting can occasionally leave the same physical
+            # primitive on both sides of the cyclic cut, with one side reduced
+            # to a two-point line sliver.  Do not merge arbitrary wraparound
+            # geometry.  Instead, only when first/last models have the same
+            # primitive kind and one side is exactly a two-point fragment,
+            # move the cyclic cut to the detected shared primitive boundary
+            # and re-segment once.
+            if len(models) > 1:
+                first_model = models[0]
+                last_model = models[-1]
+                first_count = int(first_model["_end"] - first_model["_start"] + 1)
+                last_count = int(last_model["_end"] - last_model["_start"] + 1)
+                if (
+                    first_model["kind"] == last_model["kind"]
+                    and min(first_count, last_count) <= 2
+                ):
+                    if last_count <= 2:
+                        refined_break = int(last_model["_start"]) % ordered.shape[0]
+                    else:
+                        refined_break = int(first_model["_end"]) % ordered.shape[0]
+                    if refined_break:
+                        ordered = np.concatenate(
+                            (ordered[refined_break:], ordered[:refined_break]),
+                            axis=0,
+                        )
+                        source_order = np.concatenate(
+                            (source_order[refined_break:], source_order[:refined_break]),
+                            axis=0,
+                        )
+                        ordering["cyclic_break_ordered_index"] = int(
+                            (break_index + refined_break) % ordered.shape[0]
+                        )
+                        ordering["cyclic_break_refined_for_tiny_fragment"] = True
+                        work = np.vstack((ordered, ordered[0]))
+                        work_sources = np.concatenate((source_order, source_order[:1]))
+                        models = _segment(
+                            work,
+                            work_sources,
+                            tolerance=tolerance,
+                            min_arc_degrees=min_arc,
+                            max_segments=max_segments,
+                        )
+
             serialized = [
                 _serialize_primitive(
                     model,
