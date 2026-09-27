@@ -319,3 +319,23 @@ retained as the input requirement for the next boundary-extraction increment, no
 
 See [profile topology contracts](docs/LIVE_CAD_PROFILE_TOPOLOGY.md) and the retained
 [Windows acceptance procedure](docs/WINDOWS_PROFILE_TOPOLOGY_ACCEPTANCE.md).
+
+## Python-only 0.15.2 filled-section boundary extraction (development)
+
+`extract_section_boundary_evidence` bins ordinary unordered projected section samples
+into an explicit native-unit occupancy grid, traces exposed occupied-cell edges, and
+associates the resulting contours back to original scan samples.
+`reconstruct_filled_section_profile` feeds that evidence into the accepted 0.15.1
+outer/hole/island topology solver and existing line/arc/circle fitter.
+`reconstruct_live_filled_section_profile` applies the same path to a complete live
+CloudCompare slab without requiring `boundary_samples_only=true`.
+
+The caller controls `cell_size`; grid sensitivity and support diagnostics remain
+visible. Truncated acquisition, diagonal/non-manifold occupancy, tiny disconnected
+components, excessive evidence, and strongly layered live slabs are refused rather
+than repaired. No erosion/dilation, gap-closing, hole filling, smoothing, or
+manufacturing-intent inference is performed. Raw scan samples remain server-side and
+qMCPBridge stays unchanged at 0.12.0 / workflow revision 8.
+
+See [filled-section boundary contracts](docs/LIVE_CAD_SECTION_BOUNDARY_EXTRACTION.md)
+and the [focused Windows acceptance procedure](docs/WINDOWS_SECTION_BOUNDARY_ACCEPTANCE.md).
