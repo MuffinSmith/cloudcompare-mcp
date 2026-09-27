@@ -34,6 +34,9 @@ sections are documented in [docs/LIVE_REGION_FITTING.md](docs/LIVE_REGION_FITTIN
 Image-free spatial grids, plane discovery, and section occupancy are documented in
 [docs/LIVE_FEATURE_DISCOVERY.md](docs/LIVE_FEATURE_DISCOVERY.md).
 
+Automatic circle/cylinder candidate discovery and temporary visible fit overlays
+are documented in [docs/LIVE_FEATURE_CANDIDATES.md](docs/LIVE_FEATURE_CANDIDATES.md).
+
 ## Features
 
 ### Native tools (no CloudCompare required)
@@ -95,6 +98,14 @@ These tools operate on the **CloudCompare instance that is already open** instea
 | `describe_live_region_grid` | Numerical 3D spatial view with exact cell counts and shape metrics |
 | `discover_live_planes` | Discover dominant planar patches inside a live-cloud region |
 | `describe_live_section_grid` | Compact sparse 2D occupancy summary of a full-cloud slab section |
+| `discover_live_circles` | Discover robust circle/hole candidates with support and coverage diagnostics |
+| `discover_live_cylinders` | Discover dominant cylinder/bore/shaft candidates with support diagnostics |
+| `show_live_plane_overlay` | Show a temporary cyan fitted-plane overlay |
+| `show_live_circle_overlay` | Show a temporary yellow fitted-circle overlay |
+| `show_live_cylinder_overlay` | Show a temporary magenta cylinder and optional green axis |
+| `show_live_axis_overlay` | Show a temporary green axis/line overlay |
+| `get_live_fit_overlays` | Inspect the managed temporary overlay group |
+| `clear_live_fit_overlays` | Remove all managed fit overlays without touching source scans |
 
 The plugin source is included under `cloudcompare-plugin/qMCPBridge`. It runs a newline-delimited JSON control server bound to `127.0.0.1:8765` by default. See that directory's README for CloudCompare build/install instructions.
 
