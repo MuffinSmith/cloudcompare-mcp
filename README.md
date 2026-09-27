@@ -382,7 +382,7 @@ See [layer contracts and request examples](docs/LIVE_CAD_SECTION_LAYER_ISOLATION
 [Windows acceptance procedure](docs/WINDOWS_SECTION_LAYER_ACCEPTANCE.md), and AGENTS.md
 for exact recovery checkpoints and coverage limits.
 
-## Python-only 0.15.4 section-target isolation (unmerged; Windows pending)
+## Python-only 0.15.4 section-target isolation (accepted)
 
 `analyze_section_target_regions` and `analyze_live_section_target_regions` report
 bounded spatial targets **before** the accepted depth-layer stage. Explicit UV/depth
@@ -393,11 +393,33 @@ layer, occupancy, topology and primitive fitting. Multiple targets require a cur
 candidate fingerprint; being largest is never enough. Unsafe bridges, overlap,
 sparse support, perturbation sensitivity and truncated acquisition are refused.
 
-Development CI passed 765 tests, including actual MCP stdio and exact generated-file
-replay coverage. Fourteen reusable hashed PLY fixtures cover clutter, multiple targets,
-bridges, depth layers and arbitrary rotation/large translation. This is **not** real
-CloudCompare acceptance or proof the retained fan can reconstruct. The native bridge
-remains 0.12.0 / revision 8, unchanged; no DLL rebuild. No merge is authorized here.
+Real Windows/CloudCompare acceptance passed at
+`4b5dfe7026f8166c0102d763a9b60e9048686996`; PR #18 merged at
+`045e6d2508ab78ee31ffbac8ce7b9c11f1fcfc03`. All 14 exact fixtures, actual MCP stdio,
+visible GUI and safety/handoff gates passed. Windows regression: 749 passed plus all
+16 MSVC policy tests passed; installed CI: 765 passed. The complete 5,605-point fan
+slab returned 19 blocked targets with every point accounted for and no reconstruction.
+This is legitimate BLOCKED evidence, not a defect. Integrity remains metadata-only;
+no real-host nonunit-scale test. Native bridge 0.12.0 / revision 8 is unchanged.
+See the [accepted report summary](docs/WINDOWS_0_15_4_ACCEPTED.md). No DLL rebuild.
 
 See [target contracts and limits](docs/LIVE_CAD_SECTION_TARGET_ISOLATION.md),
 [focused Windows procedure](docs/WINDOWS_SECTION_TARGET_ACCEPTANCE.md), and AGENTS.md.
+
+## Python-only 0.15.5 fixed target-scale diagnostics (unmerged; Windows pending)
+
+`diagnose_section_target_stability` and `diagnose_live_section_target_stability`
+compare target evidence at five fixed settings: baseline, UV x 0.75, UV x 1.25,
+depth x 0.75, and depth x 1.25. The live tool acquires one complete slab. All other
+thresholds and budgets stay fixed. Exact point-membership intersections expose
+splits/merges and blocking-reason changes without choosing a scale or target.
+A refused probe is reported as inconclusive; no-change is not proof of physical
+topology. Diagnostic fingerprints cannot authorize reconstruction. Raw arrays stay
+server-side and every point remains accounted for, including summary omissions.
+
+Development CI passed 890 tests, including 125 new numerical/workflow/file/MCP tests.
+Twenty exact generated PLY fixtures exercise the new diagnostic without modifying
+the accepted solvers or native plugin. No real 0.15.5 GUI acceptance has occurred.
+See [diagnostic contracts](docs/LIVE_CAD_SECTION_TARGET_DIAGNOSTICS.md),
+[focused Windows gate](docs/WINDOWS_SECTION_TARGET_DIAGNOSTIC_ACCEPTANCE.md), and
+AGENTS.md. Do not merge this increment until its separate acceptance is complete.
