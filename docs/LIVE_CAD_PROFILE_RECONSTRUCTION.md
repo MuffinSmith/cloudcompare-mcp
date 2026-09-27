@@ -150,3 +150,12 @@ Spline fallback should only be introduced after normal CAD primitives have been
 systematically attempted and the residual evidence shows that a freeform segment is
 actually necessary. Complex topology should get an explicit loop/graph layer rather
 than increasingly fragile sorting heuristics.
+
+
+## Follow-on topology increment
+
+The accepted first increment deliberately left arbitrary multi-loop and
+non-star-shaped ordering unresolved. Development now continues in
+[explicit profile topology](LIVE_CAD_PROFILE_TOPOLOGY.md), which adds bounded
+boundary-curve graph extraction and outer/hole/island nesting while retaining the
+rule that filled scan slabs are not silently treated as contour samples.

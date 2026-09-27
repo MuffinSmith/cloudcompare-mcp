@@ -47,7 +47,7 @@ SECTION = {
 
 def capabilities() -> dict[str, Any]:
     return {
-        "version": "0.15.0",
+        "version": "0.15.1",
         "snapshot_profile_reconstruction": True,
         "live_section_profile_reconstruction": True,
         "native_rebuild_required": False,

@@ -16,6 +16,7 @@ on:
       - feature/live-hole-patterns
       - feature/live-cad-datum-relationships
       - feature/live-cad-profile-reconstruction
+      - feature/live-cad-profile-topology
       - main
   pull_request:
 

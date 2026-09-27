@@ -1,5 +1,52 @@
 # Repository work and interruption recovery
 
+## Accepted 0.15.1 profile topology increment (merge authorized)
+
+The exact Windows-tested feature HEAD is
+`e0043eab698e407cdb5df05ea4e827b6f05b1802`, based on accepted main
+`efd2e7aff2e2c9a68fde83373b804450f20ebbe2`. Python is 0.15.1.
+qMCPBridge remains accepted 0.12.0 / workflow revision 8; no native source or DLL
+change is part of this increment.
+
+Real Windows/CloudCompare acceptance completed successfully at that exact feature
+HEAD. Applicable gates passed: checkout/runtime identity, complete regression,
+snapshot multi-loop topology, original live topology fixture, rotated/large-translated
+live fixture, truncation/assertion safety, coordinate bookkeeping, and source-integrity
+checks. Windows regression was 455 passed with 16 compiler-gated native policy tests
+initially skipped; all 16 then passed under the installed MSVC environment.
+`compileall` and `git diff --check` also passed. No product defect was found.
+
+Both snapshot and real-host topology fixtures recovered
+`outer -> hole -> island` at nesting depths `0 -> 1 -> 2`, with source counts
+210 / 64 / 32. Snapshot original measurements were outer area 272.0, hole radius
+2.5, island radius 0.8. Snapshot transformed measurements were outer area
+272.0000000083869, hole radius 2.500000001589996, island radius
+0.8000000002119626. Real original measurements were 306 matched / 306 sampled,
+outer area 272.0, hole radius 2.4999999992653312, island radius
+0.799999993578975. Real transformed measurements were 306 matched / 306 sampled,
+outer area 272.0000130808068, hole radius 2.5000003152777674, island radius
+0.7999993434446816.
+
+For the transformed real fixture, the mathematical translation was
+`[100000000,-200000000,300000000]`, CloudCompare source global shift was
+`[-100000000,199999000,-299999000]`, and global scale was 1. The MCP result
+preserved that bookkeeping without applying it twice. Native nonunit-scale behavior
+remains untested.
+
+The bounded fan exercise was correctly BLOCKED by acquisition, not failed. The
+retained `fan_project.bin` working copy produced cloud ID 359 with 406,276 points;
+the selected slab contained 5,605 matched / 5,605 sampled points, 196 nonempty
+section-grid cells, and signed offset span approximately -0.49951171875 to
+0.4999237060546875. It was an ordinary filled/mixed scan slab, so the tester
+correctly refused to assert `boundary_samples_only=true`. Do not repeat the 0.15.1
+topology acceptance solely to force this fan subtest through. This is direct evidence
+for the next filled-section boundary-extraction stage.
+
+The user explicitly authorized merging this accepted increment. Preserve
+`feature/live-cad-profile-topology` after merge. After merge, record the exact PR
+and merge commit here, then start the next runtime lane from current main rather than
+continuing development on this accepted branch.
+
 ## Accepted 0.15 first profile-reconstruction increment
 
 The user explicitly approved merging the accepted first 0.15 increment. PR #14 merged
