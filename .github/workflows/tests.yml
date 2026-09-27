@@ -13,6 +13,8 @@ on:
       - feature/live-region-fitting
       - feature/live-feature-discovery
       - feature/live-feature-candidates-overlays
+      - feature/live-hole-patterns
+      - main
   pull_request:
 
 permissions:

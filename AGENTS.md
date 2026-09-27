@@ -6,19 +6,24 @@ The user approved the 0.12 merge and the next development stage. PR #8 merged
 `feature/live-feature-candidates-overlays` into `main` at
 `38f92c1dd62fdba92a4fc51959289287ae6eaaed`.
 
-Continue **`feature/live-hole-patterns`** for the 0.13 Python-only mounting-hole
-candidate grouping and spacing increment. This branch was deliberately created
-from the accepted merge; do not create another merely because a chat or container
-restarted. Resolve the current remote head and preserve any unexpected local work.
-Read `docs/LIVE_HOLE_PATTERNS.md` on the active branch.
+The 0.13 Python-only mounting-hole candidate grouping and spacing increment on
+**`feature/live-hole-patterns`** has completed its documented Windows acceptance.
+Retain this existing branch pending explicit user approval to merge PR #10.
+Do not create another branch merely because a chat or container restarted.
+Resolve the current remote head and preserve any unexpected local work.
+Read `docs/LIVE_HOLE_PATTERNS.md` and the completed-acceptance checkpoint below.
+
+The accepted product commit is `45377b281e9df2445dd52a5e84887611387ac1bd`.
+The original broad Windows report remains attributed to
+`2c3338e8ab45624feeaf56dc3b88f0bcf1ae6750`; the focused #11 retest covers the later
+empty-region adapter change. A documentation-only checkpoint is not a new runtime.
 
 Keep the accepted 0.12 branch intact. Its accepted checkout was
 `b62f9b4d238e7f169e76c36e630b2060320d261a`, with native/runtime baseline
 `fc51824d9edf7328614653c57bf3644c1db02769`. The 0.13 increment changes Python only;
-its new tools require targeted Windows acceptance, NOT reopening 0.12 or rebuilding
-an unchanged DLL. Use `docs/WINDOWS_HOLE_PATTERN_ACCEPTANCE.md` on the active branch.
-This approval covers merging 0.12 and starting 0.13, not automatically merging the
-new unaccepted stage.
+do not reopen 0.12 or rebuild an unchanged DLL. The previous approval covers
+merging 0.12 and starting 0.13, not automatically merging this new stage.
+Passing acceptance does not authorize a merge.
 
 The older `feature/live-auto-feature-overlays` and `feature/live-candidate-overlays`
 branches came from interrupted attempts. Leave them intact. Inspect their diffs
@@ -27,7 +32,7 @@ implementations or create another replacement branch.
 
 ## Resume procedure
 
-1. Read this file and `docs/LIVE_FEATURE_CANDIDATES.md`.
+1. Read this file and `docs/LIVE_HOLE_PATTERNS.md`.
 2. Inspect local status, remote branch heads, recent commits, and open issues.
 3. Preserve unexpected local work. Never reset, clean, force-push, or discard it
    without explicit authorization.
@@ -84,3 +89,37 @@ The recovery used a manual GUI drag. Automated dragging did not succeed and must
 not be described as accepted. Previous broad synthetic/fan results retain their
 original report/runtime attribution and coverage limitations. This checkpoint is
 restart guidance; detailed reports and raw evidence remain outside Git.
+
+## Completed 0.13 acceptance and empty-region gate
+
+Issue #11 is closed as completed after its focused real-Windows retest at
+`45377b281e9df2445dd52a5e84887611387ac1bd`. The tester recorded the combined scoped
+PASS on #9, which remains open for acceptance review. PR #10 remains draft and
+unmerged pending explicit user approval. Authoritative records:
+
+- Original broad report:
+  https://github.com/MuffinSmith/cloudcompare-mcp/issues/9#issuecomment-5852430792
+- Focused #11 completion:
+  https://github.com/MuffinSmith/cloudcompare-mcp/issues/11#issuecomment-5852560616
+- Combined acceptance and coverage limits:
+  https://github.com/MuffinSmith/cloudcompare-mcp/issues/9#issuecomment-5852565296
+
+Treat `docs/WINDOWS_HOLE_PATTERN_ACCEPTANCE.md` and
+`docs/WINDOWS_EMPTY_REGION_RETEST.md` as retained procedures, not outstanding work.
+Historical pre-acceptance wording in those documents does not reopen a completed
+gate. Do not request another fan run, transformed-fixture run, manual-drag test,
+reinstall or unchanged-DLL rebuild for a documentation-only change or chat restart.
+Compare any later runtime change against the accepted product commit and assess
+only the required targeted retests.
+
+The empty adapter is confined to the new live hole tool. Selector-specific native
+no-match responses become explicit empty results; invalid sources, malformed
+requests and disconnected transport remain errors. Legacy region-tool and native
+semantics remain unchanged. Real-host acceptance is distinct from replay-peer tests.
+
+Retain coverage limits: fan point integrity covered the selected bearing-cap
+XYZ/normals, not every fan cloud; other clouds received scene-metadata checks.
+Nonempty duplicate mappings remain unit-test coverage. The transformed fixture
+is not additional nonidentity global-shift bookkeeping coverage. Physical units
+and physical-hole identity remain unconfirmed. Detailed reports and raw evidence
+remain outside Git, with each run attributed to its actual checkout/runtime.
