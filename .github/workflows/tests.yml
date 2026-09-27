@@ -19,6 +19,7 @@ on:
       - feature/live-cad-profile-topology
       - feature/live-cad-section-boundary-extraction
       - feature/live-cad-section-layer-isolation
+      - feature/live-cad-section-target-isolation
       - main
   pull_request:
 

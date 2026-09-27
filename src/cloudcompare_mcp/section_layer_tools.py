@@ -26,13 +26,15 @@ KINDS = {
 
 
 def capabilities(*, live_available: bool = True) -> dict[str, Any]:
+    from .section_target_tools import capabilities as target_capabilities
     return {'version': '0.15.3', 'snapshot_layer_analysis': True,
             'live_layer_analysis': bool(live_available), 'snapshot_layer_profile': True,
             'live_layer_profile': bool(live_available), 'requires_complete_acquisition': True,
             'explicit_uv_and_depth_thresholds': True, 'max_points': 20000,
             'max_cells': 20000, 'max_components': 64, 'max_depth_modes_per_cell': 16,
             'native_rebuild_required': False, 'automatic_multi_layer_selection': False,
-            'disconnected_patch_joining': False, 'manufacturing_intent_confirmed': False}
+            'disconnected_patch_joining': False, 'manufacturing_intent_confirmed': False,
+            'section_targets': target_capabilities(live_available=live_available)}
 
 
 def layer_schema() -> dict:
@@ -115,7 +117,9 @@ def tools() -> list[Tool]:
         result.append(Tool(name=name, description=description, inputSchema=schema,
                            annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False,
                                                        idempotentHint=True, openWorldHint=live)))
-    return result
+    # Lazy registration avoids a schema-helper import cycle and preserves server wiring.
+    from .section_target_tools import tools as target_tools
+    return result + target_tools()
 
 
 def handle(args: dict, *, live: bool, reconstruct: bool,
@@ -128,5 +132,6 @@ def handle(args: dict, *, live: bool, reconstruct: bool,
 
 
 def handlers(request: Callable[..., Any] | None = None) -> dict[str, Callable]:
-    return {name: partial(handle, live=live, reconstruct=reconstruct, request=request)
-            for name, (live, reconstruct) in KINDS.items()}
+    from .section_target_tools import handlers as target_handlers
+    return {**{name: partial(handle, live=live, reconstruct=reconstruct, request=request)
+               for name, (live, reconstruct) in KINDS.items()}, **target_handlers(request)}

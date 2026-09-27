@@ -1,263 +1,124 @@
 # Repository work and interruption recovery
 
-## Accepted main: 0.15.3 depth-aware section layer isolation
+## Active UNMERGED 0.15.4: implementation complete, Windows next
 
-The user explicitly authorized merging the accepted 0.15.3 increment. PR #17 merged
-`feature/live-cad-section-layer-isolation` into `main` at
-`27cfd286331db177c76ce627056150e439d418c9`. Preserve the feature branch.
+Branch: `feature/live-cad-section-target-isolation`.
+Accepted-main parent: `0201cdd46381e0c79c05b33ee9de48851a18b877`.
+Exact complete runtime/test checkpoint: `f2ba2eb5b09c6cc267cd2eaf33dbfde268e59080`.
+Installed CI `36356259255` / job `108724473998`: **765 passed, zero skips**, 36.24 s;
+compileall and diff check passed. Source tree `e13878ceebcd49c5bf19459bf738996b884fe950`.
+Subsequent finalization changes are documentation only. Inspect actual remote HEAD
+and current CI after a disconnect; do not recreate or restart this lane.
 
-Exact real-Windows/CloudCompare tested runtime HEAD:
-`2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`.
+Local dependency-available regression: **550 passed**, zero skips, including all
+16 compiled native policy tests (not a plugin build). Focused new coverage is 139
+tests: 48 core, 43 workflow/replay, 18 boundary/precision/provenance, 20 exact-file,
+10 MCP schema/dispatch/actual stdio tests. Local focused non-MCP subset: 129 passed;
+the MCP tests and complete installed suite ran in CI, not the dependency-limited
+container. All 14 fresh hashed PLY files passed product projection/snapshot/replay;
+original and arbitrary-rotated/large-translated single/parallel handoff passed.
+Generated files, logs and raw evidence remain outside Git.
 
-Final acceptance-record feature HEAD:
-`dda5032a60143f7a17691034c337a83492a8613f`.
+Python 0.15.4. qMCPBridge remains accepted 0.12.0 / workflow revision 8. Native diff
+against accepted main is empty. No DLL rebuild. Accepted layer/boundary/topology/
+primitive solvers and server.py are unchanged; only the layer-tool registry delegates
+new tools. **No real Windows/CloudCompare 0.15.4 acceptance has occurred here.**
 
-Accepted-main parent before the increment:
-`cb1ee9eab9c64ff4806036a6317606938faa22e6`.
+Next action: follow `docs/WINDOWS_SECTION_TARGET_ACCEPTANCE.md` at the supplied final
+HEAD after confirming green CI. Read `docs/LIVE_CAD_SECTION_TARGET_ISOLATION.md` for
+contracts/refusal boundaries. Testing/reporting only, not implementation or DLL work.
+Do not merge 0.15.4 and do not ask for merge authorization merely because tests pass.
 
-Push CI `36354475752` and PR CI `36354635066` both passed at the final
-acceptance-record feature HEAD before merge. Python is 0.15.3. qMCPBridge remains
-unchanged at accepted 0.12.0 / workflow revision 8; no DLL rebuild occurred or is
-required. Post-merge README/layer-doc commits are documentation only.
+## Verified recovery and draft PR #18
 
-Focused Windows acceptance completed successfully for the fixture, live-GUI,
-handoff and safety gates. The bounded real fan analysis was legitimately BLOCKED;
-no reproducible product defect was found, no GitHub issue was opened, and no runtime
-fix was made. PR #17 later merged the accepted branch after explicit user approval.
-Detailed reports/raw evidence remain outside Git.
+Recovered the existing completed branch at
+`423d48e43fa7632dab3f15a82beba267e52b709a`; no replacement branch or runtime
+implementation was created. Draft PR #18 now tracks this unmerged increment.
+Final-documentation push CI `36356607178`, job `108725479512`, was independently
+read: **765 passed, zero skips, 31.21 s**, compileall and diff check passed.
+This recovery checkpoint changes AGENTS.md only; inspect the new HEAD/CI rather
+than assuming the documentation checkpoint above is still the branch tip.
 
-Exact acceptance identity and regression:
-- clean isolated Windows worktree at
-  `2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`;
-- accepted-main parent `cb1ee9eab9c64ff4806036a6317606938faa22e6`;
-- isolated Python imports 0.15.3 from that worktree;
-- visible CloudCompare 2.13.2, qMCPBridge 0.12.0;
-- native source diff empty;
-- Windows suite 610 passed with 16 compiler-gated native policy tests skipped in
-  the ordinary shell, then all 16 passed separately under configured MSVC;
-- compileall and both diff checks passed;
-- final development CI run `36352480651` passed at the exact tested HEAD;
-- the CI-installed suite at that source contained 626 tests.
+Fresh recovery audit: **129 passed in 6.64 s** across the four non-MCP target test
+modules, plus compileall and the full accepted-main-to-feature diff check. The fresh
+container lacks mcp/laspy/plyfile; the full installed suite and actual stdio results
+are CI evidence, not a newly claimed full local run. No real GUI test was repeated.
 
-All 12 freshly generated PLY fixtures matched manifest hashes and point counts.
-Actual MCP stdio exposed:
-- `analyze_section_layers`
-- `analyze_live_section_layers`
-- `reconstruct_section_layer_profile`
-- `reconstruct_live_section_layer_profile`
+Downloaded tested-source artifact `10944357424`; ZIP SHA256
+`4c376178346a5a1fe4b829f25522db533787329a391e18c30be5e426aeaadd73`.
+Its archive commit comment and reconstructed Git source tree matched the recovered
+HEAD and `80ac93381eb7f51a4eac11bf5b6898a4d4ae94d1`. Accepted main's source tree
+was also independently verified. The final change set contains 17 files; native
+plugin and accepted solver diffs are empty. The saved 0.15.3 AGENTS history is
+byte-for-byte equal to accepted main. No merge, reset, clean or force-push occurred.
 
-Snapshot and real-GUI fixture behavior matched the contract. Single, sloped,
-bounded-noise and transformed-single cases were ready. Parallel, three-layer,
-partial-overlap, fan-like and transformed-parallel retained separate candidates.
-Crossing, excessive-thickness and sparse cases blocked unsafe continuation. Every
-live acquisition was complete and every acquired point was accounted for; compact
-responses contained no raw point arrays.
+Next action remains focused Windows acceptance using the final supplied SHA and
+`docs/WINDOWS_SECTION_TARGET_ACCEPTANCE.md`, not a new development increment.
+Keep PR #18 draft and unmerged. Do not rerun accepted 0.15.3 acceptance.
 
-Handoff/refusal checks passed. Original and transformed single cases selected
-1,200 points with zero unselected points and produced one outer loop. Original and
-transformed live parallel explicit choices selected 1,200 points and left 1,200
-unselected; unchosen composites blocked. Stale fingerprints and snapshot-to-live
-fingerprint reuse were rejected. Explicit selection did not bypass crossing, thick
-or sparse evidence. A 100-point acquisition cap errored explicitly. A deliberately
-too-small topology edge limit retained diagnostics while refusing topology.
+## Implemented scope and deliberate limits
 
-The real live original-single primitive RMS residuals were, in fitted order:
-`0, 0.074536, 0.022408, 0.048277, 0` for line, line, arc, line, line.
-The transformed-single residuals were:
-`0.046388, 0.059475, 0.186595, 0.048698, 0.0000103`.
+Four snapshot/live target analysis/reconstruction tools; capabilities at
+`python_section_layers.section_targets`. Pure numerical core uses declared UV/depth
+voxels, six-face connectivity, unique-point support, iterative articulation guards,
+one-cell UV erosion and six fixed +/- origin probes. Diagnostics never repair or
+replace baseline membership. Every acquired point belongs to a reported candidate.
+Multiple targets require an explicit candidate-bound token even if only one is large
+or usable. Distant unsupported clutter can remain explicitly unselected; an unsafe
+target itself cannot be overridden. Target then layer selection preserve all counts.
 
-Coordinate bookkeeping passed with limited integrity coverage. The transformed GUI
-sources used CloudCompare global shift
-`[-100000000, 199999000, -299999000]`, global scale 1, with no double application.
-Before/after metadata matched for all 12 fixture entities and the fan source.
-Full-cloud geometry/attribute equality was not independently proved, and no real
-nonunit-scale source was tested. Preserve those limitations exactly.
+Complete global-coordinate native acquisition only, no reservoir topology proof.
+Source/frame/acquisition/parameter fingerprints bind selection; live index mapping
+is included. No double shift/scale. Fingerprints cover acquired slab geometry, not
+independent whole-cloud geometry/attribute equality. A selected target still passes
+UNCHANGED accepted 0.15.3 -> 0.15.2 -> 0.15.1/fitting guards (layer default16).
+Subcell/unsampled connections, wide necks and all possible grid phases are not proved
+absent; harmless thin appendages can conservatively block. No manufacturing intent,
+largest-target preference, sign selection, adaptive search, Fusion, ellipse or spline.
 
-Bounded fan acceptance is BLOCKED, not FAIL:
-- source 359, `Assembly | Fan - scan 1`;
-- complete 5,605 / 5,605 acquisition, no truncation;
-- signed depth min approximately -0.499512, max +0.499924;
-- 2,814 negative and 2,791 positive offsets;
-- the single declared analysis exceeded the configured 16-component limit and
-  refused before producing a candidate fingerprint;
-- therefore there was no defensible selection and reconstruction was correctly not
-  attempted.
+## Accepted history is not an outstanding gate
 
-Do not raise `max_components`, search thresholds, select by depth sign, or otherwise
-retune solely to force this fan slab through. The BLOCKED result demonstrates that
-the safety boundary is functioning. A smaller/better isolated acquisition can be a
-future workflow improvement, but it is not required to accept 0.15.3.
+Original main AGENTS.md is preserved verbatim in `docs/ACCEPTED_0_15_3_HISTORY.md`.
+Also read `docs/ACCEPTED_DEVELOPMENT_HISTORY.md` and relevant accepted CAD documents.
+Their historical next/pending wording is superseded by this active lane.
+Accepted 0.15.3: PR17 merge `27cfd286331db177c76ce627056150e439d418c9`;
+retained feature HEAD `dda5032a60143f7a17691034c337a83492a8613f`;
+actual Windows runtime `2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`.
+Windows610 passed +16 policy tests later passed under MSVC; CI626 passed. All12 exact
+fixtures and actual stdio/GUI/safety/handoff gates passed. Integrity was METADATA
+ONLY, not independently full-cloud; no actual nonunit-scale source was tested.
+Do not repeat this completed acceptance just because a chat restarted or inflate it.
 
-The accepted runtime remains the Windows-tested SHA above. Later acceptance and
-post-merge documentation commits do not create a new runtime acceptance obligation.
-Do not repeat the 0.15.3 Windows/fan gate merely because another chat starts.
+Retained real fan: BLOCKED, not failed. Historical cloud359, `Assembly | Fan - scan 1`,
+406276 points; slab [40,0,135], normal[0,0,1], half0.5, complete5605/5605. Declared
+0.15.3 analysis exceeded16 components, produced no token and did not reconstruct.
+Never raise limits, remove clutter, choose a depth sign or parameter-search to make
+it pass. New target-stage fan diagnostics may also remain legitimately BLOCKED.
+The focused Windows procedure predeclares one bounded coarse target analysis.
+Resolve actual fan_project.bin and scene identity; use a working copy, not assumptions.
 
-## Suggested next development lane: 0.15.4 section-target isolation
+## Persistence and reproducibility
 
-The next chat should first inspect current `main`, remote branches, open PRs/issues,
-recent commits and CI. Do not create a replacement branch if a legitimate 0.15.4
-branch already exists. If no newer deliberate lane exists, create one branch from
-current accepted main, suggested name:
+Remote checkpoints (all verified): recovery `4b456f38affa8fdb250893ba5e1c148d8015ea26`,
+core `b910000fe435a0589e1e2e64df9bbc084d5edff0`, workflow
+`34e0606882a881f860661f742e5f77aecdf0b271`, MCP
+`b22e18f1a2b785642e57b7a7d1231e282caa9d77`, fixtures
+`7cb0df8b416dbdc85cdcd23d91f7c9a675554843`, full tests `f2ba2eb5b09c6cc267cd2eaf33dbfde268e59080`.
 
-`feature/live-cad-section-target-isolation`
+Direct container Git networking was unavailable. Accepted source came from Actions
+artifact10943288751, ZIP SHA256
+`06a934a875c6b725a68edc1d848aabbf3df9c2a0083c90996cb70c3d688d36cb`.
+The archive commit comment matched accepted main; reconstructed local Git tree
+matched `6a14df038d0354f474fea37666c3e24fce2c5787`. Every checkpoint's local source
+tree matched the remote tree. Local mirror commit IDs are not remote commit IDs.
+CI artifacts archive tracked public source only, never credentials or user data.
 
-Suggested Python version: 0.15.4.
-
-Primary goal: make complex scan slabs easier to use without weakening 0.15.3 safety.
-The accepted fan result exceeded the declared 16-component layer-analysis limit.
-Do NOT solve that by simply raising `max_components`, selecting a depth sign, dropping
-small components, or searching thresholds until reconstruction succeeds.
-
-Instead add a bounded, deterministic target-region/patch isolation stage BEFORE full
-0.15.3 layer analysis. Conceptual pipeline:
-
-complete slab acquisition
--> section coordinates (u, v, signed_depth)
--> compact spatial target/patch evidence
--> explicit safe/caller-selected target region
--> accepted 0.15.3 layer analysis
--> accepted 0.15.2 occupancy boundary extraction
--> accepted 0.15.1 loop topology
--> existing primitive fitting
-
-A useful first design may use explicit coarse U/V/depth connectivity, a bounded ROI,
-or an explicit seed/pick to identify one spatially coherent target while preserving
-all rejected/unselected-point accounting. Return compact candidate summaries,
-coverage, bounding ranges, support, ambiguity, source fingerprints and selection
-fingerprints. Automatic continuation should require exactly one unambiguous supported
-target. Multiple targets require explicit selection. A selected target is still
-inferred geometry, not manufacturing intent.
-
-Prefer the existing read-only `cloud.region_query` and existing picking/region
-capabilities. Do not add native qMCPBridge code unless structured acquisition is
-proven insufficient. Keep raw point arrays server-side. Require complete acquisition
-for topology-bearing decisions and never treat truncated reservoir samples as proof.
-
-Add snapshot and live MCP surfaces only after the numerical core is separately tested.
-Possible names, subject to clearer API design:
-- `analyze_section_target_regions`
-- `analyze_live_section_target_regions`
-- `reconstruct_section_target_profile`
-- `reconstruct_live_section_target_profile`
-
-Fixtures should include: one target plus disconnected clutter, multiple separated
-targets, nearby targets with a narrow bridge, overlapping depth layers inside one
-target, large rotation/translation, sparse/ambiguous target evidence, and a generic
-fan-like many-component slab. Exact generated files must be exercised through product
-code; do not tune fixtures or thresholds solely to make the retained real fan pass.
-
-Keep bounded multiresolution occupancy diagnostics as a later/separate enhancement
-unless they are independently necessary for this increment. Do not combine unrelated
-profile-classification work (ellipse/rounded-rectangle/spline inference) into 0.15.4.
-
-Before requesting another Windows gate require full regression, compileall,
-`git diff --check`, schemas, actual MCP stdio, exact generated-file tests, final
-diff against accepted main, proof of no native diff when claiming no rebuild, and
-green CI. The Windows machine is for testing/reporting, not implementing fixes.
-
-The real fan may remain BLOCKED after 0.15.4. Success is a trustworthy way to isolate
-or explain complex target regions, not forcing a CAD profile.
-
-## Accepted main: 0.15.2
-
-The user explicitly authorized the 0.15.2 merge and then a separate 0.15.3
-layer-isolation increment. PR #16 merged `feature/live-cad-section-boundary-extraction`
-into main at `8f2e0317f9eeff14547db1d83c100549c65fb18c`.
-The retained feature HEAD is `e4e53f7632e58843ea78780b88a2ab539cee1a94`.
-Push CI `36350201179` and PR CI `36350227336` both completed successfully before
-merge. The merge tree exactly matches that checked HEAD. The later main checkpoint
-`cb1ee9eab9c64ff4806036a6317606938faa22e6` records this recovery state only.
-Preserve the feature branch; do not merge it again.
-
-Windows-tested HEAD: `7610eceff68704132ff44086d8d070fbb10b5c38`.
-Runtime/product checkpoint: `0fd59d19156f6d80087e1c43b2096482aa85715f`.
-Accepted Python: 0.15.2. qMCPBridge: unchanged accepted 0.12.0 / workflow revision 8.
-No DLL rebuild is required. Generated snapshot/live fixtures and safety gates PASSed.
-Windows regression: 490 passed plus 16 compiler-gated policy tests that subsequently
-PASSed under configured MSVC. compileall and diff checking PASSed. The fan profile
-was correctly BLOCKED by complete but ambiguous geometry, not a product defect.
-Integrity coverage is metadata only, not full source-point hashing. Real-host nonunit
-global scale remains untested. Do not silently promote those coverage claims.
-
-All prior acceptance histories and numerical details are preserved verbatim in
-`docs/ACCEPTED_DEVELOPMENT_HISTORY.md` (the prior AGENTS.md blob). Read its relevant
-sections before changing accepted behavior. Its historical pending-merge wording is
-superseded by the exact merged state above, not a request to repeat completed work.
-Also read `docs/LIVE_CAD_SECTION_BOUNDARY_EXTRACTION.md`; the corresponding Windows
-acceptance document is a retained procedure, not an outstanding 0.15.2 test gate.
-
-## Layer-isolation responsibility boundary
-
-Keep complete slab `(u,v,signed_depth)` evidence until coherent layers have been
-analyzed. Python owns local depth observations, continuity, ambiguity and selection;
-CloudCompare owns read-only complete acquisition and source provenance. Use existing
-`cloud.region_query`, with NO native/DLL change. Do not begin Fusion 360 integration.
-
-Sparse, thick or merging/crossing components block continuation even after an
-explicit choice. Selection is automatic only for one usable component. Explicit
-selection binds exact geometry, source, frame, acquisition and parameters through
-an analysis fingerprint. Disconnected patches are separate candidates, never
-implicitly joined. Explicit choice is not manufacturing acceptance.
-
-Never select by depth sign, drop inconvenient samples, use truncated reservoir samples
-as topology proof, or search parameters until a CAD outline looks good. A real fan
-result may legitimately remain BLOCKED.
-
-The previous fan slab: resolve the actual entity (historically cloud 359, name
-`Assembly | Fan - scan 1`, 406,276 source points), origin `[40,0,135]`, normal
-`[0,0,1]`, half-thickness 0.5, complete 5,605/5,605 acquisition. Depth approximately
--0.4995 to +0.4999 with substantial support on both sides; five independent diagonal
-UV occupancy contacts. Do not assume this exact slab must become reconstructable.
-
-## Disconnect/stall recovery
-
-1. Inspect local status, remote heads, recent commits, open issues/PRs and CI.
-2. Preserve unexpected work. Never reset, clean, force-push, delete retained branches,
-   or create replacement `-retry`/`-recovery` branches because a session restarted.
-3. Commit each coherent increment, verify its returned SHA and remote persistence,
-   then start the next substantial change. After a failed write, re-query remote HEAD
-   and recent commits rather than inferring success/failure.
-4. Update this file at milestones: active branch, accepted-main parent, exact last
-   coherent runtime checkpoint, CI, remaining scope and whether native code changed.
-5. Save before potentially slow tests/diffs. Fetch focused log/failure excerpts;
-   avoid giant repeated responses and rapid unbounded CI polling. Continue independent
-   review while CI runs.
-
-## Validation boundary
-
-Use the development container for every available numerical, unit, protocol, CLI,
-static and build check. Test actual source, not a handwritten reference presented
-as product validation. Distinguish exact-source tests, replay/mocked acquisition,
-native policy compilation and real CloudCompare GUI tests. Missing dependencies,
-network or builds are limitations, not passing tests; preserve evidence outside Git.
-Never claim a full suite, native build or fan run that was not executed.
-
-Before requesting Windows: complete regression, compileall, diff check, schema tests,
-actual MCP stdio tests, exact generated fixture-file tests, final comparison with
-accepted main, green CI and proof of no native diff when claiming no rebuild.
-Windows is for testing/reporting, not implementing fixes. Supply one copyable prompt
-with exact branch/HEAD and targeted scope. File issues only for reproducible product
-defects; valid ambiguity/refusal is not itself a defect. Close defects only after the
-required retest. Do not reopen issue #13's accepted slot fix or older accepted gates
-for a chat restart or documentation-only changes.
-
-## Numerical and data safety
-
-Use native units, never assume millimetres. Work in local/relative coordinates and
-reject subprecision tolerances. Preserve cloud identity/name, section origin/normal/
-bases, global shift/scale, acquisition counts/truncation, thresholds and fingerprints.
-Never apply CloudCompare global shift/scale twice. Keep measured evidence, inferred
-layers/boundaries/topology/primitives and accepted manufacturing intent distinct.
-
-Keep CloudCompare visible but prefer structured geometry; do not routinely capture
-viewport images or return raw point arrays. The GUI test instance may be reopened
-without saving; that is not permission to delete unrelated files or working changes.
-`fan_project.bin` is an authorized disposable dataset: resolve its real path and use
-a working copy, never assume it is in the repository/container. Preserve source
-geometry/attributes; overlays may modify only explicitly managed objects, never
-identify deletable user geometry by display name alone.
-
-Keep detailed reports, logs, screenshots, fixtures, exports and run-specific evidence
-outside Git. Reusable generators/tests/procedures and recovery guidance belong in
-Git. Preserve all accepted histories. Never repeat a completed full Windows/fan gate,
-manual drag, reinstall or unchanged-DLL rebuild merely because a session restarted.
+Commit coherent increments and verify returned SHAs plus remote persistence before
+substantial next work. Update this file at milestones and save before long tests.
+A failed stream does not imply a failed GitHub write: inspect HEAD, commits, AGENTS
+and CI. Never reset, clean, force-push, delete retained branches or create retry/
+recovery/-2 branches. Preserve unexpected work and unrelated active checkouts.
+Avoid giant repeated log dumps and rapid polling loops. Before any later Windows
+gate require installed full regression, compileall/diff checks, actual stdio/schema,
+replay/file coverage, final accepted-main/native comparison, green CI and this
+checkpoint. Return exact identities, counts, limitations and one focused test prompt.
