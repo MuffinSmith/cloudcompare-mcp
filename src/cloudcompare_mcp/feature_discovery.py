@@ -569,8 +569,8 @@ def discover_cylinders(
     max_cylinders: int = 3,
     min_points: int = 24,
     min_inlier_fraction: float = 0.05,
-    restarts: int = 12,
-    subset_size: int = 64,
+    restarts: int = 32,
+    seed_size: int = 6,
     min_angular_coverage_degrees: float = 90.0,
     min_radius: float | None = None,
     max_radius: float | None = None,
@@ -592,10 +592,10 @@ def discover_cylinders(
         or min_inlier_fraction > 1.0
     ):
         raise FeatureFitError("min_inlier_fraction must be in (0, 1]")
-    if not isinstance(restarts, int) or not 1 <= restarts <= 64:
-        raise FeatureFitError("restarts must be an integer between 1 and 64")
-    if not isinstance(subset_size, int) or not 6 <= subset_size <= 512:
-        raise FeatureFitError("subset_size must be an integer between 6 and 512")
+    if not isinstance(restarts, int) or not 1 <= restarts <= 128:
+        raise FeatureFitError("restarts must be an integer between 1 and 128")
+    if not isinstance(seed_size, int) or not 6 <= seed_size <= 24:
+        raise FeatureFitError("seed_size must be an integer between 6 and 24")
     if (
         not math.isfinite(float(min_angular_coverage_degrees))
         or min_angular_coverage_degrees < 0.0
@@ -654,7 +654,7 @@ def discover_cylinders(
         subset = xyz[remaining]
 
         seed_fits: list[dict[str, Any]] = []
-        broad_count = min(subset.shape[0], max(96, min(512, subset_size * 4)))
+        broad_count = min(subset.shape[0], 256)
         if broad_count == subset.shape[0]:
             broad = subset
         else:
@@ -672,7 +672,7 @@ def discover_cylinders(
         except FeatureFitError:
             pass
 
-        random_count = min(subset_size, subset.shape[0])
+        random_count = min(seed_size, subset.shape[0])
         for _ in range(restarts):
             indices = rng.choice(
                 subset.shape[0],
@@ -821,7 +821,7 @@ def discover_cylinders(
         "max_radius": maximum_radius,
         "max_radius_source": maximum_radius_source,
         "restarts_per_cylinder": restarts,
-        "subset_size": subset_size,
+        "seed_size": seed_size,
         "random_seed": random_seed,
         "candidate_count": len(candidates),
         "unassigned_sample_count": int(remaining.size),
