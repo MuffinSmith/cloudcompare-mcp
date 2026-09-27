@@ -108,6 +108,28 @@ def test_arbitrary_2d_rotation_preserves_three_loop_topology():
     assert evidence.public["material_component_count"] == 2
 
 
+def test_rotated_filled_section_hands_off_to_accepted_topology():
+    result = reconstruct_filled_section_profile_2d(
+        filled_fixture(angle_degrees=31.0),
+        cell_size=0.5,
+        max_edge_length=1.25,
+        fit_tolerance=0.35,
+        min_cell_support=1,
+        max_cells=20_000,
+        max_boundary_points=2048,
+        angular_tolerance_degrees=2.0,
+        minimum_loop_points=6,
+        max_loops=8,
+        require_grid_stability=True,
+    )
+    assert result["topology"]["loop_count"] == 3
+    assert [loop["role_candidate"] for loop in result["topology"]["loops"]] == [
+        "outer",
+        "hole",
+        "island",
+    ]
+
+
 def test_nonuniform_density_is_preserved_or_warned_without_repair():
     points = filled_fixture()
     keep = np.ones(len(points), dtype=bool)
