@@ -172,8 +172,8 @@ def _trace_component(
 
             candidates.append(
                 (
-                    _turn_score(points, previous, current, candidate),
                     float(distances[current, candidate]),
+                    _turn_score(points, previous, current, candidate),
                     float(points[candidate, 0]),
                     float(points[candidate, 1]),
                     candidate,
@@ -637,7 +637,7 @@ def reconstruct_profile_topology_2d(
                 "median": float(np.median(neighbor_counts)),
                 "max": int(np.max(neighbor_counts)),
             },
-            "trace_policy": "nearest-start then minimum-turn local continuation",
+            "trace_policy": "nearest-start then nearest-unvisited local continuation with turn tie-break",
         },
         "assumptions": [
             "input points sample one or more closed boundary curves rather than a filled section",
