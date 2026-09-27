@@ -151,7 +151,7 @@ class LiveFeatureCandidateContractTests(unittest.TestCase):
                     },
                     "sample_limit": 6,
                     "restarts": 3,
-                    "subset_size": 6,
+                    "seed_size": 6,
                 }
             )
 
