@@ -146,8 +146,7 @@ Environment variables:
 │                 │                 │
 ├─────────────────┼─────────────────┤
 │   Side  (YZ)    │  Metadata stats │
-│                 │  (pts, bbox,    │
-│                 │   density, …)   │
+│                 │                 │
 └─────────────────┴─────────────────┘
 ```
 
@@ -320,7 +319,7 @@ retained as the input requirement for the next boundary-extraction increment, no
 See [profile topology contracts](docs/LIVE_CAD_PROFILE_TOPOLOGY.md) and the retained
 [Windows acceptance procedure](docs/WINDOWS_PROFILE_TOPOLOGY_ACCEPTANCE.md).
 
-## Python-only 0.15.2 filled-section boundary extraction (development)
+## Python-only 0.15.2 filled-section boundary extraction (accepted)
 
 `extract_section_boundary_evidence` bins ordinary unordered projected section samples
 into an explicit native-unit occupancy grid, traces exposed occupied-cell edges, and
@@ -338,5 +337,14 @@ replaces measured occupancy; no morphology, gap-closing, hole filling, smoothing
 manufacturing-intent inference is applied as repair. Raw scan samples remain server-side and
 qMCPBridge stays unchanged at 0.12.0 / workflow revision 8.
 
+Real Windows acceptance completed at `7610eceff68704132ff44086d8d070fbb10b5c38`:
+generated original/transformed fixtures and safety checks PASSed. Regression was
+490 passed plus 16 compiler-gated policy tests that subsequently passed under MSVC.
+The bounded fan remained correctly BLOCKED by ambiguous depth and diagonal occupancy,
+not a product defect. Integrity coverage was metadata only; native nonunit scale is
+still untested. The next stage analyzes coherent depth-aware layer candidates before
+flattening, rather than weakening these accepted safety checks. No DLL rebuild.
+
 See [filled-section boundary contracts](docs/LIVE_CAD_SECTION_BOUNDARY_EXTRACTION.md)
-and the [focused Windows acceptance procedure](docs/WINDOWS_SECTION_BOUNDARY_ACCEPTANCE.md).
+and the [retained Windows acceptance procedure](docs/WINDOWS_SECTION_BOUNDARY_ACCEPTANCE.md).
+See AGENTS.md for exact acceptance/merge attribution and coverage limitations.
