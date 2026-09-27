@@ -140,6 +140,41 @@ def test_live_filled_section_rejects_truncated_acquisition():
     assert "complete slab acquisition" in result.content[0].text
 
 
+def test_live_filled_section_rejects_missing_or_inconsistent_counts():
+    cases = [
+        ("matched_count", None),
+        ("returned_count", None),
+        ("matched_count", True),
+        ("returned_count", True),
+    ]
+    for field, value in cases:
+        response = region_response()
+        if value is None:
+            response.pop(field)
+        else:
+            response[field] = value
+        with patch.object(server, "live_request", return_value=response):
+            result = server.handle_reconstruct_live_filled_section_profile(args())
+        assert isinstance(result, CallToolResult) and result.isError
+        assert "explicit complete slab acquisition" in result.content[0].text
+
+    response = region_response()
+    response["returned_count"] -= 1
+    with patch.object(server, "live_request", return_value=response):
+        result = server.handle_reconstruct_live_filled_section_profile(args())
+    assert isinstance(result, CallToolResult) and result.isError
+    assert "explicit complete slab acquisition" in result.content[0].text
+
+
+def test_live_filled_section_rejects_returned_record_count_mismatch():
+    response = region_response()
+    response["points"] = response["points"][:-1]
+    with patch.object(server, "live_request", return_value=response):
+        result = server.handle_reconstruct_live_filled_section_profile(args())
+    assert isinstance(result, CallToolResult) and result.isError
+    assert "returned_count does not match" in result.content[0].text
+
+
 def test_live_filled_section_rejects_layered_projection():
     with patch.object(
         server,
