@@ -386,6 +386,74 @@ def _topology_signature(
         return {"valid": False, "issue": str(exc)}
 
 
+def _occupied_topology_signature(
+    occupied: set[tuple[int, int]],
+) -> dict[str, Any]:
+    if not occupied:
+        return {"valid": False, "issue": "occupancy_empty"}
+    diagonal = _diagonal_ambiguities(occupied)
+    if diagonal:
+        return {
+            "valid": False,
+            "issue": "diagonal_only_connection",
+            "diagonal_only_connection_count": len(diagonal),
+        }
+    try:
+        components = _material_components(occupied)
+        edges = _edge_records(occupied)
+        loops = _trace_edges(edges)
+    except SectionBoundaryError as exc:
+        return {"valid": False, "issue": str(exc)}
+    return {
+        "valid": True,
+        "occupied_cell_count": len(occupied),
+        "material_component_count": len(components),
+        "contour_count": len(loops),
+    }
+
+
+def _one_cell_perturbation_diagnostic(
+    occupied: set[tuple[int, int]],
+) -> dict[str, Any]:
+    neighbors = ((-1, 0), (1, 0), (0, -1), (0, 1))
+    dilated = set(occupied)
+    for i, j in occupied:
+        for di, dj in neighbors:
+            dilated.add((i + di, j + dj))
+
+    eroded = {
+        (i, j)
+        for i, j in occupied
+        if all((i + di, j + dj) in occupied for di, dj in neighbors)
+    }
+
+    base = _occupied_topology_signature(occupied)
+    erosion = _occupied_topology_signature(eroded)
+    dilation = _occupied_topology_signature(dilated)
+
+    stable = bool(base.get("valid"))
+    for perturbed in (erosion, dilation):
+        if (
+            not perturbed.get("valid")
+            or perturbed.get("material_component_count")
+            != base.get("material_component_count")
+            or perturbed.get("contour_count") != base.get("contour_count")
+        ):
+            stable = False
+
+    return {
+        "applied_to_reconstruction": False,
+        "policy": (
+            "single diagnostic 4-neighbor erosion and dilation only; "
+            "perturbed occupancy never replaces measured occupancy"
+        ),
+        "base": base,
+        "one_cell_erosion": erosion,
+        "one_cell_dilation": dilation,
+        "topology_stable": stable,
+    }
+
+
 def extract_section_boundary_evidence_2d(
     points_uv: Iterable[Sequence[float]],
     *,
@@ -449,6 +517,13 @@ def extract_section_boundary_evidence_2d(
         )
 
     support_stats, warnings = _support_statistics(occupied_map)
+    perturbation = _one_cell_perturbation_diagnostic(occupied)
+    if not perturbation["topology_stable"]:
+        warnings.append(
+            "Material-component or contour count changes under a single one-cell "
+            "erosion/dilation diagnostic; narrow or weakly supported topology is "
+            "resolution-sensitive. The perturbed occupancy is not used for reconstruction."
+        )
     rejected_cells = raw_cell_count - len(occupied_map)
     if rejected_cells:
         warnings.append(
@@ -578,13 +653,14 @@ def extract_section_boundary_evidence_2d(
             "grid_origin_sensitivity_checked": bool(check_grid_origin_sensitivity),
             "topology_stable_under_half_cell_origin_shifts": stable,
             "origin_shift_results": sensitivity,
+            "one_cell_perturbation": perturbation,
             "warnings": warnings,
         },
         "assumptions": [
             "occupied grid cells represent material support in the projected section",
             "empty neighboring cells represent absence of material at the selected cell_size",
             "section_uv snapshots cannot distinguish multiple 3D surfaces that project onto the same cells",
-            "no morphological closing, hole filling, erosion, dilation, or intent inference is performed",
+            "no morphological repair is applied; one-step erosion/dilation is diagnostic only and never replaces measured occupancy",
         ],
     }
     return SectionBoundaryEvidence(
