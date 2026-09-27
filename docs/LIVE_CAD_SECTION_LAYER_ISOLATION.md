@@ -6,8 +6,10 @@ PR #16 merged accepted 0.15.2 at `8f2e0317f9eeff14547db1d83c100549c65fb18c`.
 This increment completed focused real Windows/CloudCompare acceptance at exact HEAD
 `2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`. Fixture, live-GUI, handoff and safety
 gates passed; the bounded fan remained correctly BLOCKED by excessive component
-complexity rather than a product defect. The branch is not merged and still requires
-explicit user merge authorization. See AGENTS.md for exact acceptance attribution.
+complexity rather than a product defect. The accepted feature branch was merged through PR #17 at
+`27cfd286331db177c76ce627056150e439d418c9` after explicit user authorization and
+green push/PR CI. The feature branch is preserved. See AGENTS.md for exact acceptance
+and merge attribution.
 Python is 0.15.3. Native qMCPBridge remains unchanged 0.12.0 / workflow revision 8.
 No DLL rebuild, new native method, or Fusion 360 integration is introduced.
 
