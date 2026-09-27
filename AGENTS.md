@@ -1,5 +1,40 @@
 # Repository work and interruption recovery
 
+## 0.14 Windows acceptance executed; awaiting explicit merge approval
+
+Continue `feature/live-cad-datum-relationships`, based on accepted main
+`e39949759c6386e5cd0387983c43a74f26e6a58e`. Inspect remote heads and local changes
+before resuming; do not create a replacement branch or reset to historical SHAs.
+Read `docs/LIVE_CAD_DATUM_RELATIONSHIPS.md` and
+`docs/WINDOWS_DATUM_RELATIONSHIP_ACCEPTANCE.md` for the snapshot-only tools.
+Python is 0.14.0; native remains accepted 0.12.0 / revision 8, with no native
+source or build changes. Do not rebuild an unchanged DLL.
+
+Real Windows acceptance ran at documentation checkpoint
+`0a5ca860d8a2f425b7e8a83659f524ecf1ac6a9c`, whose runtime/product source is the
+tested 0.14 checkpoint `477403785b0693e431227db79d1954326dbc081a`. All executed
+product checks passed. The Windows suite produced 389 passes and 16 compiler-gated
+skips; after configuring the installed MSVC environment those 16 native policy tests
+also passed, for 405 distinct passing tests across the two runs. Synthetic MCP
+dispatch, no-host stdio, bookkeeping, original fixture, rotated/large-translated
+fixture, fan relationship analysis, and bounded source-integrity checks passed.
+
+The fan datum subtest is a retained **coverage limitation, not a product defect**:
+bounded acquisition found two strong fan planes only 0.05599773824 degrees apart,
+below the intentional 1-degree minimum, and did not find a robust nonparallel
+secondary observation. No direction was invented and no tolerance was loosened.
+The selected 460,198-point bearing-cap cloud received full exported XYZ/normals
+equality coverage; other fan entities and fixtures retain the report's narrower
+metadata-only coverage. Real native nonunit global scale remains untested (loaded
+scales were 1; offline scale 2.5 covered bookkeeping only).
+
+Do not request another Windows run solely to turn that fan acquisition limitation
+into a synthetic success. A future targeted fan-datum exercise is useful only if a
+robust nonparallel measured feature can actually be acquired. No product defect issue
+was opened. The branch is awaiting the user's explicit merge decision. Do not merge
+automatically; CI/numerical/Windows passes are not merge authorization.
+
+
 ## Current accepted baseline
 
 The user explicitly approved merging the accepted 0.13 increment. PR #10 merged

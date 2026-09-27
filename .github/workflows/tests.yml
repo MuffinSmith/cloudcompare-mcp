@@ -14,6 +14,7 @@ on:
       - feature/live-feature-discovery
       - feature/live-feature-candidates-overlays
       - feature/live-hole-patterns
+      - feature/live-cad-datum-relationships
       - main
   pull_request:
 

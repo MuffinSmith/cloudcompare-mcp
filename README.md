@@ -254,7 +254,7 @@ LAS · LAZ · PLY · PCD · XYZ · ASC · TXT · E57 · OBJ · BIN · SHP
 
 MIT
 
-## Python-only 0.13 candidate relationships (development)
+## Python-only 0.13 candidate relationships (accepted)
 
 The accepted native bridge remains 0.12.0 / workflow revision 8. New read-only
 `analyze_hole_candidates` and `discover_live_hole_candidates` tools filter circular
@@ -262,4 +262,21 @@ candidates against a face, group by diameter and measure center spacing, with
 provisional row/bolt-circle checks. Numerical patterns are not confirmed physical
 holes. See [scope and examples](docs/LIVE_HOLE_PATTERNS.md) and the
 [focused Windows test procedure](docs/WINDOWS_HOLE_PATTERN_ACCEPTANCE.md).
-No DLL rebuild is required for this increment; Windows acceptance is pending.
+This increment passed its broad and focused Windows acceptance gates and was
+merged through PR #10. See AGENTS.md for exact source attribution and coverage
+limits. No DLL rebuild was required.
+
+
+## Python-only 0.14 CAD datums and feature relationships (development)
+
+`analyze_feature_relationships` measures relationships between supplied global/native
+plane, line, circle, cylinder and point snapshots. `build_live_datum_frame` constructs
+an explicit right-handed coordinate frame from a primary plane, a secondary
+plane/axis and an optional origin feature. Both tools analyze snapshots **without
+connecting to CloudCompare**; the `live` datum name does not imply live validation.
+Results retain source fingerprints/provenance and distinguish numerical candidates
+from physical manufacturing intent. They do not modify scans, create CAD, infer
+millimetres, or store acceptance states. The native bridge remains 0.12.0 / workflow
+revision 8, unchanged. This new increment is pending Windows acceptance and merge
+approval. See [contracts and examples](docs/LIVE_CAD_DATUM_RELATIONSHIPS.md) and
+[Windows acceptance](docs/WINDOWS_DATUM_RELATIONSHIP_ACCEPTANCE.md).
