@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "qMCPFusionWorkflow.h"
+#include "qMCPOverlaySafety.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -48,6 +49,7 @@ namespace
 {
 constexpr double FRAME_EPS = 1.0e-9;
 unsigned g_fitOverlayGroupId = 0;
+qMCPOverlaySafety::Ownership<ccHObject> g_fitOverlayOwnership;
 
 void addApplicationVersion( QJsonObject& result )
 {
@@ -3358,11 +3360,13 @@ ccHObject* fitOverlayGroup(
     if ( g_fitOverlayGroupId != 0 )
     {
         ccHObject* existing = findEntity( app, g_fitOverlayGroupId );
-        if ( existing && existing->isA( CC_TYPES::HIERARCHY_OBJECT ) )
+        if ( existing && existing->isA( CC_TYPES::HIERARCHY_OBJECT )
+             && g_fitOverlayOwnership.owns( existing ) )
         {
             return existing;
         }
         g_fitOverlayGroupId = 0;
+        g_fitOverlayOwnership.clear();
     }
 
     if ( !createIfMissing )
@@ -3375,6 +3379,7 @@ ccHObject* fitOverlayGroup(
     group->setVisible( true );
     group->setEnabled( true );
 
+    g_fitOverlayOwnership.rememberTree( group.get() );
     ccHObject* liveGroup = group.release();
     app->addToDB( liveGroup, false, true, false, false );
     g_fitOverlayGroupId = liveGroup->getUniqueID();
@@ -3394,6 +3399,13 @@ bool fitOverlayStatus(
     {
         out[ "group_id" ] = static_cast<qint64>( group->getUniqueID() );
         out[ "group_name" ] = group->getName();
+        const bool clearSafe = g_fitOverlayOwnership.ownsTree( group );
+        out[ "clear_safe" ] = clearSafe;
+        if ( !clearSafe )
+        {
+            out[ "clear_blocked_reason" ] =
+                "Managed overlay group contains unrelated or unrecognized descendants";
+        }
         out[ "overlay_entity_count" ] =
             static_cast<qint64>( group->getChildrenNumber() );
 
@@ -3407,6 +3419,7 @@ bool fitOverlayStatus(
     else
     {
         out[ "group_id" ] = QJsonValue();
+        out[ "clear_safe" ] = true;
         out[ "overlay_entity_count" ] = 0;
         out[ "entities" ] = QJsonArray();
     }
@@ -3430,10 +3443,20 @@ bool clearFitOverlays(
         return true;
     }
 
+    // Never recursively delete an unrelated cloud/group dragged into our group,
+    // including descendants nested below an otherwise legitimate overlay.
+    if ( !g_fitOverlayOwnership.ownsTree( group ) )
+    {
+        error = "Refusing to clear overlays: the managed group contains unrelated or "
+                "unrecognized descendants. Move them out and retry. No scene objects changed.";
+        return true;
+    }
+
     const qint64 removedCount =
         static_cast<qint64>( group->getChildrenNumber() );
     app->removeFromDB( group, true );
     g_fitOverlayGroupId = 0;
+    g_fitOverlayOwnership.clear();
     app->refreshAll();
     app->updateUI();
 
@@ -3443,21 +3466,25 @@ bool clearFitOverlays(
     return true;
 }
 
-void removeFitOverlayGroupIfEmpty(
-    ccMainAppInterface* app,
-    ccHObject* group )
+bool validOverlayCenter( const CCVector3d& center, double padding, QString& error )
 {
-    if ( !app || !group || group->getChildrenNumber() != 0 )
+    if ( !qMCPOverlaySafety::boundedCenter<PointCoordinateType>(
+            center.x, center.y, center.z, padding ) )
     {
-        return;
+        error = "Overlay exceeds the representable source-local coordinate range";
+        return false;
     }
-    if ( group->getUniqueID() != g_fitOverlayGroupId )
-    {
-        return;
-    }
+    return true;
+}
 
-    app->removeFromDB( group, true );
-    g_fitOverlayGroupId = 0;
+bool validOverlayLength( double length, QString& error )
+{
+    if ( !qMCPOverlaySafety::positiveLength<PointCoordinateType>( length ) )
+    {
+        error = "Overlay length is not representable in source-local coordinates";
+        return false;
+    }
+    return true;
 }
 
 bool readPositiveNumber(
@@ -3609,6 +3636,12 @@ bool createFitOverlay(
                 : groupError;
             return false;
         }
+        if ( !g_fitOverlayOwnership.ownsTree( group ) )
+        {
+            error = "Refusing to add overlays: managed group contains unrelated or "
+                    "unrecognized descendants. Move them out and retry.";
+            return false;
+        }
         return true;
     };
 
@@ -3640,6 +3673,14 @@ bool createFitOverlay(
         }
         const CCVector3d centerLocal =
             source->toLocal3d<double>( centerGlobal );
+        const double widthLocal = widthGlobal * globalScale;
+        const double heightLocal = heightGlobal * globalScale;
+        if ( !validOverlayLength( widthLocal, error )
+             || !validOverlayLength( heightLocal, error )
+             || !validOverlayCenter( centerLocal, std::hypot( widthLocal, heightLocal ) / 2.0, error ) )
+        {
+            return true;
+        }
         ccGLMatrix transform =
             ccGLMatrix::FromToRotation(
                 CCVector3( 0, 0, CCCoreLib::PC_ONE ),
@@ -3648,8 +3689,8 @@ bool createFitOverlay(
 
         std::unique_ptr<ccPlane> plane(
             new ccPlane(
-                static_cast<PointCoordinateType>( widthGlobal * globalScale ),
-                static_cast<PointCoordinateType>( heightGlobal * globalScale ),
+                static_cast<PointCoordinateType>( widthLocal ),
+                static_cast<PointCoordinateType>( heightLocal ),
                 &transform,
                 baseName ) );
         plane->copyGlobalShiftAndScale( *source );
@@ -3662,6 +3703,7 @@ bool createFitOverlay(
         {
             return true;
         }
+        g_fitOverlayOwnership.rememberTree( plane.get() );
         ccPlane* livePlane = plane.release();
         attachToDestination( app, livePlane, group );
         created.append( entityDescription( livePlane, false ) );
@@ -3685,10 +3727,16 @@ bool createFitOverlay(
         }
         const CCVector3d centerLocal =
             source->toLocal3d<double>( centerGlobal );
+        const double radiusLocal = radiusGlobal * globalScale;
+        if ( !validOverlayLength( radiusLocal, error )
+             || !validOverlayCenter( centerLocal, radiusLocal, error ) )
+        {
+            return true;
+        }
         std::unique_ptr<ccPolyline> circle(
             ccPolyline::Circle(
                 CCVector3( 0, 0, 0 ),
-                static_cast<PointCoordinateType>( radiusGlobal * globalScale ),
+                static_cast<PointCoordinateType>( radiusLocal ),
                 128 ) );
         if ( !circle )
         {
@@ -3713,6 +3761,7 @@ bool createFitOverlay(
         {
             return true;
         }
+        g_fitOverlayOwnership.rememberTree( circle.get() );
         ccPolyline* liveCircle = circle.release();
         attachToDestination( app, liveCircle, group );
         created.append( entityDescription( liveCircle, false ) );
@@ -3730,6 +3779,18 @@ bool createFitOverlay(
             source->toLocal3d<double>( endpointAGlobal );
         const CCVector3d localB =
             source->toLocal3d<double>( endpointBGlobal );
+        if ( !validOverlayCenter( localA, 0.0, error )
+             || !validOverlayCenter( localB, 0.0, error ) )
+        {
+            return true;
+        }
+        const CCVector3 roundedA = localA.toPC();
+        const CCVector3 roundedB = localB.toPC();
+        if ( roundedA.x == roundedB.x && roundedA.y == roundedB.y && roundedA.z == roundedB.z )
+        {
+            error = "Overlay endpoints are indistinguishable at source-local precision";
+            return true;
+        }
         const CCVector3d localDelta = localB - localA;
         const double localLength = localDelta.normd();
         if ( !std::isfinite( localLength )
@@ -3752,6 +3813,7 @@ bool createFitOverlay(
             {
                 return true;
             }
+            g_fitOverlayOwnership.rememberTree( axis.get() );
             ccPolyline* liveAxis = axis.release();
             attachToDestination( app, liveAxis, group );
             created.append( entityDescription( liveAxis, false ) );
@@ -3774,8 +3836,14 @@ bool createFitOverlay(
                 return true;
             }
 
-            const CCVector3d centerLocal =
-                ( localA + localB ) / 2.0;
+            const double radiusLocal = radiusGlobal * globalScale;
+            const CCVector3d centerLocal = localA / 2.0 + localB / 2.0;
+            if ( !validOverlayLength( radiusLocal, error )
+                 || !validOverlayLength( localLength, error )
+                 || !validOverlayCenter( centerLocal, radiusLocal + localLength / 2.0, error ) )
+            {
+                return true;
+            }
             ccGLMatrix transform =
                 ccGLMatrix::FromToRotation(
                     CCVector3( 0, 0, CCCoreLib::PC_ONE ),
@@ -3784,7 +3852,7 @@ bool createFitOverlay(
 
             std::unique_ptr<ccCylinder> cylinder(
                 new ccCylinder(
-                    static_cast<PointCoordinateType>( radiusGlobal * globalScale ),
+                    static_cast<PointCoordinateType>( radiusLocal ),
                     static_cast<PointCoordinateType>( localLength ),
                     &transform,
                     baseName,
@@ -3795,30 +3863,29 @@ bool createFitOverlay(
             cylinder->showWired( true );
             finalizeOverlayEntity( cylinder.get(), source, "cylinder" );
 
+            // Stage the optional axis before publishing the cylinder. A failed
+            // allocation must not leave a partial group or partial cylinder.
+            std::unique_ptr<ccPolyline> axis;
+            if ( params.value( "show_axis" ).toBool( true ) )
+            {
+                axis.reset( createOverlayAxis( localA, localB, source, baseName + ".axis" ) );
+                if ( !axis )
+                {
+                    error = "CloudCompare could not allocate the cylinder axis overlay";
+                    return true;
+                }
+            }
             if ( !ensureGroup() )
             {
                 return true;
             }
+            g_fitOverlayOwnership.rememberTree( cylinder.get() );
             ccCylinder* liveCylinder = cylinder.release();
             attachToDestination( app, liveCylinder, group );
             created.append( entityDescription( liveCylinder, false ) );
-
-            const bool showAxis = params.value( "show_axis" ).toBool( true );
-            if ( showAxis )
+            if ( axis )
             {
-                std::unique_ptr<ccPolyline> axis(
-                    createOverlayAxis(
-                        localA,
-                        localB,
-                        source,
-                        baseName + ".axis" ) );
-                if ( !axis )
-                {
-                    app->removeFromDB( liveCylinder, true );
-                    removeFitOverlayGroupIfEmpty( app, group );
-                    error = "CloudCompare could not allocate the cylinder axis overlay";
-                    return true;
-                }
+                g_fitOverlayOwnership.rememberTree( axis.get() );
                 ccPolyline* liveAxis = axis.release();
                 attachToDestination( app, liveAxis, group );
                 created.append( entityDescription( liveAxis, false ) );
@@ -4012,6 +4079,9 @@ QJsonObject capabilities()
     fitOverlays[ "source_frame_inherited" ] = true;
     fitOverlays[ "source_geometry_preserved" ] = true;
     fitOverlays[ "clear_all_supported" ] = true;
+    fitOverlays[ "ownership_policy" ] = "runtime_identity_and_recursive_preflight";
+    fitOverlays[ "foreign_descendants_block_clear" ] = true;
+    fitOverlays[ "source_local_range_validation" ] = true;
     fitOverlays[ "fixed_colors" ] = QJsonObject{
         { "plane", "cyan" },
         { "circle", "yellow" },
