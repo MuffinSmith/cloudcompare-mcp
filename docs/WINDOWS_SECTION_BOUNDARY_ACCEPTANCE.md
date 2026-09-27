@@ -187,7 +187,8 @@ Report:
 - raw/supported occupied cells;
 - boundary cells/edges;
 - material-component/contour count;
-- grid-origin sensitivity;
+- grid-origin sensitivity and one-cell perturbation sensitivity;
+- topology-handoff minimum-two-neighbor radius/margin;
 - topology roles/nesting if recovered;
 - primitive fits and residuals;
 - warnings;
