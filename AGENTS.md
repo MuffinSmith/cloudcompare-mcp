@@ -2,15 +2,18 @@
 
 ## Active development lane
 
-Continue `feature/live-feature-candidates-overlays` for the 0.12 candidate-discovery
-and visible-overlay work. Do not create a new branch merely because a chat, tool
-session, or execution environment restarted.
+The 0.12 candidate-discovery and visible-overlay work on
+`feature/live-feature-candidates-overlays` has completed its required acceptance.
+Retain this existing branch pending explicit user approval to merge into `main`.
+Do not create a new branch merely because a chat, tool session, or execution
+ environment restarted.
 
-The recovery point preceding this instruction was
-`22a4b2a8fd62d231d1a0618594c3a9399ed0b3d2` (circle-refinement hardening).
-Resolve the current remote head before continuing; do not reset to this historical
-checkpoint. `main` already contains the accepted 0.11.0 retest at
-`c2dfc46c3e445efa6a50afa5997297567f2d80ab`.
+The accepted checkout is `b62f9b4d238e7f169e76c36e630b2060320d261a`; its product/runtime
+sources are identical to the Windows-tested
+`fc51824d9edf7328614653c57bf3644c1db02769`. Resolve the current remote head before
+continuing; do not reset to these historical checkpoints. At this checkpoint,
+`main` still contains the accepted 0.11.0 retest at
+`c2dfc46c3e445efa6a50afa5997297567f2d80ab` and has not received the 0.12 work.
 
 The older `feature/live-auto-feature-overlays` and `feature/live-candidate-overlays`
 branches came from interrupted attempts. Leave them intact. Inspect their diffs
@@ -25,7 +28,8 @@ implementations or create another replacement branch.
    without explicit authorization.
 4. Continue the existing active branch with small reviewable commits. Verify each
    returned commit SHA before claiming that a change was saved.
-5. Keep `main` at its accepted state until the complete next acceptance passes.
+5. Require both completed acceptance and explicit user approval before merging
+   into `main`. Passing tests alone is not automatic merge authorization.
 
 ## Testing boundary
 
@@ -59,12 +63,19 @@ retest passes.
   scripts/evidence outside Git. Reusable product tests and developer instructions
   belong in the repository; acceptance reports do not.
 
-## Focused Windows recovery retest
+## Completed Windows recovery gate
 
-After the Windows partial acceptance recorded on issue #7, use
-`docs/WINDOWS_CANDIDATE_RECOVERY.md` for the remaining same-cloud move-out /
-retry-clear check. Do not repeat the full fan acceptance or rebuild an unchanged
-DLL merely because the chat restarted. This reduced scope applies only while all
-product/runtime sources remain identical to the Windows-tested `fc51824` commit.
-Keep the gate blocked until that live recovery check passes; policy tests with
-test scene nodes do not substitute for it.
+The final same-cloud move-out / retry-clear retest passed and issue #7 is closed.
+The authoritative completion comment is:
+https://github.com/MuffinSmith/cloudcompare-mcp/issues/7#issuecomment-5852167082
+
+Treat `docs/WINDOWS_CANDIDATE_RECOVERY.md` as a retained test procedure, not an
+outstanding task. Do not reopen the completed gate, repeat the full fan acceptance,
+or rebuild an unchanged DLL merely because a chat restarted or documentation
+changed. Compare current product/runtime sources against `fc51824` before relying
+on the unchanged-runtime acceptance; assess targeted retests for future changes.
+
+The recovery used a manual GUI drag. Automated dragging did not succeed and must
+not be described as accepted. Previous broad synthetic/fan results retain their
+original report/runtime attribution and coverage limitations. This checkpoint is
+restart guidance; detailed reports and raw evidence remain outside Git.
