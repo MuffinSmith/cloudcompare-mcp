@@ -2888,7 +2888,7 @@ def _overlay_request_from_fit(args: dict) -> dict:
         geometry = {
             "center": _vector3_from_fit(fit, "center"),
             "normal": _vector3_from_fit(fit, "normal"),
-            "radius": radius * padding,
+            "radius": radius,
         }
         native_kind = "circle"
     elif fit_type == "cylinder":
