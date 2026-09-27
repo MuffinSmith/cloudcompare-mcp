@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -39,7 +39,7 @@ jobs:
           ]
           def git(*args):
               return subprocess.check_output(["git", *args]).decode().strip()
-          assert git("rev-parse", "HEAD^") == baseline
+          assert git("merge-base", "HEAD", baseline) == baseline
           assert git("diff", "--name-only", baseline, "HEAD") == ".github/workflows/tests.yml"
           chunks=[]
           for sha in chunk_shas:
