@@ -7,11 +7,13 @@ Accepted-main parent: `0201cdd46381e0c79c05b33ee9de48851a18b877`.
 Initial recovery commit: `4b456f38affa8fdb250893ba5e1c148d8015ea26` (remote verified).
 No merge is authorized. Preserve every retained branch and unexpected work.
 
-Milestone: independent numerical core `section_targets.py` and 48 focused tests.
-Local exact-source numerical tests: 48 passed. MCP/workflow/fixture integration is
-NEXT and is not implemented at this checkpoint. Python package remains 0.15.3 until
-integration. The core evidence version is 0.15.4. qMCPBridge is unchanged at accepted
-0.12.0 / workflow revision 8. No DLL build is needed. Do not request Windows yet.
+Milestone: numerical core and independent snapshot/live target workflow implemented.
+Core runtime checkpoint: `b910000fe435a0589e1e2e64df9bbc084d5edff0` (remote verified).
+Core CI `36355473588` passed. Local numerical + workflow/replayed native tests:
+91 passed (48 core + 43 workflow). This is NOT real CloudCompare validation.
+MCP registration and generated fixture files remain NEXT. Python package remains
+0.15.3 until integration. qMCPBridge remains unchanged at 0.12.0 / workflow revision 8.
+No DLL rebuild. Do not request Windows yet.
 
 The core uses explicit UV/depth voxel sizes, six-neighbor connectivity, unique-point
 support, iterative articulation detection, one UV-cell erosion and six fixed
@@ -19,14 +21,23 @@ support, iterative articulation detection, one UV-cell erosion and six fixed
 All points belong to reported candidates. Sparse, bridge/appendage, thin, marginal
 edge/corner-contact, UV-overlap and membership-sensitive targets cannot be selected.
 Multiple targets ALWAYS require explicit selection, even with one dominant/usable
-target and distant unsupported clutter. An explicit usable choice may leave that
-separate clutter unselected, with full counts and reasons retained. Every selected
-target must still pass the unchanged accepted 0.15.3 layer safety gate.
+target and distant unsupported clutter. A usable explicit choice can leave separate
+clutter unselected, with full counts/reasons. Selection tokens bind the candidate,
+whole source, frame, acquisition and parameters; snapshot/live tokens differ.
 
-Next: implement validated snapshot/live acquisition and fingerprint context binding,
-then four MCP tools, accepted layer/profile handoff, exact generated PLY fixtures,
-actual MCP stdio and replay tests. Do not run layer analysis on the whole slab first.
-Expected target selection tokens must bind the candidate AND whole analysis context.
+`section_target_workflow.py` acquires one complete slab BEFORE any layer analysis,
+selects a supported spatial target, and passes every selected depth sample into the
+UNCHANGED accepted 0.15.3 -> 0.15.2 -> 0.15.1/profile solvers. Upstream target identity
+is bound into downstream layer selection. Target and layer unselected counts remain
+separate with aggregate accounting. Layer budgets/refusals retain target evidence;
+boundary/topology refusal retains the accepted diagnostics. Native replay coverage
+includes unique indices, complete counts, source/global frame, shift/scale and
+no mutation; it is not real-GUI or full-cloud integrity coverage.
+
+Next: four MCP tools/schema/dispatch and actual stdio tests, Python 0.15.4 version,
+exact generated PLY fixtures including arbitrary 3D rotation/large translation,
+final regression/CI review and focused Windows procedure. Preserve the already
+committed core and workflow; do not recreate this lane after interruption.
 
 ## Accepted history and boundaries
 
