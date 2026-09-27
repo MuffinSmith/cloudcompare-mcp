@@ -297,3 +297,21 @@ classification, explicit multi-loop/non-star-shaped topology, and spline fallbac
 remain later 0.15 work. The native bridge remains unchanged at 0.12.0 / revision 8.
 See [profile contracts](docs/LIVE_CAD_PROFILE_RECONSTRUCTION.md) and AGENTS.md for
 accepted source/retest attribution and retained coverage limits.
+
+
+## Python-only 0.15.1 explicit profile topology (development)
+
+`reconstruct_section_topology` recovers one or more closed loops from unordered 2D
+**boundary samples**, classifies outer/hole/island nesting candidates, and feeds each
+loop into the accepted line/arc/circle profile fitter.
+`reconstruct_live_section_topology` applies the same logic to a complete live slab
+sample while preserving source coordinate bookkeeping.
+
+Both tools require the caller to explicitly assert `boundary_samples_only=true` and
+choose a native-unit `max_edge_length`. The live tool refuses truncated acquisition.
+This stage supports concave/non-star-shaped boundary loops and multiple loops, but it
+does not infer a boundary from a filled scan section or repair intersecting/touching
+topology. qMCPBridge remains unchanged at 0.12.0 / revision 8.
+
+See [profile topology contracts](docs/LIVE_CAD_PROFILE_TOPOLOGY.md) and the
+[Windows acceptance procedure](docs/WINDOWS_PROFILE_TOPOLOGY_ACCEPTANCE.md).
