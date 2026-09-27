@@ -424,18 +424,29 @@ def _segment(points: np.ndarray, source_order: np.ndarray, *, tolerance: float, 
         merged: list[dict[str, Any]] = []
         i = 0
         while i < len(primitives):
-            if i + 1 < len(primitives) and primitives[i]["kind"] == primitives[i + 1]["kind"]:
+            if i + 1 < len(primitives):
                 a, b = primitives[i], primitives[i + 1]
-                span = points[a["_start"] : b["_end"] + 1]
-                candidate, _ = _accepted_candidate(span, tolerance=tolerance, min_arc_degrees=min_arc_degrees)
-                if candidate is not None and candidate["kind"] == a["kind"]:
-                    candidate = dict(candidate)
-                    candidate["_start"] = a["_start"]
-                    candidate["_end"] = b["_end"]
-                    merged.append(candidate)
-                    i += 2
-                    changed = True
-                    continue
+                same_kind = a["kind"] == b["kind"]
+                a_count = int(a["_end"] - a["_start"] + 1)
+                b_count = int(b["_end"] - b["_start"] + 1)
+                tiny_boundary_fragment = min(a_count, b_count) <= 2
+                if same_kind or tiny_boundary_fragment:
+                    span = points[a["_start"] : b["_end"] + 1]
+                    candidate, _ = _accepted_candidate(
+                        span,
+                        tolerance=tolerance,
+                        min_arc_degrees=min_arc_degrees,
+                    )
+                    if candidate is not None and (
+                        same_kind or candidate["kind"] in {a["kind"], b["kind"]}
+                    ):
+                        candidate = dict(candidate)
+                        candidate["_start"] = a["_start"]
+                        candidate["_end"] = b["_end"]
+                        merged.append(candidate)
+                        i += 2
+                        changed = True
+                        continue
             merged.append(primitives[i])
             i += 1
         primitives = merged
