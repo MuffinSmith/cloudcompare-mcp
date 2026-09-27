@@ -4459,7 +4459,7 @@ def handle_reconstruct_live_filled_section_profile(
             )
 
         positions = _region_positions_global(native, minimum=8)
-        if positions.shape[0] != returned:
+        if len(positions) != returned:
             raise SectionBoundaryError(
                 "Native returned_count does not match the number of returned point "
                 "records; occupancy acquisition is incomplete or malformed"
