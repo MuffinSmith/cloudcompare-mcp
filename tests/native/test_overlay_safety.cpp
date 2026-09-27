@@ -73,6 +73,70 @@ int main( int argc, char** argv )
         assert( !qMCPOverlaySafety::boundedCenter<float>( 0, 0, 0, -1 ) );
         assert( !qMCPOverlaySafety::boundedCenter<float>( 0, 0, 0, std::numeric_limits<double>::infinity() ) );
         break;
+    // These exercise the production ownership policy across simulated hierarchy
+    // edits. They do not exercise CloudCompare's drag/drop or deletion APIs.
+    case 12:
+    {
+        Node destination{ 5, {} };
+        const unsigned userId = user.getUniqueID();
+        group.children.push_back( &user );
+        assert( !owned.ownsTree( &group ) );
+        destination.children.push_back( &user );
+        group.children.pop_back();
+        assert( owned.ownsTree( &group ) );
+        assert( destination.getChild( 0 ) == &user );
+        assert( destination.getChild( 0 )->getUniqueID() == userId );
+        assert( !owned.owns( &user ) );
+        // Recovery must not grant ownership to the object that was moved out.
+        destination.children.clear();
+        group.children.push_back( &user );
+        assert( !owned.ownsTree( &group ) );
+        break;
+    }
+    case 13:
+    {
+        Node destination{ 5, {} };
+        vertices.children.push_back( &user );
+        assert( !owned.ownsTree( &group ) );
+        destination.children.push_back( &user );
+        vertices.children.pop_back();
+        assert( owned.ownsTree( &group ) );
+        assert( group.getChild( 0 ) == &overlay );
+        assert( overlay.getChild( 0 ) == &vertices );
+        assert( destination.getChild( 0 ) == &user );
+        assert( !owned.ownsTree( &destination ) );
+        break;
+    }
+    case 14:
+    {
+        Node otherUser{ 5, {} }, destination{ 6, {} };
+        group.children.push_back( &user );
+        vertices.children.push_back( &otherUser );
+        assert( !owned.ownsTree( &group ) );
+        destination.children.push_back( &user );
+        group.children.pop_back();
+        assert( !owned.ownsTree( &group ) );
+        destination.children.push_back( &otherUser );
+        vertices.children.pop_back();
+        assert( owned.ownsTree( &group ) );
+        assert( destination.getChild( 0 ) == &user );
+        assert( destination.getChild( 1 ) == &otherUser );
+        break;
+    }
+    case 15:
+    {
+        group.children.push_back( &user );
+        const auto unchanged = group.children;
+        // A failed/no-op drop, or a replacement elsewhere, is not recovery.
+        Node copy{ 6, {} }, destination{ 5, { &copy } };
+        for ( int attempt = 0; attempt < 3; ++attempt )
+            assert( !owned.ownsTree( &group ) );
+        assert( group.children == unchanged );
+        assert( group.getChild( 1 ) == &user );
+        assert( destination.getChild( 0 ) != &user );
+        assert( !owned.owns( &user ) );
+        break;
+    }
     default: return 2;
     }
     return 0;

@@ -58,3 +58,13 @@ retest passes.
 - Keep reports, raw logs, screenshots, fixtures, exported geometry, and test-run
   scripts/evidence outside Git. Reusable product tests and developer instructions
   belong in the repository; acceptance reports do not.
+
+## Focused Windows recovery retest
+
+After the Windows partial acceptance recorded on issue #7, use
+`docs/WINDOWS_CANDIDATE_RECOVERY.md` for the remaining same-cloud move-out /
+retry-clear check. Do not repeat the full fan acceptance or rebuild an unchanged
+DLL merely because the chat restarted. This reduced scope applies only while all
+product/runtime sources remain identical to the Windows-tested `fc51824` commit.
+Keep the gate blocked until that live recovery check passes; policy tests with
+test scene nodes do not substitute for it.

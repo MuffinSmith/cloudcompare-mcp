@@ -29,10 +29,12 @@ def native_policy_binary(tmp_path_factory):
                    capture_output=True, text=True, timeout=60)
     return binary
 
-@pytest.mark.parametrize("scenario", range(12), ids=[
+@pytest.mark.parametrize("scenario", range(16), ids=[
     "owned-tree", "foreign-child", "foreign-grandchild", "reused-id", "reset",
     "cycle", "shared-child", "null-child", "empty-owned-group", "length-range",
     "nonfinite-coordinate", "generated-bounds",
+    "foreign-move-out-and-back", "nested-foreign-move-out",
+    "partial-recovery-stays-blocked", "no-op-or-copy-is-not-recovery",
 ])
 def test_native_overlay_policy(native_policy_binary, scenario):
     subprocess.run([str(native_policy_binary), str(scenario)], check=True, timeout=10)
