@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import math
-from unittest.mock import patch
+from copy import deepcopy\nfrom unittest.mock import patch
 
 from mcp.types import CallToolResult
 import numpy as np
@@ -87,9 +87,11 @@ def args():
 
 def test_live_filled_section_uses_complete_region_and_preserves_bookkeeping():
     response = region_response()
+    before = deepcopy(response)
     with patch.object(server, "live_request", return_value=response) as native:
         parsed = body(server.handle_reconstruct_live_filled_section_profile(args()))
 
+    assert response == before
     assert parsed["type"] == "live_cad_filled_section_profile"
     assert parsed["topology"]["loop_count"] == 3
     assert [loop["role_candidate"] for loop in parsed["topology"]["loops"]] == [
