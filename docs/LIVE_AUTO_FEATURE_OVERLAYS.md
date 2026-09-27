@@ -98,6 +98,15 @@ The group and every fit subgroup are tagged with qMCPBridge metadata. The safe
 `clear_live_fit_overlays` operation only removes that tagged group and refuses to
 treat an arbitrary user group as an overlay group.
 
+`get_live_fit_overlays` returns the current overlay group ID plus each fit group's
+kind, source cloud, entity ID and primitive count. This lets the assistant know
+what the user is currently seeing without capturing the viewport.
+
+`show_live_discovery_overlays` can draw the strongest plane/circle/cylinder
+candidates in one call using distinct colors and support percentages in their DB-tree
+names. By default it clears previous MCP overlays first, so candidate sets do not
+silently accumulate across searches.
+
 Overlay creation is transactional with respect to validation: invalid fit geometry
 is rejected before the overlay group is inserted into the DB tree.
 
