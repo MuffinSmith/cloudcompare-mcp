@@ -21,6 +21,10 @@ from .datum_tools import (
     capabilities as datum_capabilities, tools as datum_tools,
     handle_analyze_feature_relationships, handle_build_live_datum_frame,
 )
+from .profile_tools import (
+    capabilities as profile_capabilities, tools as profile_tools,
+    handle_reconstruct_section_profile,
+)
 
 # ── CloudCompare binary discovery ────────────────────────────────────────────
 
@@ -919,6 +923,39 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["cloud_id", "origin", "normal", "half_thickness"],
+        },
+    ),
+    Tool(
+        name="reconstruct_live_section_profile",
+        description=(
+            "Acquire a bounded live slab sample, project it into a stable 2D section frame, and reconstruct a compact "
+            "candidate CAD profile using Python line/arc/circle fitting. Raw sampled points remain server-side. "
+            "Ordering assumptions are explicit; returned rectangle/slot/circle semantics are candidates only."
+        ),
+        inputSchema={
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "origin": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "normal": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "half_thickness": {"type": "number", "minimum": 0},
+                "closed": {"type": "boolean", "default": True},
+                "fit_tolerance": {
+                    "type": "number", "exclusiveMinimum": 0,
+                    "description": "Native-unit numerical profile fit threshold, not calibrated uncertainty.",
+                },
+                "angular_tolerance_degrees": {"type": "number", "minimum": 0, "maximum": 45, "default": 1},
+                "ordering_method": {
+                    "type": "string",
+                    "enum": ["input", "polar_closed_loop", "principal_open"],
+                    "description": "Explicit topology-ordering assumption. For unordered closed slab samples, polar_closed_loop is the bounded first-stage option.",
+                },
+                "minimum_arc_angle_degrees": {"type": "number", "minimum": 1, "maximum": 180, "default": 12},
+                "max_segments": {"type": "integer", "minimum": 1, "maximum": 128, "default": 64},
+                "sample_limit": {"type": "integer", "minimum": 3, "maximum": 4096, "default": 2048},
+            },
+            "required": ["cloud_id", "origin", "normal", "half_thickness", "closed", "fit_tolerance"],
         },
     ),
     Tool(
@@ -2405,6 +2442,9 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
 
         native["python_feature_fitting"] = feature_fitting
         native["python_cad_datums"] = datum_capabilities()
+        profile = profile_capabilities()
+        profile["live_section_profile_reconstruction"] = bool(region_available)
+        native["python_cad_profiles"] = profile
         from .feature_discovery import discovery_capabilities
         discovery = discovery_capabilities()
         overlay_capability = native.get("fit_overlays")
@@ -2802,6 +2842,175 @@ def handle_extract_live_section(args: dict) -> list[TextContent] | CallToolResul
             }
         )
     except (
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return _err(str(exc))
+
+
+def handle_reconstruct_live_section_profile(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, project_points_to_section
+    from .profile_reconstruction import ProfileError, reconstruct_profile_2d
+
+    try:
+        closed = args.get("closed")
+        if not isinstance(closed, bool):
+            raise ProfileError("closed must be a boolean")
+        ordering_method = args.get("ordering_method")
+        if ordering_method is None:
+            ordering_method = "polar_closed_loop" if closed else "principal_open"
+        if ordering_method not in {"input", "polar_closed_loop", "principal_open"}:
+            raise ProfileError(f"Unknown ordering_method: {ordering_method}")
+        if ordering_method == "polar_closed_loop" and not closed:
+            raise ProfileError("polar_closed_loop ordering requires closed=true")
+        if ordering_method == "principal_open" and closed:
+            raise ProfileError("principal_open ordering requires closed=false")
+
+        sample_limit_value = args.get("sample_limit", 2048)
+        if isinstance(sample_limit_value, bool):
+            raise ProfileError("sample_limit must be an integer between 3 and 4096")
+        sample_limit = int(sample_limit_value)
+        if sample_limit != sample_limit_value or not 3 <= sample_limit <= 4096:
+            raise ProfileError("sample_limit must be an integer between 3 and 4096")
+        max_segments_value = args.get("max_segments", 64)
+        if isinstance(max_segments_value, bool):
+            raise ProfileError("max_segments must be an integer between 1 and 128")
+        max_segments = int(max_segments_value)
+        if max_segments != max_segments_value or not 1 <= max_segments <= 128:
+            raise ProfileError("max_segments must be an integer between 1 and 128")
+
+        fit_tolerance = args.get("fit_tolerance")
+        if isinstance(fit_tolerance, bool):
+            raise ProfileError("fit_tolerance must be finite and positive")
+        fit_tolerance = float(fit_tolerance)
+        if not math.isfinite(fit_tolerance) or fit_tolerance <= 0:
+            raise ProfileError("fit_tolerance must be finite and positive")
+        angular_tolerance = float(args.get("angular_tolerance_degrees", 1.0))
+        if not math.isfinite(angular_tolerance) or not 0 <= angular_tolerance <= 45:
+            raise ProfileError("angular_tolerance_degrees must be finite and between 0 and 45")
+        min_arc = float(args.get("minimum_arc_angle_degrees", 12.0))
+        if not math.isfinite(min_arc) or not 1 <= min_arc <= 180:
+            raise ProfileError("minimum_arc_angle_degrees must be between 1 and 180")
+
+        origin = args["origin"]
+        normal = args["normal"]
+        for label, value in (("origin", origin), ("normal", normal)):
+            if not isinstance(value, list) or len(value) != 3:
+                raise ProfileError(f"{label} must contain three finite numbers")
+            if any(isinstance(component, bool) for component in value):
+                raise ProfileError(f"{label} must contain three finite numbers")
+            try:
+                converted = [float(component) for component in value]
+            except (TypeError, ValueError) as exc:
+                raise ProfileError(f"{label} must contain three finite numbers") from exc
+            if not all(math.isfinite(component) for component in converted):
+                raise ProfileError(f"{label} must contain three finite numbers")
+            if label == "normal" and math.sqrt(sum(component * component for component in converted)) <= float.fromhex("0x1.0p-1022"):
+                raise ProfileError("normal has zero length")
+        half_thickness = float(args["half_thickness"])
+        if not math.isfinite(half_thickness) or half_thickness < 0:
+            raise ProfileError("half_thickness must be finite and non-negative")
+
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region={
+                "type": "slab",
+                "origin": origin,
+                "normal": normal,
+                "half_thickness": half_thickness,
+            },
+            coordinate_space="global",
+            max_points=sample_limit,
+        )
+        positions = _region_positions_global(native, minimum=3 if closed else 2)
+        projection = project_points_to_section(
+            positions, origin, normal, half_thickness=half_thickness
+        )
+        profile = reconstruct_profile_2d(
+            projection["uv"],
+            closed=closed,
+            fit_tolerance=fit_tolerance,
+            angular_tolerance_degrees=angular_tolerance,
+            ordering_method=ordering_method,
+            minimum_arc_angle_degrees=min_arc,
+            max_segments=max_segments,
+        )
+
+        source_coordinate_space = native.get("coordinate_space", "global")
+        if source_coordinate_space != "global":
+            raise ProfileError(
+                "Live profile acquisition expected global query coordinates"
+            )
+
+        source_shift = native.get("source_global_shift")
+        if source_shift is not None:
+            if (
+                not isinstance(source_shift, list)
+                or len(source_shift) != 3
+                or any(isinstance(component, bool) for component in source_shift)
+            ):
+                raise ProfileError("Native source_global_shift is malformed")
+            try:
+                source_shift = [float(component) for component in source_shift]
+            except (TypeError, ValueError) as exc:
+                raise ProfileError("Native source_global_shift is malformed") from exc
+            if not all(math.isfinite(component) for component in source_shift):
+                raise ProfileError("Native source_global_shift is non-finite")
+
+        source_scale = native.get("source_global_scale")
+        if source_scale is not None:
+            if isinstance(source_scale, bool):
+                raise ProfileError("Native source_global_scale is malformed")
+            try:
+                source_scale = float(source_scale)
+            except (TypeError, ValueError) as exc:
+                raise ProfileError("Native source_global_scale is malformed") from exc
+            if not math.isfinite(source_scale) or source_scale <= 0:
+                raise ProfileError("Native source_global_scale must be finite and positive")
+
+        result = dict(profile)
+        result["type"] = "live_cad_section_profile"
+        result["source_geometry_preserved"] = True
+        result["live_connection_used"] = True
+        result["scene_mutations_requested"] = False
+        result["source_cloud_id"] = int(args["cloud_id"])
+        if isinstance(native.get("cloud_name"), str):
+            result["source_cloud_name"] = native["cloud_name"]
+        source_bookkeeping = {
+            "query_coordinate_space": source_coordinate_space,
+        }
+        if source_shift is not None:
+            source_bookkeeping["global_shift"] = source_shift
+        if source_scale is not None:
+            source_bookkeeping["global_scale"] = source_scale
+        result["source_coordinate_bookkeeping"] = source_bookkeeping
+        result["section_frame"] = {
+            "coordinate_space": "global",
+            "units": "native",
+            "origin_global": projection["origin"],
+            "normal": projection["normal"],
+            "basis_u": projection["basis_u"],
+            "basis_v": projection["basis_v"],
+            "half_thickness": half_thickness,
+        }
+        result["acquisition"] = {
+            "region_type": "slab",
+            "matched_count": native.get("matched_count"),
+            "sampled_count": native.get("returned_count"),
+            "sample_truncated": native.get("truncated"),
+            "sample_strategy": native.get("sample_strategy"),
+            "raw_points_returned": False,
+        }
+        if native.get("truncated"):
+            result.setdefault("quality_warnings", []).append(
+                "Profile reconstruction used a deterministic bounded sample of a larger matching slab."
+            )
+        return _ok_compact(result)
+    except (
+        ProfileError,
         FeatureFitError,
         LiveBridgeError,
         KeyError,
@@ -3962,6 +4171,7 @@ from .hole_tools import tools as _hole_tools
 
 TOOLS.extend(_hole_tools())
 TOOLS.extend(datum_tools())
+TOOLS.extend(profile_tools())
 
 
 @server.list_tools()
@@ -3993,12 +4203,14 @@ async def call_tool(
         "fit_live_region_circle": handle_fit_live_region_circle,
         "fit_live_region_cylinder": handle_fit_live_region_cylinder,
         "extract_live_section": handle_extract_live_section,
+        "reconstruct_live_section_profile": handle_reconstruct_live_section_profile,
         "describe_live_region_grid": handle_describe_live_region_grid,
         "discover_live_planes": handle_discover_live_planes,
         "discover_live_circles": handle_discover_live_circles,
         "analyze_hole_candidates": handle_analyze_hole_candidates,
         "analyze_feature_relationships": handle_analyze_feature_relationships,
         "build_live_datum_frame": handle_build_live_datum_frame,
+        "reconstruct_section_profile": handle_reconstruct_section_profile,
         "discover_live_hole_candidates": handle_discover_live_hole_candidates,
         "discover_live_cylinders": handle_discover_live_cylinders,
         "describe_live_section_grid": handle_describe_live_section_grid,
