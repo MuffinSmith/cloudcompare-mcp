@@ -97,7 +97,7 @@ def test_capabilities_include_profiles_without_native_version_change():
     }):
         result = body(server.handle_get_live_workflow_capabilities({}))
     caps = result["python_cad_profiles"]
-    assert caps["version"] == "0.15.1"
+    assert caps["version"] == "0.15.2"
     assert caps["snapshot_profile_reconstruction"]
     assert caps["live_section_profile_reconstruction"]
     assert caps["snapshot_boundary_topology"]
