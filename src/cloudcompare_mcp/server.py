@@ -2386,7 +2386,21 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
 
         native["python_feature_fitting"] = feature_fitting
         from .feature_discovery import discovery_capabilities
-        native["python_feature_discovery"] = discovery_capabilities()
+        discovery = discovery_capabilities()
+        overlay_capability = native.get("fit_overlays")
+        overlay_available = (
+            isinstance(overlay_capability, dict)
+            and bool(overlay_capability.get("available"))
+        )
+        discovery["visible_overlays"] = overlay_available
+        native["python_feature_discovery"] = discovery
+        native["live_feature_candidates"] = {
+            "circle_discovery": True,
+            "cylinder_discovery": True,
+            "visible_overlays": overlay_available,
+            "image_required": False,
+            "manual_picking_required": False,
+        }
         native["live_region_fitting"] = {
             "available": region_available,
             "image_required": False,
@@ -2765,6 +2779,186 @@ def handle_discover_live_planes(args: dict) -> list[TextContent] | CallToolResul
         TypeError,
         ValueError,
     ) as exc:
+        return _err(str(exc))
+
+
+def _decorate_candidate_discovery(
+    discovery: dict,
+    native: dict,
+    args: dict,
+    *,
+    label: str,
+) -> dict:
+    out = dict(discovery)
+    out["coordinate_space"] = "global"
+    out["units"] = "native"
+    out["units_confirmed"] = False
+    out["source_cloud_id"] = int(args["cloud_id"])
+    out["source_geometry_preserved"] = True
+    out["region"] = args["region"]
+    out["region_coordinate_space"] = args.get("coordinate_space", "global")
+    out["region_match_count"] = native.get("matched_count")
+    out["region_sample_count"] = native.get("returned_count")
+    out["region_sample_truncated"] = native.get("truncated")
+    out["region_sample_strategy"] = native.get("sample_strategy")
+    out["image_required"] = False
+    out["manual_picking_required"] = False
+    if native.get("truncated"):
+        out["sampling_warning"] = (
+            f"{label} discovery used a deterministic bounded sample "
+            "of a larger matching region."
+        )
+    return out
+
+
+def handle_discover_live_circles(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_discovery import FeatureFitError, discover_circles
+
+    try:
+        sample_limit = int(args.get("sample_limit", 5000))
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region=args["region"],
+            coordinate_space=args.get("coordinate_space", "global"),
+            max_points=sample_limit,
+        )
+        positions = _region_positions_global(native, minimum=4)
+        kwargs = {
+            "max_circles": int(args.get("max_circles", 8)),
+            "min_points": int(args.get("min_points", 12)),
+            "min_inlier_fraction": float(args.get("min_inlier_fraction", 0.02)),
+            "iterations": int(args.get("iterations", 800)),
+            "min_arc_coverage_degrees": float(
+                args.get("min_arc_coverage_degrees", 90.0)
+            ),
+            "random_seed": 0,
+        }
+        for key in ("distance_threshold", "min_radius", "max_radius"):
+            if key in args:
+                kwargs[key] = float(args[key])
+
+        discovery = discover_circles(positions, **kwargs)
+        return _ok_compact(
+            _decorate_candidate_discovery(
+                discovery,
+                native,
+                args,
+                label="Circle",
+            )
+        )
+    except (
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return _err(str(exc))
+
+
+def handle_discover_live_cylinders(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_discovery import FeatureFitError, discover_cylinders
+
+    try:
+        sample_limit = int(args.get("sample_limit", 5000))
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region=args["region"],
+            coordinate_space=args.get("coordinate_space", "global"),
+            max_points=sample_limit,
+        )
+        positions = _region_positions_global(native, minimum=6)
+        kwargs = {
+            "max_cylinders": int(args.get("max_cylinders", 3)),
+            "min_points": int(args.get("min_points", 24)),
+            "min_inlier_fraction": float(args.get("min_inlier_fraction", 0.05)),
+            "restarts": int(args.get("restarts", 12)),
+            "subset_size": int(args.get("subset_size", 64)),
+            "min_angular_coverage_degrees": float(
+                args.get("min_angular_coverage_degrees", 90.0)
+            ),
+            "random_seed": 0,
+        }
+        for key in ("distance_threshold", "min_radius", "max_radius"):
+            if key in args:
+                kwargs[key] = float(args[key])
+
+        discovery = discover_cylinders(positions, **kwargs)
+        return _ok_compact(
+            _decorate_candidate_discovery(
+                discovery,
+                native,
+                args,
+                label="Cylinder",
+            )
+        )
+    except (
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return _err(str(exc))
+
+
+def _show_live_overlay(kind: str, args: dict) -> list[TextContent] | CallToolResult:
+    params = {
+        "kind": kind,
+        "source_cloud_id": args["source_cloud_id"],
+    }
+    for key in (
+        "center",
+        "normal",
+        "width",
+        "height",
+        "radius",
+        "endpoint_a",
+        "endpoint_b",
+        "show_axis",
+        "name",
+    ):
+        if key in args:
+            params[key] = args[key]
+    try:
+        return _ok_compact(
+            live_request(
+                "fit.overlay.create",
+                params,
+                timeout=30.0,
+            )
+        )
+    except LiveBridgeError as exc:
+        return _err(str(exc))
+
+
+def handle_show_live_plane_overlay(args: dict) -> list[TextContent] | CallToolResult:
+    return _show_live_overlay("plane", args)
+
+
+def handle_show_live_circle_overlay(args: dict) -> list[TextContent] | CallToolResult:
+    return _show_live_overlay("circle", args)
+
+
+def handle_show_live_cylinder_overlay(args: dict) -> list[TextContent] | CallToolResult:
+    return _show_live_overlay("cylinder", args)
+
+
+def handle_show_live_axis_overlay(args: dict) -> list[TextContent] | CallToolResult:
+    return _show_live_overlay("axis", args)
+
+
+def handle_get_live_fit_overlays(_args: dict) -> list[TextContent] | CallToolResult:
+    try:
+        return _ok_compact(live_request("fit.overlay.status", {}, timeout=30.0))
+    except LiveBridgeError as exc:
+        return _err(str(exc))
+
+
+def handle_clear_live_fit_overlays(_args: dict) -> list[TextContent] | CallToolResult:
+    try:
+        return _ok_compact(live_request("fit.overlay.clear", {}, timeout=30.0))
+    except LiveBridgeError as exc:
         return _err(str(exc))
 
 
@@ -3673,7 +3867,15 @@ async def call_tool(
         "extract_live_section": handle_extract_live_section,
         "describe_live_region_grid": handle_describe_live_region_grid,
         "discover_live_planes": handle_discover_live_planes,
+        "discover_live_circles": handle_discover_live_circles,
+        "discover_live_cylinders": handle_discover_live_cylinders,
         "describe_live_section_grid": handle_describe_live_section_grid,
+        "show_live_plane_overlay": handle_show_live_plane_overlay,
+        "show_live_circle_overlay": handle_show_live_circle_overlay,
+        "show_live_cylinder_overlay": handle_show_live_cylinder_overlay,
+        "show_live_axis_overlay": handle_show_live_axis_overlay,
+        "get_live_fit_overlays": handle_get_live_fit_overlays,
+        "clear_live_fit_overlays": handle_clear_live_fit_overlays,
         "create_live_group": handle_create_live_group,
         "crop_live_cloud": handle_crop_live_cloud,
         "subsample_live_cloud": handle_subsample_live_cloud,
