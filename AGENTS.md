@@ -74,9 +74,23 @@ Regression coverage now includes the exact committed 41/61-point slot density an
 the generated PLY -> section projection -> reconstruction path for both original and
 rotated/large-translated fixtures. Fix checkpoint
 `ebec95d64df08231881d1b5451d1c7da918784b7` passed **447 tests in 19.79 s** in
-Linux CI. Issue #13 remains open pending a focused real-Windows fixture retest.
-Do not repeat the full 0.15 acceptance or fan exercise for this fix unless another
-behavioral regression appears. qMCPBridge remains unchanged.
+Linux CI. Issue #13 focused real-Windows retest completed PASS at
+`e2caa93ecc4ec983344f936416eceeb45f2a510a`. Snapshot, original live PLY, and
+rotated/large-translated live PLY paths all produced exactly two lines plus two arcs
+and a `slot_candidate` within the original acceptance bounds. Both live fixtures
+used all 200 matches with no truncation; source shift/scale bookkeeping was preserved
+without double application. Focused Windows tests passed 42/42.
+
+Treat issue #13 as completed after development review. The earlier full 0.15
+acceptance failure was solely this defect; all other executed product checks had
+passed, while the fan profile remained BLOCKED only by the documented first-increment
+single-loop ordering limitation. Therefore the first 0.15 increment has completed its
+required real-Windows product validation with that fan topology limitation retained as
+coverage, not a defect.
+
+Do not repeat the full 0.15 acceptance, focused #13 fixture retest, or fan exercise
+for documentation-only changes or chat restarts. qMCPBridge remains unchanged.
+Explicit user approval is still required before merging 0.15 to main.
 
 ## Accepted 0.14 baseline
 
