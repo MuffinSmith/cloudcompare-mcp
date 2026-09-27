@@ -100,6 +100,47 @@ def test_polar_ordering_recovers_shuffled_convex_slot():
     assert any("star-shaped" in w for w in out["quality_warnings"])
 
 
+def test_committed_fixture_density_does_not_fragment_slot_joins():
+    # scripts/make_profile_fixtures.py uses exactly these sample counts and
+    # acceptance tolerances.  This guards issue #13, where two-point line
+    # slivers at line/arc joins prevented slot classification.
+    points = slot_points(line_count=41, arc_count=61)
+    shuffled = points[np.random.default_rng(15013).permutation(points.shape[0])]
+    out = reconstruct_profile_2d(
+        shuffled,
+        closed=True,
+        fit_tolerance=0.001,
+        ordering_method="polar_closed_loop",
+        angular_tolerance_degrees=0.2,
+    )
+    assert [p["type"] for p in out["primitives"]] == ["line", "arc", "line", "arc"]
+    candidate, = [c for c in out["profile_candidates"] if c["type"] == "slot_candidate"]
+    assert candidate["radius"] == pytest.approx(5.0, abs=1e-8)
+    assert candidate["width"] == pytest.approx(10.0, abs=2e-8)
+    assert candidate["centerline_length"] == pytest.approx(20.0, abs=1e-8)
+    assert candidate["overall_length"] == pytest.approx(30.0, abs=3e-8)
+    assert out["summary"]["max_primitive_fit_residual"] <= 0.001
+
+
+def test_committed_fixture_density_survives_large_translation():
+    points = rotate_translate(
+        slot_points(line_count=41, arc_count=61),
+        angle=0.73,
+        translation=(1.2e8, -2.4e8),
+    )
+    out = reconstruct_profile_2d(
+        points,
+        closed=True,
+        fit_tolerance=0.001,
+        ordering_method="polar_closed_loop",
+        angular_tolerance_degrees=0.2,
+    )
+    assert [p["type"] for p in out["primitives"]] == ["line", "arc", "line", "arc"]
+    candidate, = [c for c in out["profile_candidates"] if c["type"] == "slot_candidate"]
+    assert candidate["radius"] == pytest.approx(5.0, abs=1e-5)
+    assert candidate["centerline_length"] == pytest.approx(20.0, abs=1e-5)
+
+
 def test_rotation_and_large_translation_preserve_slot_dimensions():
     points = rotate_translate(slot_points())
     out = reconstruct_profile_2d(
