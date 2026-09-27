@@ -2594,7 +2594,7 @@ bool createFitOverlay(
         for ( int i = 0; i < segments; ++i )
         {
             const double angle =
-                2.0 * M_PI * static_cast<double>( i )
+                2.0 * 3.14159265358979323846 * static_cast<double>( i )
                 / static_cast<double>( segments );
             const CCVector3d radial =
                 u * ( radius * std::cos( angle ) )
