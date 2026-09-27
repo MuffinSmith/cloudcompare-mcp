@@ -33,7 +33,7 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[test]"
       - run: python -m compileall -q src scripts tests
-      - run: pytest -q tests
+      - run: python -m pytest -q tests
       # Only tracked public source is archived. Do not include the workspace,
       # credentials, local evidence, or the user's fan_project.bin fixture.
       - name: Archive exact tested source
