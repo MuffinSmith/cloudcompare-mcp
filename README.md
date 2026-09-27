@@ -348,3 +348,34 @@ flattening, rather than weakening these accepted safety checks. No DLL rebuild.
 See [filled-section boundary contracts](docs/LIVE_CAD_SECTION_BOUNDARY_EXTRACTION.md)
 and the [retained Windows acceptance procedure](docs/WINDOWS_SECTION_BOUNDARY_ACCEPTANCE.md).
 See AGENTS.md for exact acceptance/merge attribution and coverage limitations.
+
+## Python-only 0.15.3 depth-aware section layers (Windows accepted; merge pending)
+
+`analyze_section_layers` and `analyze_live_section_layers` retain complete
+`[u, v, signed_depth]` samples before 2D flattening. Explicit UV/depth thresholds
+produce bounded, deterministic local-depth components with support, thickness,
+continuity, overlap and ambiguity diagnostics. Sparse/thick/crossing evidence is
+reported rather than deleted; disconnected patches are not silently joined.
+
+`reconstruct_section_layer_profile` and `reconstruct_live_section_layer_profile`
+feed one safe or explicitly chosen usable component into the unchanged accepted
+0.15.2 occupancy, 0.15.1 topology and primitive fitting. Multiple credible layers
+require an explicit candidate ID and current source/frame-bound fingerprint. No
+sign-based choice, parameter search, morphological repair, or confirmed manufacturing
+intent is introduced. Live acquisition must be complete, with at most 20,000 points;
+raw samples remain server-side. qMCPBridge remains unchanged: no DLL rebuild.
+
+Development CI passed 626 tests, including MCP schemas and actual stdio with snapshot
+and replayed native acquisition. Focused real Windows/CloudCompare acceptance then
+passed at exact HEAD `2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`: all 12 fresh
+hashed fixtures, real-GUI original/transformed cases, explicit selection/refusal,
+truncation safety, coordinate bookkeeping, and metadata-level source-integrity checks
+passed. The bounded fan remained correctly BLOCKED after complete 5,605 / 5,605
+acquisition because the declared layer analysis exceeded 16 components; no candidate
+fingerprint existed, so no reconstruction was attempted. No product defect was found.
+Full-cloud integrity and real native nonunit scale remain untested. This accepted
+feature branch is not merged into main and still requires explicit merge approval.
+
+See [layer contracts and request examples](docs/LIVE_CAD_SECTION_LAYER_ISOLATION.md),
+[Windows acceptance procedure](docs/WINDOWS_SECTION_LAYER_ACCEPTANCE.md), and AGENTS.md
+for exact recovery checkpoints and coverage limits.

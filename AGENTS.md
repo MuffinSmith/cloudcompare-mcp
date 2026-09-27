@@ -1,5 +1,87 @@
 # Repository work and interruption recovery
 
+## 0.15.3 Windows acceptance complete — merge approval still required
+
+Resume the EXISTING `feature/live-cad-section-layer-isolation` branch. Do not
+recreate it after a disconnect. The exact real-Windows/CloudCompare tested HEAD is
+`2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`, created from accepted main
+`cb1ee9eab9c64ff4806036a6317606938faa22e6`. Python is 0.15.3.
+qMCPBridge remains unchanged at accepted 0.12.0 / workflow revision 8; no DLL
+rebuild occurred or is required.
+
+Focused Windows acceptance completed successfully for the fixture, live-GUI,
+handoff and safety gates. The bounded real fan analysis was legitimately BLOCKED;
+no reproducible product defect was found, no GitHub issue was opened, no runtime
+fix was made, and the branch was not merged. Detailed reports/raw evidence remain
+outside Git.
+
+Exact acceptance identity and regression:
+- clean isolated Windows worktree at
+  `2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`;
+- accepted-main parent `cb1ee9eab9c64ff4806036a6317606938faa22e6`;
+- isolated Python imports 0.15.3 from that worktree;
+- visible CloudCompare 2.13.2, qMCPBridge 0.12.0;
+- native source diff empty;
+- Windows suite 610 passed with 16 compiler-gated native policy tests skipped in
+  the ordinary shell, then all 16 passed separately under configured MSVC;
+- compileall and both diff checks passed;
+- final development CI run `36352480651` passed at the exact tested HEAD;
+- the CI-installed suite at that source contained 626 tests.
+
+All 12 freshly generated PLY fixtures matched manifest hashes and point counts.
+Actual MCP stdio exposed:
+- `analyze_section_layers`
+- `analyze_live_section_layers`
+- `reconstruct_section_layer_profile`
+- `reconstruct_live_section_layer_profile`
+
+Snapshot and real-GUI fixture behavior matched the contract. Single, sloped,
+bounded-noise and transformed-single cases were ready. Parallel, three-layer,
+partial-overlap, fan-like and transformed-parallel retained separate candidates.
+Crossing, excessive-thickness and sparse cases blocked unsafe continuation. Every
+live acquisition was complete and every acquired point was accounted for; compact
+responses contained no raw point arrays.
+
+Handoff/refusal checks passed. Original and transformed single cases selected
+1,200 points with zero unselected points and produced one outer loop. Original and
+transformed live parallel explicit choices selected 1,200 points and left 1,200
+unselected; unchosen composites blocked. Stale fingerprints and snapshot-to-live
+fingerprint reuse were rejected. Explicit selection did not bypass crossing, thick
+or sparse evidence. A 100-point acquisition cap errored explicitly. A deliberately
+too-small topology edge limit retained diagnostics while refusing topology.
+
+The real live original-single primitive RMS residuals were, in fitted order:
+`0, 0.074536, 0.022408, 0.048277, 0` for line, line, arc, line, line.
+The transformed-single residuals were:
+`0.046388, 0.059475, 0.186595, 0.048698, 0.0000103`.
+
+Coordinate bookkeeping passed with limited integrity coverage. The transformed GUI
+sources used CloudCompare global shift
+`[-100000000, 199999000, -299999000]`, global scale 1, with no double application.
+Before/after metadata matched for all 12 fixture entities and the fan source.
+Full-cloud geometry/attribute equality was not independently proved, and no real
+nonunit-scale source was tested. Preserve those limitations exactly.
+
+Bounded fan acceptance is BLOCKED, not FAIL:
+- source 359, `Assembly | Fan - scan 1`;
+- complete 5,605 / 5,605 acquisition, no truncation;
+- signed depth min approximately -0.499512, max +0.499924;
+- 2,814 negative and 2,791 positive offsets;
+- the single declared analysis exceeded the configured 16-component limit and
+  refused before producing a candidate fingerprint;
+- therefore there was no defensible selection and reconstruction was correctly not
+  attempted.
+
+Do not raise `max_components`, search thresholds, select by depth sign, or otherwise
+retune solely to force this fan slab through. The BLOCKED result demonstrates that
+the safety boundary is functioning. A smaller/better isolated acquisition can be a
+future workflow improvement, but it is not required to accept 0.15.3.
+
+This lane is now Windows-accepted but NOT merged. The user's previous explicit merge
+authorization covered 0.15.2 only. Do not merge 0.15.3 until the user explicitly
+authorizes this accepted increment. Documentation-only acceptance recording after the
+tested SHA does not invalidate the tested runtime; verify its CI before merge.
+
 ## Accepted main: 0.15.2
 
 The user explicitly authorized the 0.15.2 merge and then a separate 0.15.3
@@ -7,12 +89,13 @@ layer-isolation increment. PR #16 merged `feature/live-cad-section-boundary-extr
 into main at `8f2e0317f9eeff14547db1d83c100549c65fb18c`.
 The retained feature HEAD is `e4e53f7632e58843ea78780b88a2ab539cee1a94`.
 Push CI `36350201179` and PR CI `36350227336` both completed successfully before
-merge. The merge tree exactly matches that checked HEAD. This follow-up is recovery
-documentation only. Preserve the feature branch; do not merge it again.
+merge. The merge tree exactly matches that checked HEAD. The later main checkpoint
+`cb1ee9eab9c64ff4806036a6317606938faa22e6` records this recovery state only.
+Preserve the feature branch; do not merge it again.
 
 Windows-tested HEAD: `7610eceff68704132ff44086d8d070fbb10b5c38`.
 Runtime/product checkpoint: `0fd59d19156f6d80087e1c43b2096482aa85715f`.
-Python: 0.15.2. qMCPBridge: unchanged accepted 0.12.0 / workflow revision 8.
+Accepted Python: 0.15.2. qMCPBridge: unchanged accepted 0.12.0 / workflow revision 8.
 No DLL rebuild is required. Generated snapshot/live fixtures and safety gates PASSed.
 Windows regression: 490 passed plus 16 compiler-gated policy tests that subsequently
 PASSed under configured MSVC. compileall and diff checking PASSed. The fan profile
@@ -27,27 +110,22 @@ superseded by the exact merged state above, not a request to repeat completed wo
 Also read `docs/LIVE_CAD_SECTION_BOUNDARY_EXTRACTION.md`; the corresponding Windows
 acceptance document is a retained procedure, not an outstanding 0.15.2 test gate.
 
-## Next deliberate lane: 0.15.3 layer isolation
-
-Create or resume `feature/live-cad-section-layer-isolation` from current accepted
-main; inspect remote heads first, never recreate it after a disconnect. Do not
-continue runtime development on the accepted 0.15.2 branch. The user's approval
-DOES NOT authorize merging 0.15.3; that requires its own targeted real-Windows
-acceptance and explicit user approval.
+## Layer-isolation responsibility boundary
 
 Keep complete slab `(u,v,signed_depth)` evidence until coherent layers have been
 analyzed. Python owns local depth observations, continuity, ambiguity and selection;
-CloudCompare owns read-only complete acquisition and source provenance. Prefer
-existing `cloud.region_query`, with NO native/DLL change. Do not begin Fusion 360
-integration in this increment.
+CloudCompare owns read-only complete acquisition and source provenance. Use existing
+`cloud.region_query`, with NO native/DLL change. Do not begin Fusion 360 integration.
 
-Return compact deterministic layer candidates, support/thickness/overlap/crossing
-warnings and source/layer fingerprints. Hand only a safe or explicitly chosen usable
-layer to the unchanged accepted 0.15.2 occupancy, 0.15.1 topology and primitive fitter.
+Sparse, thick or merging/crossing components block continuation even after an
+explicit choice. Selection is automatic only for one usable component. Explicit
+selection binds exact geometry, source, frame, acquisition and parameters through
+an analysis fingerprint. Disconnected patches are separate candidates, never
+implicitly joined. Explicit choice is not manufacturing acceptance.
+
 Never select by depth sign, drop inconvenient samples, use truncated reservoir samples
-as topology proof, or search parameters until a CAD outline looks good. Automatic
-continuation requires one unambiguous supported coherent layer. Explicit selection
-is not manufacturing acceptance. A real fan result may legitimately remain BLOCKED.
+as topology proof, or search parameters until a CAD outline looks good. A real fan
+result may legitimately remain BLOCKED.
 
 The previous fan slab: resolve the actual entity (historically cloud 359, name
 `Assembly | Fan - scan 1`, 406,276 source points), origin `[40,0,135]`, normal
@@ -72,7 +150,7 @@ UV occupancy contacts. Do not assume this exact slab must become reconstructable
 ## Validation boundary
 
 Use the development container for every available numerical, unit, protocol, CLI,
-static and build check. Test the actual source, not a handwritten reference presented
+static and build check. Test actual source, not a handwritten reference presented
 as product validation. Distinguish exact-source tests, replay/mocked acquisition,
 native policy compilation and real CloudCompare GUI tests. Missing dependencies,
 network or builds are limitations, not passing tests; preserve evidence outside Git.

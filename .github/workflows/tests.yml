@@ -18,6 +18,7 @@ on:
       - feature/live-cad-profile-reconstruction
       - feature/live-cad-profile-topology
       - feature/live-cad-section-boundary-extraction
+      - feature/live-cad-section-layer-isolation
       - main
   pull_request:
 
