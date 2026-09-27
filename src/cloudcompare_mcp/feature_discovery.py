@@ -472,10 +472,15 @@ def discover_circles(
             )
             mask = residual <= threshold
 
-        if refined is None:
+        if refined is None or int(np.count_nonzero(mask)) < min_points:
             break
 
-        refined = fit_circle_3d(subset[mask])
+        try:
+            refined = fit_circle_3d(subset[mask])
+        except FeatureFitError:
+            break
+        if not radius_allowed(float(refined["radius"])):
+            break
         center = np.asarray(refined["center"], dtype=np.float64)
         normal = np.asarray(refined["normal"], dtype=np.float64)
         residual_all = _circle_residuals(
@@ -492,7 +497,12 @@ def discover_circles(
         if support_fraction < min_inlier_fraction:
             break
 
-        refined = fit_circle_3d(subset[mask])
+        try:
+            refined = fit_circle_3d(subset[mask])
+        except FeatureFitError:
+            break
+        if not radius_allowed(float(refined["radius"])):
+            break
         if (
             float(refined["arc_coverage_degrees"])
             < min_arc_coverage_degrees
