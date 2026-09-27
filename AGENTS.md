@@ -1,5 +1,56 @@
 # Repository work and interruption recovery
 
+## Active 0.15.2 filled-section boundary extraction lane (not accepted or merged)
+
+Continue `feature/live-cad-section-boundary-extraction`, created deliberately from
+accepted main `2747bdd54cbe4260e3b37382f2afbadc2b677694`. Python is 0.15.2.
+qMCPBridge remains accepted 0.12.0 / workflow revision 8 and is unchanged.
+
+The purpose of this lane is to turn an ordinary projected scan section containing
+interior/material samples into trustworthy, explicitly resolution-dependent boundary
+evidence before reusing the accepted 0.15.1 topology and primitive-fit layers.
+
+New MCP surface:
+
+- snapshot `extract_section_boundary_evidence`
+- snapshot `reconstruct_filled_section_profile`
+- read-only live `reconstruct_live_filled_section_profile`
+
+The implementation uses caller-selected native-unit occupancy `cell_size`, traces
+exposed 4-neighbor cell edges, associates them back to original source samples,
+reports per-cell support and half-cell grid-origin sensitivity, and refuses ambiguous
+diagonal/non-manifold connectivity rather than morphologically repairing it.
+Composite reconstruction reuses `reconstruct_profile_topology_2d`; do not replace
+the accepted 0.15.1 solver casually.
+
+Live reconstruction reuses the existing native `cloud.region_query` slab method.
+It requires complete acquisition (no reservoir-truncated occupancy), is capped at
+20,000 samples for this increment, preserves source shift/scale bookkeeping, and
+rejects strong evidence of multiple/thick projected layers. No native method or DLL
+change is intended.
+
+Reusable exact-file fixtures are generated outside Git by
+`scripts/make_filled_section_boundary_fixtures.py`: original and arbitrary
+rotated/large-translated filled profiles, nonuniform density, a narrow feature, and
+an overlapping-layer ambiguity case. Tests must read those generated PLY files and
+exercise the product code.
+
+The accepted 0.15.1 real-Windows topology gate at
+`e0043eab698e407cdb5df05ea4e827b6f05b1802` remains completed. PR #15 merged it
+at `cf213649fea5717d9a9d5e6c1104240dc8b6f668`. Do not repeat that gate merely
+because this chat or CI restarted. The old fan BLOCKED result is design evidence for
+this lane, not an outstanding 0.15.1 failure.
+
+Before requesting Windows testing, require full Python regression, compileall,
+MCP/schema/stdio coverage, exact generated fixture-file tests, `git diff --check`,
+a final diff proving no qMCPBridge source change, and green CI.
+
+Read `docs/LIVE_CAD_SECTION_BOUNDARY_EXTRACTION.md` and
+`docs/WINDOWS_SECTION_BOUNDARY_ACCEPTANCE.md`.
+
+Do not merge this lane without a new targeted real-Windows acceptance report and
+explicit user approval.
+
 ## Accepted 0.15.1 profile topology increment (merge authorized)
 
 The exact Windows-tested feature HEAD is
