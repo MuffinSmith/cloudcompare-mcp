@@ -219,7 +219,7 @@ def generate(output_dir: Path) -> dict:
             "min_component_cells": 2,
             "max_cells": 20000,
             "max_boundary_points": 2048,
-            "max_edge_length": 1.05,
+            "max_edge_length": 1.10,
             "fit_tolerance": 0.35,
             "angular_tolerance_degrees": 2.0,
             "minimum_loop_points": 6,
