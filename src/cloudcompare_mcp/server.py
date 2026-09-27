@@ -2938,12 +2938,55 @@ def handle_reconstruct_live_section_profile(args: dict) -> list[TextContent] | C
             minimum_arc_angle_degrees=min_arc,
             max_segments=max_segments,
         )
+
+        source_coordinate_space = native.get("coordinate_space", "global")
+        if source_coordinate_space != "global":
+            raise ProfileError(
+                "Live profile acquisition expected global query coordinates"
+            )
+
+        source_shift = native.get("source_global_shift")
+        if source_shift is not None:
+            if (
+                not isinstance(source_shift, list)
+                or len(source_shift) != 3
+                or any(isinstance(component, bool) for component in source_shift)
+            ):
+                raise ProfileError("Native source_global_shift is malformed")
+            try:
+                source_shift = [float(component) for component in source_shift]
+            except (TypeError, ValueError) as exc:
+                raise ProfileError("Native source_global_shift is malformed") from exc
+            if not all(math.isfinite(component) for component in source_shift):
+                raise ProfileError("Native source_global_shift is non-finite")
+
+        source_scale = native.get("source_global_scale")
+        if source_scale is not None:
+            if isinstance(source_scale, bool):
+                raise ProfileError("Native source_global_scale is malformed")
+            try:
+                source_scale = float(source_scale)
+            except (TypeError, ValueError) as exc:
+                raise ProfileError("Native source_global_scale is malformed") from exc
+            if not math.isfinite(source_scale) or source_scale <= 0:
+                raise ProfileError("Native source_global_scale must be finite and positive")
+
         result = dict(profile)
         result["type"] = "live_cad_section_profile"
         result["source_geometry_preserved"] = True
         result["live_connection_used"] = True
         result["scene_mutations_requested"] = False
         result["source_cloud_id"] = int(args["cloud_id"])
+        if isinstance(native.get("cloud_name"), str):
+            result["source_cloud_name"] = native["cloud_name"]
+        source_bookkeeping = {
+            "query_coordinate_space": source_coordinate_space,
+        }
+        if source_shift is not None:
+            source_bookkeeping["global_shift"] = source_shift
+        if source_scale is not None:
+            source_bookkeeping["global_scale"] = source_scale
+        result["source_coordinate_bookkeeping"] = source_bookkeeping
         result["section_frame"] = {
             "coordinate_space": "global",
             "units": "native",
