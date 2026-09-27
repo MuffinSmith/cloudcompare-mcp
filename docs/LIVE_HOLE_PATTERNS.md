@@ -2,7 +2,9 @@
 
 Branch: `feature/live-hole-patterns`. The accepted 0.12 work was merged through
 PR #8 at `38f92c1dd62fdba92a4fc51959289287ae6eaaed` after explicit user approval.
-This next stage is implemented in Python and is **not yet Windows-accepted**.
+This Python increment subsequently passed broad and focused Windows acceptance
+and was merged through PR #10 at `8c09f27dfde6c44ed38a63c9f8a1d6124ae4a52a`.
+AGENTS.md records the exact tested sources and retained coverage limitations.
 
 ## Compatibility and scope
 

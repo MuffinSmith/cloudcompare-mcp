@@ -1,5 +1,18 @@
 # Repository work and interruption recovery
 
+## Active 0.14 development lane (not accepted or merged)
+
+Continue `feature/live-cad-datum-relationships`, based on accepted main
+`e39949759c6386e5cd0387983c43a74f26e6a58e`. Inspect remote heads and local changes
+before resuming; do not create a replacement branch or reset to historical SHAs.
+Read `docs/LIVE_CAD_DATUM_RELATIONSHIPS.md` and
+`docs/WINDOWS_DATUM_RELATIONSHIP_ACCEPTANCE.md` for the new snapshot-only tools.
+Python becomes 0.14.0; native remains accepted 0.12.0 / revision 8, with no native
+source or build changes. Do not rebuild an unchanged DLL. The new stage is pending
+real Windows acceptance and explicit user merge approval. Main's accepted 0.13
+status below is unchanged. CI/numerical passes do not authorize merging.
+
+
 ## Current accepted baseline
 
 The user explicitly approved merging the accepted 0.13 increment. PR #10 merged
