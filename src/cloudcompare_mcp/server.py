@@ -1049,8 +1049,8 @@ TOOLS: list[Tool] = [
                 "max_cylinders": {"type": "integer", "minimum": 1, "maximum": 8, "default": 3},
                 "min_points": {"type": "integer", "minimum": 6, "default": 30},
                 "min_inlier_fraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.05},
-                "iterations": {"type": "integer", "minimum": 5, "maximum": 500, "default": 60},
-                "candidate_sample_size": {"type": "integer", "minimum": 6, "maximum": 64, "default": 12},
+                "iterations": {"type": "integer", "minimum": 5, "maximum": 500, "default": 100},
+                "candidate_sample_size": {"type": "integer", "minimum": 6, "maximum": 64, "default": 6},
                 "min_radius": {"type": "number", "exclusiveMinimum": 0},
                 "max_radius": {"type": "number", "exclusiveMinimum": 0}
             },
@@ -2801,8 +2801,8 @@ def handle_discover_live_cylinders(args: dict) -> list[TextContent] | CallToolRe
             "max_cylinders": int(args.get("max_cylinders", 3)),
             "min_points": int(args.get("min_points", 30)),
             "min_inlier_fraction": float(args.get("min_inlier_fraction", 0.05)),
-            "iterations": int(args.get("iterations", 60)),
-            "candidate_sample_size": int(args.get("candidate_sample_size", 12)),
+            "iterations": int(args.get("iterations", 100)),
+            "candidate_sample_size": int(args.get("candidate_sample_size", 6)),
             "random_seed": 0,
         }
         for key in ("distance_threshold", "min_radius", "max_radius"):
