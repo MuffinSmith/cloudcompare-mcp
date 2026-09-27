@@ -13,7 +13,7 @@ and current CI after a disconnect; do not recreate or restart this lane.
 Local dependency-available regression: **550 passed**, zero skips, including all
 16 compiled native policy tests (not a plugin build). Focused new coverage is 139
 tests: 48 core, 43 workflow/replay, 18 boundary/precision/provenance, 20 exact-file,
-10 MCP schema/dispatch/actual stdio tests. Local focused non-MCP subset129 passed;
+10 MCP schema/dispatch/actual stdio tests. Local focused non-MCP subset: 129 passed;
 the MCP tests and complete installed suite ran in CI, not the dependency-limited
 container. All 14 fresh hashed PLY files passed product projection/snapshot/replay;
 original and arbitrary-rotated/large-translated single/parallel handoff passed.
@@ -28,6 +28,33 @@ Next action: follow `docs/WINDOWS_SECTION_TARGET_ACCEPTANCE.md` at the supplied 
 HEAD after confirming green CI. Read `docs/LIVE_CAD_SECTION_TARGET_ISOLATION.md` for
 contracts/refusal boundaries. Testing/reporting only, not implementation or DLL work.
 Do not merge 0.15.4 and do not ask for merge authorization merely because tests pass.
+
+## Verified recovery and draft PR #18
+
+Recovered the existing completed branch at
+`423d48e43fa7632dab3f15a82beba267e52b709a`; no replacement branch or runtime
+implementation was created. Draft PR #18 now tracks this unmerged increment.
+Final-documentation push CI `36356607178`, job `108725479512`, was independently
+read: **765 passed, zero skips, 31.21 s**, compileall and diff check passed.
+This recovery checkpoint changes AGENTS.md only; inspect the new HEAD/CI rather
+than assuming the documentation checkpoint above is still the branch tip.
+
+Fresh recovery audit: **129 passed in 6.64 s** across the four non-MCP target test
+modules, plus compileall and the full accepted-main-to-feature diff check. The fresh
+container lacks mcp/laspy/plyfile; the full installed suite and actual stdio results
+are CI evidence, not a newly claimed full local run. No real GUI test was repeated.
+
+Downloaded tested-source artifact `10944357424`; ZIP SHA256
+`4c376178346a5a1fe4b829f25522db533787329a391e18c30be5e426aeaadd73`.
+Its archive commit comment and reconstructed Git source tree matched the recovered
+HEAD and `80ac93381eb7f51a4eac11bf5b6898a4d4ae94d1`. Accepted main's source tree
+was also independently verified. The final change set contains 17 files; native
+plugin and accepted solver diffs are empty. The saved 0.15.3 AGENTS history is
+byte-for-byte equal to accepted main. No merge, reset, clean or force-push occurred.
+
+Next action remains focused Windows acceptance using the final supplied SHA and
+`docs/WINDOWS_SECTION_TARGET_ACCEPTANCE.md`, not a new development increment.
+Keep PR #18 draft and unmerged. Do not rerun accepted 0.15.3 acceptance.
 
 ## Implemented scope and deliberate limits
 
