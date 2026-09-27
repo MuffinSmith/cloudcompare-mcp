@@ -27,6 +27,9 @@
 #include <ccHObjectCaster.h>
 #include <ccMesh.h>
 #include <ccPointCloud.h>
+#include <ccPlane.h>
+#include <ccPolyline.h>
+#include <ccCylinder.h>
 #include <ccScalarField.h>
 #include <ccGlobalShiftManager.h>
 #include <ccGLMatrix.h>
@@ -44,6 +47,7 @@
 namespace
 {
 constexpr double FRAME_EPS = 1.0e-9;
+unsigned g_fitOverlayGroupId = 0;
 
 void addApplicationVersion( QJsonObject& result )
 {
@@ -3340,17 +3344,473 @@ bool analyzeCloudToMesh(
     return true;
 }
 
+ccHObject* fitOverlayGroup(
+    ccMainAppInterface* app,
+    bool createIfMissing,
+    QString& error )
+{
+    if ( !app )
+    {
+        error = "CloudCompare application interface is not available";
+        return nullptr;
+    }
+
+    if ( g_fitOverlayGroupId != 0 )
+    {
+        ccHObject* existing = findEntity( app, g_fitOverlayGroupId );
+        if ( existing && existing->isA( CC_TYPES::HIERARCHY_OBJECT ) )
+        {
+            return existing;
+        }
+        g_fitOverlayGroupId = 0;
+    }
+
+    if ( !createIfMissing )
+    {
+        return nullptr;
+    }
+
+    std::unique_ptr<ccHObject> group( new ccHObject( "MCP Fit Overlays" ) );
+    group->setMetaData( "MCP.fit_overlay_group", true );
+    group->setVisible( true );
+    group->setEnabled( true );
+
+    ccHObject* liveGroup = group.release();
+    app->addToDB( liveGroup, false, true, false, false );
+    g_fitOverlayGroupId = liveGroup->getUniqueID();
+    return liveGroup;
+}
+
+bool fitOverlayStatus(
+    ccMainAppInterface* app,
+    QJsonValue& result,
+    QString& error )
+{
+    ccHObject* group = fitOverlayGroup( app, false, error );
+    QJsonObject out;
+    out[ "active" ] = group != nullptr;
+    out[ "temporary" ] = true;
+    if ( group )
+    {
+        out[ "group_id" ] = static_cast<qint64>( group->getUniqueID() );
+        out[ "group_name" ] = group->getName();
+        out[ "overlay_entity_count" ] =
+            static_cast<qint64>( group->getChildrenNumber() );
+
+        QJsonArray entities;
+        for ( unsigned i = 0; i < group->getChildrenNumber(); ++i )
+        {
+            entities.append( entityDescription( group->getChild( i ), false ) );
+        }
+        out[ "entities" ] = entities;
+    }
+    else
+    {
+        out[ "group_id" ] = QJsonValue();
+        out[ "overlay_entity_count" ] = 0;
+        out[ "entities" ] = QJsonArray();
+    }
+    result = out;
+    return true;
+}
+
+bool clearFitOverlays(
+    ccMainAppInterface* app,
+    QJsonValue& result,
+    QString& error )
+{
+    ccHObject* group = fitOverlayGroup( app, false, error );
+    QJsonObject out;
+    out[ "temporary" ] = true;
+    if ( !group )
+    {
+        out[ "cleared" ] = false;
+        out[ "removed_entity_count" ] = 0;
+        result = out;
+        return true;
+    }
+
+    const qint64 removedCount =
+        static_cast<qint64>( group->getChildrenNumber() );
+    app->removeFromDB( group, true );
+    g_fitOverlayGroupId = 0;
+    app->refreshAll();
+    app->updateUI();
+
+    out[ "cleared" ] = true;
+    out[ "removed_entity_count" ] = removedCount;
+    result = out;
+    return true;
+}
+
+bool readPositiveNumber(
+    const QJsonObject& object,
+    const char* key,
+    double& value,
+    QString& error )
+{
+    const QJsonValue raw = object.value( QLatin1String( key ) );
+    if ( !raw.isDouble() )
+    {
+        error = QString( "%1 must be numeric" ).arg( key );
+        return false;
+    }
+    value = raw.toDouble();
+    if ( !std::isfinite( value ) || value <= 0.0 )
+    {
+        error = QString( "%1 must be finite and greater than zero" ).arg( key );
+        return false;
+    }
+    return true;
+}
+
+bool normalizedDirection(
+    const CCVector3d& input,
+    CCVector3& output,
+    QString& error,
+    const QString& label )
+{
+    const double norm = input.normd();
+    if ( !std::isfinite( norm )
+         || norm <= std::numeric_limits<double>::epsilon() )
+    {
+        error = label + " must have non-zero length";
+        return false;
+    }
+    const CCVector3d normalized = input / norm;
+    output = CCVector3(
+        static_cast<PointCoordinateType>( normalized.x ),
+        static_cast<PointCoordinateType>( normalized.y ),
+        static_cast<PointCoordinateType>( normalized.z ) );
+    return true;
+}
+
+ccPolyline* createOverlayAxis(
+    const CCVector3d& localA,
+    const CCVector3d& localB,
+    ccPointCloud* source,
+    const QString& name )
+{
+    std::unique_ptr<ccPointCloud> vertices( new ccPointCloud( name + ".vertices" ) );
+    if ( !vertices->reserve( 2 ) )
+    {
+        return nullptr;
+    }
+    vertices->addPoint( localA.toPC() );
+    vertices->addPoint( localB.toPC() );
+    vertices->setEnabled( false );
+
+    std::unique_ptr<ccPolyline> axis( new ccPolyline( vertices.get() ) );
+    if ( !axis->reserve( 2 ) )
+    {
+        return nullptr;
+    }
+    axis->addPointIndex( 0, 2 );
+    axis->addChild( vertices.release() );
+    axis->setName( name );
+    axis->setColor( ccColor::greenRGB );
+    axis->showColors( true );
+    axis->setWidth( static_cast<PointCoordinateType>( 3.0 ) );
+    axis->copyGlobalShiftAndScale( *source );
+    axis->setVisible( true );
+    axis->setEnabled( true );
+    axis->setDisplay( source->getDisplay() );
+    axis->setMetaData( "MCP.fit_overlay", true );
+    axis->setMetaData( "MCP.fit_overlay_kind", "axis" );
+    axis->prepareDisplayForRefresh_recursive();
+    return axis.release();
+}
+
+void finalizeOverlayEntity(
+    ccHObject* entity,
+    ccPointCloud* source,
+    const QString& kind )
+{
+    if ( !entity || !source )
+    {
+        return;
+    }
+    entity->setVisible( true );
+    entity->setEnabled( true );
+    entity->setDisplay( source->getDisplay() );
+    entity->setMetaData( "MCP.fit_overlay", true );
+    entity->setMetaData( "MCP.fit_overlay_kind", kind );
+    entity->setMetaData(
+        "MCP.fit_overlay_source_id",
+        static_cast<qulonglong>( source->getUniqueID() ) );
+    entity->prepareDisplayForRefresh_recursive();
+}
+
+bool createFitOverlay(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned sourceId = 0;
+    if ( !readId( params, "source_cloud_id", sourceId ) )
+    {
+        error = "fit.overlay.create requires a numeric source_cloud_id";
+        return true;
+    }
+    ccPointCloud* source = requireStandaloneCloud( app, sourceId, error );
+    if ( !source )
+    {
+        return true;
+    }
+
+    const double globalScale = source->getGlobalScale();
+    if ( !std::isfinite( globalScale ) || globalScale <= 0.0 )
+    {
+        error = "Source cloud has an invalid global scale";
+        return true;
+    }
+
+    const QString kind = params.value( "kind" ).toString().trimmed().toLower();
+    if ( kind != "plane"
+         && kind != "circle"
+         && kind != "cylinder"
+         && kind != "axis" )
+    {
+        error = "fit.overlay.create kind must be 'plane', 'circle', 'cylinder', or 'axis'";
+        return true;
+    }
+
+    QString groupError;
+    ccHObject* group = fitOverlayGroup( app, true, groupError );
+    if ( !group )
+    {
+        error = groupError.isEmpty()
+            ? "Could not create MCP fit overlay group"
+            : groupError;
+        return true;
+    }
+
+    const QString requestedName = params.value( "name" ).toString().trimmed();
+    const QString baseName = requestedName.isEmpty()
+        ? QString( "MCP %1 overlay" ).arg( kind )
+        : requestedName;
+
+    QJsonArray created;
+
+    if ( kind == "plane" )
+    {
+        CCVector3d centerGlobal;
+        CCVector3d normalGlobal;
+        double widthGlobal = 0.0;
+        double heightGlobal = 0.0;
+        if ( !readVector3( params, "center", centerGlobal, error )
+             || !readVector3( params, "normal", normalGlobal, error )
+             || !readPositiveNumber( params, "width", widthGlobal, error )
+             || !readPositiveNumber( params, "height", heightGlobal, error ) )
+        {
+            return true;
+        }
+
+        CCVector3 normal;
+        if ( !normalizedDirection( normalGlobal, normal, error, "plane normal" ) )
+        {
+            return true;
+        }
+        const CCVector3d centerLocal =
+            source->toLocal3d<double>( centerGlobal );
+        ccGLMatrix transform =
+            ccGLMatrix::FromToRotation(
+                CCVector3( 0, 0, CCCoreLib::PC_ONE ),
+                normal );
+        transform.setTranslation( centerLocal.toPC() );
+
+        std::unique_ptr<ccPlane> plane(
+            new ccPlane(
+                static_cast<PointCoordinateType>( widthGlobal * globalScale ),
+                static_cast<PointCoordinateType>( heightGlobal * globalScale ),
+                &transform,
+                baseName ) );
+        plane->copyGlobalShiftAndScale( *source );
+        plane->setColor( ccColor::cyanRGB );
+        plane->showColors( true );
+        plane->showWired( true );
+        finalizeOverlayEntity( plane.get(), source, "plane" );
+
+        ccPlane* livePlane = plane.release();
+        attachToDestination( app, livePlane, group );
+        created.append( entityDescription( livePlane, false ) );
+    }
+    else if ( kind == "circle" )
+    {
+        CCVector3d centerGlobal;
+        CCVector3d normalGlobal;
+        double radiusGlobal = 0.0;
+        if ( !readVector3( params, "center", centerGlobal, error )
+             || !readVector3( params, "normal", normalGlobal, error )
+             || !readPositiveNumber( params, "radius", radiusGlobal, error ) )
+        {
+            return true;
+        }
+
+        CCVector3 normal;
+        if ( !normalizedDirection( normalGlobal, normal, error, "circle normal" ) )
+        {
+            return true;
+        }
+        const CCVector3d centerLocal =
+            source->toLocal3d<double>( centerGlobal );
+        std::unique_ptr<ccPolyline> circle(
+            ccPolyline::Circle(
+                CCVector3( 0, 0, 0 ),
+                static_cast<PointCoordinateType>( radiusGlobal * globalScale ),
+                128 ) );
+        if ( !circle )
+        {
+            error = "CloudCompare could not allocate the circle overlay";
+            return true;
+        }
+        circle->setName( baseName );
+        circle->copyGlobalShiftAndScale( *source );
+        circle->setColor( ccColor::yellowRGB );
+        circle->showColors( true );
+        circle->setWidth( static_cast<PointCoordinateType>( 3.0 ) );
+
+        ccGLMatrix transform =
+            ccGLMatrix::FromToRotation(
+                CCVector3( 0, 0, CCCoreLib::PC_ONE ),
+                normal );
+        transform.setTranslation( centerLocal.toPC() );
+        circle->applyGLTransformation_recursive( &transform );
+        finalizeOverlayEntity( circle.get(), source, "circle" );
+
+        ccPolyline* liveCircle = circle.release();
+        attachToDestination( app, liveCircle, group );
+        created.append( entityDescription( liveCircle, false ) );
+    }
+    else
+    {
+        CCVector3d endpointAGlobal;
+        CCVector3d endpointBGlobal;
+        if ( !readVector3( params, "endpoint_a", endpointAGlobal, error )
+             || !readVector3( params, "endpoint_b", endpointBGlobal, error ) )
+        {
+            return true;
+        }
+        const CCVector3d localA =
+            source->toLocal3d<double>( endpointAGlobal );
+        const CCVector3d localB =
+            source->toLocal3d<double>( endpointBGlobal );
+        const CCVector3d localDelta = localB - localA;
+        const double localLength = localDelta.normd();
+        if ( !std::isfinite( localLength )
+             || localLength <= std::numeric_limits<double>::epsilon() )
+        {
+            error = "overlay endpoints must be distinct";
+            return true;
+        }
+
+        if ( kind == "axis" )
+        {
+            std::unique_ptr<ccPolyline> axis(
+                createOverlayAxis( localA, localB, source, baseName ) );
+            if ( !axis )
+            {
+                error = "CloudCompare could not allocate the axis overlay";
+                return true;
+            }
+            ccPolyline* liveAxis = axis.release();
+            attachToDestination( app, liveAxis, group );
+            created.append( entityDescription( liveAxis, false ) );
+        }
+        else
+        {
+            double radiusGlobal = 0.0;
+            if ( !readPositiveNumber( params, "radius", radiusGlobal, error ) )
+            {
+                return true;
+            }
+
+            CCVector3 axisDirection;
+            if ( !normalizedDirection(
+                    localDelta,
+                    axisDirection,
+                    error,
+                    "cylinder axis" ) )
+            {
+                return true;
+            }
+
+            const CCVector3d centerLocal =
+                ( localA + localB ) / 2.0;
+            ccGLMatrix transform =
+                ccGLMatrix::FromToRotation(
+                    CCVector3( 0, 0, CCCoreLib::PC_ONE ),
+                    axisDirection );
+            transform.setTranslation( centerLocal.toPC() );
+
+            std::unique_ptr<ccCylinder> cylinder(
+                new ccCylinder(
+                    static_cast<PointCoordinateType>( radiusGlobal * globalScale ),
+                    static_cast<PointCoordinateType>( localLength ),
+                    &transform,
+                    baseName,
+                    48 ) );
+            cylinder->copyGlobalShiftAndScale( *source );
+            cylinder->setColor( ccColor::magentaRGB );
+            cylinder->showColors( true );
+            cylinder->showWired( true );
+            finalizeOverlayEntity( cylinder.get(), source, "cylinder" );
+
+            ccCylinder* liveCylinder = cylinder.release();
+            attachToDestination( app, liveCylinder, group );
+            created.append( entityDescription( liveCylinder, false ) );
+
+            const bool showAxis = params.value( "show_axis" ).toBool( true );
+            if ( showAxis )
+            {
+                std::unique_ptr<ccPolyline> axis(
+                    createOverlayAxis(
+                        localA,
+                        localB,
+                        source,
+                        baseName + ".axis" ) );
+                if ( !axis )
+                {
+                    app->removeFromDB( liveCylinder, true );
+                    error = "CloudCompare could not allocate the cylinder axis overlay";
+                    return true;
+                }
+                ccPolyline* liveAxis = axis.release();
+                attachToDestination( app, liveAxis, group );
+                created.append( entityDescription( liveAxis, false ) );
+            }
+        }
+    }
+
+    app->refreshAll();
+    app->updateUI();
+
+    QJsonObject out;
+    out[ "created" ] = true;
+    out[ "temporary" ] = true;
+    out[ "kind" ] = kind;
+    out[ "source_cloud_id" ] = static_cast<qint64>( sourceId );
+    out[ "overlay_group_id" ] =
+        static_cast<qint64>( group->getUniqueID() );
+    out[ "created_entities" ] = created;
+    out[ "source_geometry_preserved" ] = true;
+    out[ "clear_operation" ] = "fit.overlay.clear";
+    result = out;
+    return true;
+}
+
 QJsonObject capabilities()
 {
     QJsonObject result;
     result[ "protocol_version" ] = 1;
-    result[ "workflow_revision" ] = 7;
+    result[ "workflow_revision" ] = 8;
     result[ "units_policy" ] =
         "Coordinates are reported in native units. Units remain unknown unless supplied by the caller.";
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    result[ "plugin_version" ] = "0.11.0";
+    result[ "plugin_version" ] = "0.12.0";
 
     QJsonArray bridgeOperations{
         "ping",
@@ -3381,6 +3841,9 @@ QJsonObject capabilities()
         "cloud.distance_c2m",
         "cloud.region_query",
         "cloud.region_grid",
+        "fit.overlay.create",
+        "fit.overlay.status",
+        "fit.overlay.clear",
         "metrology.pick.start",
         "metrology.pick.status",
         "metrology.pick.clear",
@@ -3408,6 +3871,9 @@ QJsonObject capabilities()
         "cloud.distance_c2m",
         "cloud.region_query",
         "cloud.region_grid",
+        "fit.overlay.create",
+        "fit.overlay.status",
+        "fit.overlay.clear",
         "metrology.pick.start",
         "metrology.pick.status",
         "metrology.pick.clear",
@@ -3494,6 +3960,22 @@ QJsonObject capabilities()
     regionGrid[ "stable_cell_covariance" ] = true;
     regionGrid[ "source_preserved" ] = true;
     result[ "region_grid" ] = regionGrid;
+
+    QJsonObject fitOverlays;
+    fitOverlays[ "available" ] = true;
+    fitOverlays[ "temporary_group" ] = true;
+    fitOverlays[ "kinds" ] = QJsonArray{ "plane", "circle", "cylinder", "axis" };
+    fitOverlays[ "coordinates" ] = "global";
+    fitOverlays[ "source_frame_inherited" ] = true;
+    fitOverlays[ "source_geometry_preserved" ] = true;
+    fitOverlays[ "clear_all_supported" ] = true;
+    fitOverlays[ "fixed_colors" ] = QJsonObject{
+        { "plane", "cyan" },
+        { "circle", "yellow" },
+        { "cylinder", "magenta" },
+        { "axis", "green" }
+    };
+    result[ "fit_overlays" ] = fitOverlays;
 
     QJsonArray meshing;
     {
@@ -4368,6 +4850,18 @@ bool dispatch(
     if ( method == "cloud.region_grid" )
     {
         return gridCloudRegion( app, params, result, error );
+    }
+    if ( method == "fit.overlay.create" )
+    {
+        return createFitOverlay( app, params, result, error );
+    }
+    if ( method == "fit.overlay.status" )
+    {
+        return fitOverlayStatus( app, result, error );
+    }
+    if ( method == "fit.overlay.clear" )
+    {
+        return clearFitOverlays( app, result, error );
     }
     if ( method == "cloud.subsample" )
     {
