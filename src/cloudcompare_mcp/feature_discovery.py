@@ -7,7 +7,12 @@ from typing import Any, Iterable, Sequence
 
 import numpy as np
 
-from .feature_fit import FeatureFitError, fit_plane
+from .feature_fit import (
+    FeatureFitError,
+    fit_circle_3d,
+    fit_cylinder_3d,
+    fit_plane,
+)
 
 
 def _points_array(points: Iterable[Sequence[float]], minimum: int, label: str) -> np.ndarray:
@@ -237,6 +242,368 @@ def discover_planes(
     }
 
 
+def _resolve_discovery_threshold(
+    xyz: np.ndarray,
+    distance_threshold: float | None,
+    *,
+    fraction_of_diagonal: float,
+    label: str,
+) -> tuple[float, str]:
+    extent = np.ptp(xyz, axis=0)
+    diagonal = float(np.linalg.norm(extent))
+    if not math.isfinite(diagonal) or diagonal <= np.finfo(np.float64).tiny:
+        raise FeatureFitError(f"{label} sample has no resolvable extent")
+
+    if distance_threshold is None:
+        threshold = max(
+            diagonal * fraction_of_diagonal,
+            np.finfo(np.float64).eps * max(diagonal, 1.0) * 1024.0,
+        )
+        return threshold, f"{100.0 * fraction_of_diagonal:.3g}_percent_sample_diagonal"
+
+    threshold = float(distance_threshold)
+    if not math.isfinite(threshold) or threshold <= 0.0:
+        raise FeatureFitError("distance_threshold must be finite and > 0")
+    return threshold, "caller"
+
+
+def _circle_distances(xyz: np.ndarray, fit: dict[str, Any]) -> np.ndarray:
+    center = np.asarray(fit["center"], dtype=np.float64)
+    normal = np.asarray(fit["normal"], dtype=np.float64)
+    normal /= np.linalg.norm(normal)
+    radius = float(fit["radius"])
+    relative = xyz - center
+    plane_distance = relative @ normal
+    in_plane = relative - plane_distance[:, None] * normal
+    radial_distance = np.linalg.norm(in_plane, axis=1)
+    return np.sqrt(
+        np.square(plane_distance) + np.square(radial_distance - radius)
+    )
+
+
+def discover_circles(
+    points: Iterable[Sequence[float]],
+    *,
+    distance_threshold: float | None = None,
+    max_circles: int = 5,
+    min_points: int = 20,
+    min_inlier_fraction: float = 0.03,
+    iterations: int = 350,
+    min_radius: float | None = None,
+    max_radius: float | None = None,
+    random_seed: int = 0,
+) -> dict[str, Any]:
+    """Discover circular 3D features with deterministic RANSAC and geometric refinement."""
+    xyz = _points_array(points, 4, "Circle discovery")
+
+    if not isinstance(max_circles, int) or not 1 <= max_circles <= 16:
+        raise FeatureFitError("max_circles must be an integer between 1 and 16")
+    if not isinstance(min_points, int) or min_points < 4:
+        raise FeatureFitError("min_points must be an integer >= 4")
+    if min_points > xyz.shape[0]:
+        raise FeatureFitError("min_points exceeds the available sample count")
+    if (
+        not math.isfinite(float(min_inlier_fraction))
+        or min_inlier_fraction <= 0.0
+        or min_inlier_fraction > 1.0
+    ):
+        raise FeatureFitError("min_inlier_fraction must be in (0, 1]")
+    if not isinstance(iterations, int) or not 10 <= iterations <= 5000:
+        raise FeatureFitError("iterations must be an integer between 10 and 5000")
+
+    if min_radius is not None:
+        min_radius = float(min_radius)
+        if not math.isfinite(min_radius) or min_radius <= 0.0:
+            raise FeatureFitError("min_radius must be finite and > 0")
+    if max_radius is not None:
+        max_radius = float(max_radius)
+        if not math.isfinite(max_radius) or max_radius <= 0.0:
+            raise FeatureFitError("max_radius must be finite and > 0")
+    if min_radius is not None and max_radius is not None and max_radius < min_radius:
+        raise FeatureFitError("max_radius must be >= min_radius")
+
+    threshold, threshold_source = _resolve_discovery_threshold(
+        xyz,
+        distance_threshold,
+        fraction_of_diagonal=0.003,
+        label="Circle discovery",
+    )
+
+    def radius_allowed(fit: dict[str, Any]) -> bool:
+        radius = float(fit["radius"])
+        return (
+            (min_radius is None or radius >= min_radius)
+            and (max_radius is None or radius <= max_radius)
+        )
+
+    rng = np.random.default_rng(random_seed)
+    remaining = np.arange(xyz.shape[0], dtype=np.int64)
+    candidates: list[dict[str, Any]] = []
+
+    for candidate_index in range(max_circles):
+        if remaining.size < min_points:
+            break
+        subset = xyz[remaining]
+
+        best_fit: dict[str, Any] | None = None
+        best_mask: np.ndarray | None = None
+        best_count = -1
+        best_rms = math.inf
+
+        for _ in range(iterations):
+            sample_indices = rng.choice(subset.shape[0], size=4, replace=False)
+            try:
+                fit = fit_circle_3d(subset[sample_indices])
+            except FeatureFitError:
+                continue
+            if not radius_allowed(fit):
+                continue
+            distances = _circle_distances(subset, fit)
+            mask = distances <= threshold
+            count = int(np.count_nonzero(mask))
+            if count < min_points:
+                continue
+            rms = float(np.sqrt(np.mean(np.square(distances[mask]))))
+            if count > best_count or (count == best_count and rms < best_rms):
+                best_fit = fit
+                best_mask = mask
+                best_count = count
+                best_rms = rms
+
+        if best_fit is None or best_mask is None:
+            break
+
+        mask = best_mask
+        fit = best_fit
+        for _ in range(3):
+            if int(np.count_nonzero(mask)) < min_points:
+                break
+            try:
+                fit = fit_circle_3d(subset[mask])
+            except FeatureFitError:
+                break
+            if not radius_allowed(fit):
+                break
+            distances = _circle_distances(subset, fit)
+            mask = distances <= threshold
+
+        support_count = int(np.count_nonzero(mask))
+        if support_count < min_points or not radius_allowed(fit):
+            break
+        support_fraction = support_count / float(xyz.shape[0])
+        if support_fraction < min_inlier_fraction:
+            break
+
+        distances = _circle_distances(subset[mask], fit)
+        inliers = subset[mask]
+        bounds_min = np.min(inliers, axis=0)
+        bounds_max = np.max(inliers, axis=0)
+        candidates.append(
+            {
+                "candidate_index": candidate_index,
+                "support_count": support_count,
+                "support_fraction_of_sample": float(support_fraction),
+                "distance_threshold": threshold,
+                "surface_residuals": _residual_stats(distances),
+                "bounds_global": {
+                    "min": bounds_min.astype(float).tolist(),
+                    "max": bounds_max.astype(float).tolist(),
+                    "extent": (bounds_max - bounds_min).astype(float).tolist(),
+                },
+                "circle": fit,
+            }
+        )
+        remaining = remaining[~mask]
+
+    return {
+        "type": "circle_discovery",
+        "sample_count": int(xyz.shape[0]),
+        "distance_threshold": threshold,
+        "distance_threshold_source": threshold_source,
+        "radius_limits": {"min": min_radius, "max": max_radius},
+        "max_circles": max_circles,
+        "min_points": min_points,
+        "min_inlier_fraction": float(min_inlier_fraction),
+        "iterations_per_circle": iterations,
+        "random_seed": random_seed,
+        "candidate_count": len(candidates),
+        "unassigned_sample_count": int(remaining.size),
+        "candidates": candidates,
+    }
+
+
+def _cylinder_distances(xyz: np.ndarray, fit: dict[str, Any]) -> np.ndarray:
+    axis_point = np.asarray(fit["axis_point"], dtype=np.float64)
+    direction = np.asarray(fit["axis_direction"], dtype=np.float64)
+    direction /= np.linalg.norm(direction)
+    radius = float(fit["radius"])
+    relative = xyz - axis_point
+    axial = relative @ direction
+    perpendicular = relative - axial[:, None] * direction
+    radial_distance = np.linalg.norm(perpendicular, axis=1)
+    return np.abs(radial_distance - radius)
+
+
+def discover_cylinders(
+    points: Iterable[Sequence[float]],
+    *,
+    distance_threshold: float | None = None,
+    max_cylinders: int = 3,
+    min_points: int = 30,
+    min_inlier_fraction: float = 0.05,
+    iterations: int = 60,
+    candidate_sample_size: int = 12,
+    min_radius: float | None = None,
+    max_radius: float | None = None,
+    random_seed: int = 0,
+) -> dict[str, Any]:
+    """Discover cylindrical surfaces using deterministic subset fits and robust refinement."""
+    xyz = _points_array(points, 6, "Cylinder discovery")
+
+    if not isinstance(max_cylinders, int) or not 1 <= max_cylinders <= 8:
+        raise FeatureFitError("max_cylinders must be an integer between 1 and 8")
+    if not isinstance(min_points, int) or min_points < 6:
+        raise FeatureFitError("min_points must be an integer >= 6")
+    if min_points > xyz.shape[0]:
+        raise FeatureFitError("min_points exceeds the available sample count")
+    if (
+        not math.isfinite(float(min_inlier_fraction))
+        or min_inlier_fraction <= 0.0
+        or min_inlier_fraction > 1.0
+    ):
+        raise FeatureFitError("min_inlier_fraction must be in (0, 1]")
+    if not isinstance(iterations, int) or not 5 <= iterations <= 500:
+        raise FeatureFitError("iterations must be an integer between 5 and 500")
+    if (
+        not isinstance(candidate_sample_size, int)
+        or candidate_sample_size < 6
+        or candidate_sample_size > 64
+    ):
+        raise FeatureFitError("candidate_sample_size must be an integer between 6 and 64")
+
+    if min_radius is not None:
+        min_radius = float(min_radius)
+        if not math.isfinite(min_radius) or min_radius <= 0.0:
+            raise FeatureFitError("min_radius must be finite and > 0")
+    if max_radius is not None:
+        max_radius = float(max_radius)
+        if not math.isfinite(max_radius) or max_radius <= 0.0:
+            raise FeatureFitError("max_radius must be finite and > 0")
+    if min_radius is not None and max_radius is not None and max_radius < min_radius:
+        raise FeatureFitError("max_radius must be >= min_radius")
+
+    threshold, threshold_source = _resolve_discovery_threshold(
+        xyz,
+        distance_threshold,
+        fraction_of_diagonal=0.003,
+        label="Cylinder discovery",
+    )
+
+    def radius_allowed(fit: dict[str, Any]) -> bool:
+        radius = float(fit["radius"])
+        return (
+            (min_radius is None or radius >= min_radius)
+            and (max_radius is None or radius <= max_radius)
+        )
+
+    rng = np.random.default_rng(random_seed)
+    remaining = np.arange(xyz.shape[0], dtype=np.int64)
+    candidates: list[dict[str, Any]] = []
+
+    for candidate_index in range(max_cylinders):
+        if remaining.size < min_points:
+            break
+        subset = xyz[remaining]
+        draw_size = min(candidate_sample_size, subset.shape[0])
+
+        best_fit: dict[str, Any] | None = None
+        best_mask: np.ndarray | None = None
+        best_count = -1
+        best_rms = math.inf
+
+        for _ in range(iterations):
+            sample_indices = rng.choice(subset.shape[0], size=draw_size, replace=False)
+            try:
+                fit = fit_cylinder_3d(subset[sample_indices])
+            except FeatureFitError:
+                continue
+            if not radius_allowed(fit):
+                continue
+            distances = _cylinder_distances(subset, fit)
+            mask = distances <= threshold
+            count = int(np.count_nonzero(mask))
+            if count < min_points:
+                continue
+            rms = float(np.sqrt(np.mean(np.square(distances[mask]))))
+            if count > best_count or (count == best_count and rms < best_rms):
+                best_fit = fit
+                best_mask = mask
+                best_count = count
+                best_rms = rms
+
+        if best_fit is None or best_mask is None:
+            break
+
+        mask = best_mask
+        fit = best_fit
+        for _ in range(2):
+            if int(np.count_nonzero(mask)) < min_points:
+                break
+            try:
+                fit = fit_cylinder_3d(subset[mask])
+            except FeatureFitError:
+                break
+            if not radius_allowed(fit):
+                break
+            distances = _cylinder_distances(subset, fit)
+            mask = distances <= threshold
+
+        support_count = int(np.count_nonzero(mask))
+        if support_count < min_points or not radius_allowed(fit):
+            break
+        support_fraction = support_count / float(xyz.shape[0])
+        if support_fraction < min_inlier_fraction:
+            break
+
+        distances = _cylinder_distances(subset[mask], fit)
+        inliers = subset[mask]
+        bounds_min = np.min(inliers, axis=0)
+        bounds_max = np.max(inliers, axis=0)
+        candidates.append(
+            {
+                "candidate_index": candidate_index,
+                "support_count": support_count,
+                "support_fraction_of_sample": float(support_fraction),
+                "distance_threshold": threshold,
+                "surface_residuals": _residual_stats(distances),
+                "bounds_global": {
+                    "min": bounds_min.astype(float).tolist(),
+                    "max": bounds_max.astype(float).tolist(),
+                    "extent": (bounds_max - bounds_min).astype(float).tolist(),
+                },
+                "cylinder": fit,
+            }
+        )
+        remaining = remaining[~mask]
+
+    return {
+        "type": "cylinder_discovery",
+        "sample_count": int(xyz.shape[0]),
+        "distance_threshold": threshold,
+        "distance_threshold_source": threshold_source,
+        "radius_limits": {"min": min_radius, "max": max_radius},
+        "max_cylinders": max_cylinders,
+        "min_points": min_points,
+        "min_inlier_fraction": float(min_inlier_fraction),
+        "iterations_per_cylinder": iterations,
+        "candidate_sample_size": candidate_sample_size,
+        "random_seed": random_seed,
+        "candidate_count": len(candidates),
+        "unassigned_sample_count": int(remaining.size),
+        "candidates": candidates,
+    }
+
+
 def occupancy_grid_2d(
     uv_points: Iterable[Sequence[float]],
     *,
@@ -338,6 +705,18 @@ def discovery_capabilities() -> dict[str, Any]:
         "plane_discovery": {
             "available": True,
             "method": "deterministic RANSAC plus orthogonal least-squares refinement",
+            "returns_inlier_fraction": True,
+            "image_required": False,
+        },
+        "circle_discovery": {
+            "available": True,
+            "method": "deterministic RANSAC plus geometric circle refinement",
+            "returns_inlier_fraction": True,
+            "image_required": False,
+        },
+        "cylinder_discovery": {
+            "available": True,
+            "method": "deterministic subset fitting plus robust radial refinement",
             "returns_inlier_fraction": True,
             "image_required": False,
         },
