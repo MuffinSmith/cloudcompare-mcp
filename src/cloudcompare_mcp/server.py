@@ -30,6 +30,12 @@ from .profile_topology_tools import (
     tools as profile_topology_tools,
     handle_reconstruct_section_topology,
 )
+from .section_boundary_tools import (
+    capabilities as section_boundary_capabilities,
+    tools as section_boundary_tools,
+    handle_extract_section_boundary_evidence,
+    handle_reconstruct_filled_section_profile,
+)
 
 # ── CloudCompare binary discovery ────────────────────────────────────────────
 
@@ -2449,8 +2455,10 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
         native["python_cad_datums"] = datum_capabilities()
         profile = profile_capabilities()
         profile.update(profile_topology_capabilities())
+        profile.update(section_boundary_capabilities())
         profile["live_section_profile_reconstruction"] = bool(region_available)
         profile["live_boundary_topology"] = bool(region_available)
+        profile["live_filled_section_reconstruction"] = bool(region_available)
         native["python_cad_profiles"] = profile
         from .feature_discovery import discovery_capabilities
         discovery = discovery_capabilities()
@@ -4345,6 +4353,277 @@ def handle_merge(args: dict) -> list[TextContent]:
     return _run_result(rc, stdout, stderr, {"output": args["output_path"]})
 
 
+
+def handle_reconstruct_live_filled_section_profile(
+    args: dict,
+) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, project_points_to_section
+    from .section_boundary import (
+        MAX_FILLED_SECTION_POINTS,
+        SectionBoundaryError,
+        reconstruct_filled_section_profile_2d,
+    )
+
+    try:
+        sample_limit_value = args.get("sample_limit", MAX_FILLED_SECTION_POINTS)
+        if isinstance(sample_limit_value, bool):
+            raise SectionBoundaryError(
+                f"sample_limit must be an integer between 8 and {MAX_FILLED_SECTION_POINTS}"
+            )
+        sample_limit = int(sample_limit_value)
+        if (
+            sample_limit != sample_limit_value
+            or not 8 <= sample_limit <= MAX_FILLED_SECTION_POINTS
+        ):
+            raise SectionBoundaryError(
+                f"sample_limit must be an integer between 8 and {MAX_FILLED_SECTION_POINTS}"
+            )
+
+        origin = args["origin"]
+        normal = args["normal"]
+        for label, value in (("origin", origin), ("normal", normal)):
+            if not isinstance(value, list) or len(value) != 3:
+                raise SectionBoundaryError(
+                    f"{label} must contain three finite numbers"
+                )
+            if any(isinstance(component, bool) for component in value):
+                raise SectionBoundaryError(
+                    f"{label} must contain three finite numbers"
+                )
+            try:
+                converted = [float(component) for component in value]
+            except (TypeError, ValueError) as exc:
+                raise SectionBoundaryError(
+                    f"{label} must contain three finite numbers"
+                ) from exc
+            if not all(math.isfinite(component) for component in converted):
+                raise SectionBoundaryError(
+                    f"{label} must contain three finite numbers"
+                )
+            if (
+                label == "normal"
+                and math.sqrt(sum(component * component for component in converted))
+                <= float.fromhex("0x1.0p-1022")
+            ):
+                raise SectionBoundaryError("normal has zero length")
+
+        half_thickness = float(args["half_thickness"])
+        if not math.isfinite(half_thickness) or half_thickness < 0:
+            raise SectionBoundaryError(
+                "half_thickness must be finite and non-negative"
+            )
+
+        for label in ("cell_size", "max_edge_length", "fit_tolerance"):
+            value = args.get(label)
+            if isinstance(value, bool):
+                raise SectionBoundaryError(f"{label} must be finite and positive")
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError) as exc:
+                raise SectionBoundaryError(
+                    f"{label} must be finite and positive"
+                ) from exc
+            if not math.isfinite(numeric) or numeric <= 0:
+                raise SectionBoundaryError(f"{label} must be finite and positive")
+
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region={
+                "type": "slab",
+                "origin": origin,
+                "normal": normal,
+                "half_thickness": half_thickness,
+            },
+            coordinate_space="global",
+            max_points=sample_limit,
+        )
+
+        matched = native.get("matched_count")
+        returned = native.get("returned_count")
+        if (
+            isinstance(matched, bool)
+            or not isinstance(matched, int)
+            or matched < 0
+            or isinstance(returned, bool)
+            or not isinstance(returned, int)
+            or returned < 0
+            or native.get("truncated") is not False
+            or matched != returned
+        ):
+            raise SectionBoundaryError(
+                "Live filled-section reconstruction requires explicit complete slab "
+                "acquisition: integer matched_count must equal returned_count and "
+                "truncated must be false. Isolate a smaller section/cloud or increase "
+                "sample_limit up to 20000 rather than reconstructing occupancy from "
+                "an incomplete or unverifiable sample."
+            )
+
+        positions = _region_positions_global(native, minimum=8)
+        if len(positions) != returned:
+            raise SectionBoundaryError(
+                "Native returned_count does not match the number of returned point "
+                "records; occupancy acquisition is incomplete or malformed"
+            )
+        projection = project_points_to_section(
+            positions,
+            origin,
+            normal,
+            half_thickness=half_thickness,
+        )
+
+        offsets = projection.get("signed_offsets", [])
+        depth_diagnostic: dict[str, Any] = {
+            "available": bool(offsets),
+            "possible_multiple_projected_surfaces": False,
+        }
+        if offsets:
+            import numpy as np
+
+            offset_array = np.asarray(offsets, dtype=np.float64)
+            q10, q25, q50, q75, q90 = np.percentile(
+                offset_array, [10, 25, 50, 75, 90]
+            )
+            span = float(np.max(offset_array) - np.min(offset_array))
+            depth_diagnostic.update(
+                {
+                    "min": float(np.min(offset_array)),
+                    "q10": float(q10),
+                    "q25": float(q25),
+                    "median": float(q50),
+                    "q75": float(q75),
+                    "q90": float(q90),
+                    "max": float(np.max(offset_array)),
+                    "span": span,
+                }
+            )
+            if half_thickness > 0:
+                full_width = 2.0 * half_thickness
+                depth_diagnostic["span_fraction_of_slab"] = span / full_width
+                layered = bool(
+                    q10 < -0.25 * half_thickness
+                    and q90 > 0.25 * half_thickness
+                    and span > 1.2 * half_thickness
+                )
+                depth_diagnostic["possible_multiple_projected_surfaces"] = layered
+                if layered:
+                    raise SectionBoundaryError(
+                        "Projected slab has substantial support on both sides of the "
+                        "section plane across most of the slab depth; multiple or thick "
+                        "projected surfaces may make 2D material occupancy ambiguous. "
+                        "Use a thinner or better-isolated section instead of inventing "
+                        "a clean outline."
+                    )
+
+        result = reconstruct_filled_section_profile_2d(
+            projection["uv"],
+            cell_size=args["cell_size"],
+            max_edge_length=args["max_edge_length"],
+            fit_tolerance=args["fit_tolerance"],
+            min_cell_support=int(args.get("min_cell_support", 1)),
+            min_component_cells=int(args.get("min_component_cells", 2)),
+            max_cells=int(args.get("max_cells", 100000)),
+            max_boundary_points=int(args.get("max_boundary_points", 2048)),
+            angular_tolerance_degrees=float(
+                args.get("angular_tolerance_degrees", 1.0)
+            ),
+            minimum_loop_points=int(args.get("minimum_loop_points", 6)),
+            max_loops=int(args.get("max_loops", 16)),
+            minimum_arc_angle_degrees=float(
+                args.get("minimum_arc_angle_degrees", 12.0)
+            ),
+            max_segments_per_loop=int(args.get("max_segments_per_loop", 64)),
+            require_grid_stability=bool(args.get("require_grid_stability", True)),
+        )
+
+        source_coordinate_space = native.get("coordinate_space", "global")
+        if source_coordinate_space != "global":
+            raise SectionBoundaryError(
+                "Live filled-section reconstruction expected global query coordinates"
+            )
+
+        source_shift = native.get("source_global_shift")
+        if source_shift is not None:
+            if (
+                not isinstance(source_shift, list)
+                or len(source_shift) != 3
+                or any(isinstance(component, bool) for component in source_shift)
+            ):
+                raise SectionBoundaryError("Native source_global_shift is malformed")
+            try:
+                source_shift = [float(component) for component in source_shift]
+            except (TypeError, ValueError) as exc:
+                raise SectionBoundaryError(
+                    "Native source_global_shift is malformed"
+                ) from exc
+            if not all(math.isfinite(component) for component in source_shift):
+                raise SectionBoundaryError(
+                    "Native source_global_shift is non-finite"
+                )
+
+        source_scale = native.get("source_global_scale")
+        if source_scale is not None:
+            if isinstance(source_scale, bool):
+                raise SectionBoundaryError("Native source_global_scale is malformed")
+            try:
+                source_scale = float(source_scale)
+            except (TypeError, ValueError) as exc:
+                raise SectionBoundaryError(
+                    "Native source_global_scale is malformed"
+                ) from exc
+            if not math.isfinite(source_scale) or source_scale <= 0:
+                raise SectionBoundaryError(
+                    "Native source_global_scale must be finite and positive"
+                )
+
+        result = dict(result)
+        result["type"] = "live_cad_filled_section_profile"
+        result["live_connection_used"] = True
+        result["scene_mutations_requested"] = False
+        result["source_geometry_preserved"] = True
+        result["source_cloud_id"] = int(args["cloud_id"])
+        if isinstance(native.get("cloud_name"), str):
+            result["source_cloud_name"] = native["cloud_name"]
+
+        bookkeeping = {
+            "query_coordinate_space": source_coordinate_space,
+        }
+        if source_shift is not None:
+            bookkeeping["global_shift"] = source_shift
+        if source_scale is not None:
+            bookkeeping["global_scale"] = source_scale
+        result["source_coordinate_bookkeeping"] = bookkeeping
+        result["section_frame"] = {
+            "coordinate_space": "global",
+            "units": "native",
+            "origin_global": projection["origin"],
+            "normal": projection["normal"],
+            "basis_u": projection["basis_u"],
+            "basis_v": projection["basis_v"],
+            "half_thickness": half_thickness,
+        }
+        result["acquisition"] = {
+            "region_type": "slab",
+            "matched_count": native.get("matched_count"),
+            "sampled_count": native.get("returned_count"),
+            "sample_truncated": native.get("truncated"),
+            "sample_strategy": native.get("sample_strategy"),
+            "raw_points_returned": False,
+            "complete_acquisition_required": True,
+        }
+        result["projection_depth_diagnostic"] = depth_diagnostic
+        return _ok_compact(result)
+    except (
+        SectionBoundaryError,
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+        ArithmeticError,
+    ) as exc:
+        return _err(str(exc))
+
+
 def handle_convert(args: dict) -> list[TextContent]:
     _ensure_output_dir(args["output_path"])
     rc, stdout, stderr = cc_run([
@@ -4384,6 +4663,7 @@ TOOLS.extend(_hole_tools())
 TOOLS.extend(datum_tools())
 TOOLS.extend(profile_tools())
 TOOLS.extend(profile_topology_tools())
+TOOLS.extend(section_boundary_tools())
 
 
 @server.list_tools()
@@ -4417,6 +4697,7 @@ async def call_tool(
         "extract_live_section": handle_extract_live_section,
         "reconstruct_live_section_profile": handle_reconstruct_live_section_profile,
         "reconstruct_live_section_topology": handle_reconstruct_live_section_topology,
+        "reconstruct_live_filled_section_profile": handle_reconstruct_live_filled_section_profile,
         "describe_live_region_grid": handle_describe_live_region_grid,
         "discover_live_planes": handle_discover_live_planes,
         "discover_live_circles": handle_discover_live_circles,
@@ -4425,6 +4706,8 @@ async def call_tool(
         "build_live_datum_frame": handle_build_live_datum_frame,
         "reconstruct_section_profile": handle_reconstruct_section_profile,
         "reconstruct_section_topology": handle_reconstruct_section_topology,
+        "extract_section_boundary_evidence": handle_extract_section_boundary_evidence,
+        "reconstruct_filled_section_profile": handle_reconstruct_filled_section_profile,
         "discover_live_hole_candidates": handle_discover_live_hole_candidates,
         "discover_live_cylinders": handle_discover_live_cylinders,
         "describe_live_section_grid": handle_describe_live_section_grid,
