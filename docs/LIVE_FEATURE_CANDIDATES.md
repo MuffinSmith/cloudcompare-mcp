@@ -16,6 +16,17 @@ screenshots into model context.
 This release contains native qMCPBridge changes and therefore requires a native
 Windows rebuild/acceptance run.
 
+## Compact scene inventory
+
+`summarize_live_scene` is the intended first call for large real CloudCompare
+projects such as `fan_project.bin`. It flattens the recursive DB tree into a
+small geometry-only list by default, keeps hierarchy paths and essential bounds /
+frame metadata, and orders point clouds by size so the primary scan is normally
+visible immediately.
+
+This avoids spending model context on every hierarchy/group object before the
+assistant even knows which cloud to analyze.
+
 ## Circle candidate discovery
 
 `discover_live_circles` works inside any structured live region accepted by the
