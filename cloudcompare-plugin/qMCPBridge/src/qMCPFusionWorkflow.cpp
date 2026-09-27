@@ -2678,8 +2678,7 @@ bool createFitOverlay(
     QJsonArray entityIds;
     for ( ccPolyline* polyline : polylines )
     {
-        liveFitGroup->addChild( polyline );
-        app->addToDB( polyline, false, true, false, false );
+        attachToDestination( app, polyline, liveFitGroup );
         entityIds.append( static_cast<qint64>( polyline->getUniqueID() ) );
     }
     polylines.clear(); // ownership transferred into DB/group
