@@ -101,6 +101,8 @@ These tools operate on the **CloudCompare instance that is already open** instea
 | `discover_live_circles` | Discover circular features with support fractions and robust residuals |
 | `discover_live_cylinders` | Discover cylindrical surfaces with axis/radius/support diagnostics |
 | `show_live_fit_overlay` | Draw a temporary wireframe fit result in the visible CloudCompare scene |
+| `show_live_discovery_overlays` | Draw the strongest discovery candidates as distinct temporary overlays |
+| `get_live_fit_overlays` | Inspect currently visible tagged fit overlays without a screenshot |
 | `clear_live_fit_overlays` | Safely remove only qMCPBridge-tagged fit overlays |
 
 The plugin source is included under `cloudcompare-plugin/qMCPBridge`. It runs a newline-delimited JSON control server bound to `127.0.0.1:8765` by default. See that directory's README for CloudCompare build/install instructions.
