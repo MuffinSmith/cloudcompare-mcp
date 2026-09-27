@@ -1,59 +1,86 @@
 # Repository work and interruption recovery
 
-## Active 0.15.3 lane: runtime CI-green, focused Windows acceptance next
+## 0.15.3 Windows acceptance complete — merge approval still required
 
-Resume the EXISTING `feature/live-cad-section-layer-isolation` branch, created from
-accepted main `cb1ee9eab9c64ff4806036a6317606938faa22e6`. Do not recreate it.
-Latest fully tested source checkpoint: `0f94521284b734e447bc3386fcb1495850aeb2f2`.
-The last runtime change was `1643fedbb6904d26b4e10788f5e83d4e8e51ae16`;
-0f945212 added MCP tests and removed the temporary registration workflow.
-Subsequent layer-contract, Windows-procedure, README and recovery changes are
-DOCUMENTATION ONLY. Python is 0.15.3. qMCPBridge remains unchanged 0.12.0 / revision 8.
+Resume the EXISTING `feature/live-cad-section-layer-isolation` branch. Do not
+recreate it after a disconnect. The exact real-Windows/CloudCompare tested HEAD is
+`2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`, created from accepted main
+`cb1ee9eab9c64ff4806036a6317606938faa22e6`. Python is 0.15.3.
+qMCPBridge remains unchanged at accepted 0.12.0 / workflow revision 8; no DLL
+rebuild occurred or is required.
 
-Full installed CI run `36352045358`, job `108712463203`, at 0f945212 PASSed:
-626 tests, zero skips, in 23.15 seconds; compileall and git diff checking also PASSed.
-This includes all 120 new layer tests, schema/dispatch checks, actual MCP stdio
-snapshots and actual MCP stdio over a TCP native-replay peer. Replay is NOT real
-CloudCompare acceptance. Inspect CI on the current documentation HEAD before
-executing or claiming its own final green status; do not rapidly poll or recreate work.
+Focused Windows acceptance completed successfully for the fixture, live-GUI,
+handoff and safety gates. The bounded real fan analysis was legitimately BLOCKED;
+no reproducible product defect was found, no GitHub issue was opened, no runtime
+fix was made, and the branch was not merged. Detailed reports/raw evidence remain
+outside Git.
 
-The exact CI source artifact (ID 10942591823, run 36352045358) was downloaded and its
-ZIP digest and git-archive commit comment verified. Available exact-source local
-validation PASSed 207 tests in 6.24 seconds: 106 new core/workflow/generated-file
-tests plus accepted boundary/topology/fitting/projection and 16 compiled native
-policy scenarios. Local compileall PASSed. Container package installation was blocked
-by its network/dependency availability, so full installed testing was performed in
-CI, not falsely claimed as a local full-suite or real-GUI run.
+Exact acceptance identity and regression:
+- clean isolated Windows worktree at
+  `2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`;
+- accepted-main parent `cb1ee9eab9c64ff4806036a6317606938faa22e6`;
+- isolated Python imports 0.15.3 from that worktree;
+- visible CloudCompare 2.13.2, qMCPBridge 0.12.0;
+- native source diff empty;
+- Windows suite 610 passed with 16 compiler-gated native policy tests skipped in
+  the ordinary shell, then all 16 passed separately under configured MSVC;
+- compileall and both diff checks passed;
+- final development CI run `36352480651` passed at the exact tested HEAD;
+- the CI-installed suite at that source contained 626 tests.
 
-The archived source matches the local implementation (one nonsemantic blank-line
-difference in the numerical module was checked by AST comparison). All native plugin
-files, accepted boundary extraction/tools, loop topology, primitive fitting and
-section projection were verified unchanged. The complete GitHub diff from accepted
-main contains only the new Python layer modules/tests/generator/docs, version bump,
-CI branch inclusion and nine server registration lines. Server.py's expected blob is
-`e95be714b297fcb95e14578b9b17d302257f7193`. No DLL rebuild is required.
-A temporary branch-only hash-checked job applied those registration lines and was
-removed at 0f945212; it is not part of the final tree and must not be recreated.
+All 12 freshly generated PLY fixtures matched manifest hashes and point counts.
+Actual MCP stdio exposed:
+- `analyze_section_layers`
+- `analyze_live_section_layers`
+- `reconstruct_section_layer_profile`
+- `reconstruct_live_section_layer_profile`
 
-Four tools are implemented: `analyze_section_layers`, `analyze_live_section_layers`,
-`reconstruct_section_layer_profile`, `reconstruct_live_section_layer_profile`.
-Twelve generated PLY cases cover single/parallel/three/partially-overlapping/sloped/
-crossing/noisy/thick/sparse/fan-like and rotated/large-translated single/parallel
-layers. Exact single and transformed-single files hand off to accepted occupancy,
-loop topology and primitives. All points remain accounted for; responses are compact.
+Snapshot and real-GUI fixture behavior matched the contract. Single, sloped,
+bounded-noise and transformed-single cases were ready. Parallel, three-layer,
+partial-overlap, fan-like and transformed-parallel retained separate candidates.
+Crossing, excessive-thickness and sparse cases blocked unsafe continuation. Every
+live acquisition was complete and every acquired point was accounted for; compact
+responses contained no raw point arrays.
 
-Read `docs/LIVE_CAD_SECTION_LAYER_ISOLATION.md` and
-`docs/WINDOWS_SECTION_LAYER_ACCEPTANCE.md`. The next action is that focused real
-Windows/CloudCompare gate, not further speculative runtime development or another
-full 0.15.2 acceptance. No 0.15.3 real-GUI or real-fan run has been performed here.
-The fan may legitimately remain BLOCKED. The fixed-grid model is threshold/density/
-orientation dependent; disconnected patches are not joined, and subthreshold or
-unsampled crossings cannot be ruled out. Real native nonunit scale remains untested.
+Handoff/refusal checks passed. Original and transformed single cases selected
+1,200 points with zero unselected points and produced one outer loop. Original and
+transformed live parallel explicit choices selected 1,200 points and left 1,200
+unselected; unchosen composites blocked. Stale fingerprints and snapshot-to-live
+fingerprint reuse were rejected. Explicit selection did not bypass crossing, thick
+or sparse evidence. A 100-point acquisition cap errored explicitly. A deliberately
+too-small topology edge limit retained diagnostics while refusing topology.
 
-This lane is NOT accepted and is NOT merged. The user's merge approval covered
-0.15.2 only. Do not merge 0.15.3 without its own Windows acceptance and explicit
-approval. Preserve raw logs/reports/geometry outside Git. Commit each coherent
-future fix and update this file before substantial additional work.
+The real live original-single primitive RMS residuals were, in fitted order:
+`0, 0.074536, 0.022408, 0.048277, 0` for line, line, arc, line, line.
+The transformed-single residuals were:
+`0.046388, 0.059475, 0.186595, 0.048698, 0.0000103`.
+
+Coordinate bookkeeping passed with limited integrity coverage. The transformed GUI
+sources used CloudCompare global shift
+`[-100000000, 199999000, -299999000]`, global scale 1, with no double application.
+Before/after metadata matched for all 12 fixture entities and the fan source.
+Full-cloud geometry/attribute equality was not independently proved, and no real
+nonunit-scale source was tested. Preserve those limitations exactly.
+
+Bounded fan acceptance is BLOCKED, not FAIL:
+- source 359, `Assembly | Fan - scan 1`;
+- complete 5,605 / 5,605 acquisition, no truncation;
+- signed depth min approximately -0.499512, max +0.499924;
+- 2,814 negative and 2,791 positive offsets;
+- the single declared analysis exceeded the configured 16-component limit and
+  refused before producing a candidate fingerprint;
+- therefore there was no defensible selection and reconstruction was correctly not
+  attempted.
+
+Do not raise `max_components`, search thresholds, select by depth sign, or otherwise
+retune solely to force this fan slab through. The BLOCKED result demonstrates that
+the safety boundary is functioning. A smaller/better isolated acquisition can be a
+future workflow improvement, but it is not required to accept 0.15.3.
+
+This lane is now Windows-accepted but NOT merged. The user's previous explicit merge
+authorization covered 0.15.2 only. Do not merge 0.15.3 until the user explicitly
+authorizes this accepted increment. Documentation-only acceptance recording after the
+tested SHA does not invalidate the tested runtime; verify its CI before merge.
 
 ## Accepted main: 0.15.2
 
