@@ -1,29 +1,36 @@
 # Repository work and interruption recovery
 
-## Active development lane
+## Current accepted baseline
 
-The user approved the 0.12 merge and the next development stage. PR #8 merged
-`feature/live-feature-candidates-overlays` into `main` at
-`38f92c1dd62fdba92a4fc51959289287ae6eaaed`.
+The user explicitly approved merging the accepted 0.13 increment. PR #10 merged
+`feature/live-hole-patterns` into `main` at
+`8c09f27dfde6c44ed38a63c9f8a1d6124ae4a52a`.
+Acceptance issue #9 is closed as completed; defect #11 was already closed after
+its focused real-Windows retest. Do not repeat or reopen these completed gates
+merely because a chat or container restarted.
 
-The 0.13 Python-only mounting-hole candidate grouping and spacing increment on
-**`feature/live-hole-patterns`** has completed its documented Windows acceptance.
-Retain this existing branch pending explicit user approval to merge PR #10.
-Do not create another branch merely because a chat or container restarted.
-Resolve the current remote head and preserve any unexpected local work.
-Read `docs/LIVE_HOLE_PATTERNS.md` and the completed-acceptance checkpoint below.
+The merge result has the same complete tree as the CI-passing documentation
+checkpoint `b0509dedcd0cfc72ae306a6d79dcb8af4c6bf1da`. The only merge conflict was
+older AGENTS.md development guidance on main versus the completed-acceptance
+checkpoint. Resolution commit `aa92f3b77a3286c777f489bedda94b2d18a5e544` retained
+the latter without changing any file relative to that tested checkpoint.
+This post-merge instruction update is documentation only, not a new runtime.
 
 The accepted product commit is `45377b281e9df2445dd52a5e84887611387ac1bd`.
 The original broad Windows report remains attributed to
 `2c3338e8ab45624feeaf56dc3b88f0bcf1ae6750`; the focused #11 retest covers the later
-empty-region adapter change. A documentation-only checkpoint is not a new runtime.
+empty-region adapter change. Python is 0.13.0. The native bridge remains the
+accepted 0.12.0 / workflow revision 8 and requires no rebuild for this merge.
 
-Keep the accepted 0.12 branch intact. Its accepted checkout was
-`b62f9b4d238e7f169e76c36e630b2060320d261a`, with native/runtime baseline
-`fc51824d9edf7328614653c57bf3644c1db02769`. The 0.13 increment changes Python only;
-do not reopen 0.12 or rebuild an unchanged DLL. The previous approval covers
-merging 0.12 and starting 0.13, not automatically merging this new stage.
-Passing acceptance does not authorize a merge.
+Retain `feature/live-hole-patterns` and the accepted 0.12 branch intact. The 0.12
+PR #8 merge was `38f92c1dd62fdba92a4fc51959289287ae6eaaed`; its accepted checkout
+was `b62f9b4d238e7f169e76c36e630b2060320d261a`, with native/runtime baseline
+`fc51824d9edf7328614653c57bf3644c1db02769`.
+
+No post-0.13 development branch was started as part of this merge. For future
+requested work, inspect current remote heads before selecting an existing lane or
+creating a deliberate next-stage branch. Do not create replacement branches just
+because a session restarted. Do not reset to historical checkpoints.
 
 The older `feature/live-auto-feature-overlays` and `feature/live-candidate-overlays`
 branches came from interrupted attempts. Leave them intact. Inspect their diffs
@@ -36,10 +43,10 @@ implementations or create another replacement branch.
 2. Inspect local status, remote branch heads, recent commits, and open issues.
 3. Preserve unexpected local work. Never reset, clean, force-push, or discard it
    without explicit authorization.
-4. Continue the existing active branch with small reviewable commits. Verify each
-   returned commit SHA before claiming that a change was saved.
-5. Require both completed acceptance and explicit user approval before merging
-   into `main`. Passing tests alone is not automatic merge authorization.
+4. Continue the appropriate existing lane with small reviewable commits. Verify
+   each returned commit SHA before claiming that a change was saved.
+5. Require both completed acceptance and explicit user approval before future
+   merges into `main`. Passing tests alone is not automatic merge authorization.
 
 ## Testing boundary
 
@@ -94,8 +101,8 @@ restart guidance; detailed reports and raw evidence remain outside Git.
 
 Issue #11 is closed as completed after its focused real-Windows retest at
 `45377b281e9df2445dd52a5e84887611387ac1bd`. The tester recorded the combined scoped
-PASS on #9, which remains open for acceptance review. PR #10 remains draft and
-unmerged pending explicit user approval. Authoritative records:
+PASS on #9. After user merge approval, PR #10 was merged and #9 closed.
+Authoritative acceptance records:
 
 - Original broad report:
   https://github.com/MuffinSmith/cloudcompare-mcp/issues/9#issuecomment-5852430792
