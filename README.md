@@ -333,8 +333,9 @@ CloudCompare slab without requiring `boundary_samples_only=true`.
 The caller controls `cell_size`; grid sensitivity and support diagnostics remain
 visible. Truncated acquisition, diagonal/non-manifold occupancy, tiny disconnected
 components, excessive evidence, and strongly layered live slabs are refused rather
-than repaired. No erosion/dilation, gap-closing, hole filling, smoothing, or
-manufacturing-intent inference is performed. Raw scan samples remain server-side and
+than repaired. A single one-cell erosion/dilation pass is diagnostic only and never
+replaces measured occupancy; no morphology, gap-closing, hole filling, smoothing, or
+manufacturing-intent inference is applied as repair. Raw scan samples remain server-side and
 qMCPBridge stays unchanged at 0.12.0 / workflow revision 8.
 
 See [filled-section boundary contracts](docs/LIVE_CAD_SECTION_BOUNDARY_EXTRACTION.md)
