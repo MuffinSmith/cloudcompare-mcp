@@ -263,8 +263,8 @@ class LiveRegionContractTests(unittest.TestCase):
 
     def test_capabilities_preserve_native_region_query_advertisement(self) -> None:
         native = {
-            "plugin_version": "0.11.0",
-            "workflow_revision": 7,
+            "plugin_version": "0.12.0",
+            "workflow_revision": 8,
             "region_query": {
                 "available": True,
                 "region_types": ["sphere", "box", "slab", "nearest"],
@@ -275,8 +275,8 @@ class LiveRegionContractTests(unittest.TestCase):
             result = server.handle_get_live_workflow_capabilities({})
 
         body = _body(result)
-        self.assertEqual(body["plugin_version"], "0.11.0")
-        self.assertEqual(body["workflow_revision"], 7)
+        self.assertEqual(body["plugin_version"], "0.12.0")
+        self.assertEqual(body["workflow_revision"], 8)
         self.assertTrue(body["region_query"]["available"])
         self.assertEqual(
             body["region_query"]["region_types"],
