@@ -349,7 +349,7 @@ See [filled-section boundary contracts](docs/LIVE_CAD_SECTION_BOUNDARY_EXTRACTIO
 and the [retained Windows acceptance procedure](docs/WINDOWS_SECTION_BOUNDARY_ACCEPTANCE.md).
 See AGENTS.md for exact acceptance/merge attribution and coverage limitations.
 
-## Python-only 0.15.3 depth-aware section layers (Windows accepted; merge pending)
+## Python-only 0.15.3 depth-aware section layers (accepted)
 
 `analyze_section_layers` and `analyze_live_section_layers` retain complete
 `[u, v, signed_depth]` samples before 2D flattening. Explicit UV/depth thresholds
@@ -373,8 +373,10 @@ truncation safety, coordinate bookkeeping, and metadata-level source-integrity c
 passed. The bounded fan remained correctly BLOCKED after complete 5,605 / 5,605
 acquisition because the declared layer analysis exceeded 16 components; no candidate
 fingerprint existed, so no reconstruction was attempted. No product defect was found.
-Full-cloud integrity and real native nonunit scale remain untested. This accepted
-feature branch is not merged into main and still requires explicit merge approval.
+Full-cloud integrity and real native nonunit scale remain untested. The accepted
+feature branch was merged through PR #17 at
+`27cfd286331db177c76ce627056150e439d418c9`; the retained feature branch remains
+available for source/acceptance attribution.
 
 See [layer contracts and request examples](docs/LIVE_CAD_SECTION_LAYER_ISOLATION.md),
 [Windows acceptance procedure](docs/WINDOWS_SECTION_LAYER_ACCEPTANCE.md), and AGENTS.md
