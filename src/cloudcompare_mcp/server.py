@@ -4440,19 +4440,30 @@ def handle_reconstruct_live_filled_section_profile(
 
         matched = native.get("matched_count")
         returned = native.get("returned_count")
-        if native.get("truncated") is True or (
-            isinstance(matched, int)
-            and isinstance(returned, int)
-            and matched != returned
+        if (
+            isinstance(matched, bool)
+            or not isinstance(matched, int)
+            or matched < 0
+            or isinstance(returned, bool)
+            or not isinstance(returned, int)
+            or returned < 0
+            or native.get("truncated") is not False
+            or matched != returned
         ):
             raise SectionBoundaryError(
-                "Live filled-section reconstruction requires complete slab acquisition; "
-                "the native sample was truncated. Isolate a smaller section/cloud or "
-                "increase sample_limit up to 20000 rather than reconstructing occupancy "
-                "from an incomplete reservoir sample."
+                "Live filled-section reconstruction requires explicit complete slab "
+                "acquisition: integer matched_count must equal returned_count and "
+                "truncated must be false. Isolate a smaller section/cloud or increase "
+                "sample_limit up to 20000 rather than reconstructing occupancy from "
+                "an incomplete or unverifiable sample."
             )
 
         positions = _region_positions_global(native, minimum=8)
+        if positions.shape[0] != returned:
+            raise SectionBoundaryError(
+                "Native returned_count does not match the number of returned point "
+                "records; occupancy acquisition is incomplete or malformed"
+            )
         projection = project_points_to_section(
             positions,
             origin,
