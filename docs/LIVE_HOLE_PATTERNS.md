@@ -48,14 +48,43 @@ Optional quality settings are `normal_tolerance_degrees` (default 10),
 `distance_threshold`. Optional limits: `sample_limit` (3000, max 10000),
 `max_circles` (8, max 16), and `iterations` (800, max 2000).
 
-It validates parameters before I/O, makes one existing `cloud.region_query`
-request, verifies source/frame/sample counts, invokes the accepted circle
-algorithm with seed 0, and analyzes the result. An empty or undersupported sample
-returns no candidates. No point array is returned to chat. Native sample counts,
-truncation and sampling warnings remain attached under `input_provenance`.
-`live_sample_acquired` distinguishes fresh sampling from offline analysis;
-`scene_freshness_guaranteed` is always false because later scene edits can make
-any result stale. This is not a full scene fingerprint or integrity check.
+It validates parameters before I/O and makes one existing `cloud.region_query`
+request. For a successful sample reply, it verifies source/frame/sample counts,
+invokes the accepted circle algorithm with seed 0, and analyzes the result. An
+empty or undersupported sample returns no candidates. No point array is returned
+to chat. Native sample counts, truncation and sampling warnings remain attached
+under `input_provenance`. `scene_freshness_guaranteed` is always false because
+later scene edits can make any result stale. This is not a full scene fingerprint
+or integrity check.
+
+### Empty-region compatibility with the accepted DLL
+
+The accepted 0.12/revision 8 DLL uses error responses for valid no-match regions.
+Only this new tool adapts these exact, selector-specific responses:
+
+- Box, sphere or slab: `cloud.region_query selected no points`.
+- Nearest with an explicit `max_distance`: `No point was found within nearest.max_distance`.
+
+These return successful provisional analysis with zero candidates, groups and
+spacings. Match/sample counts are zero, truncation is false, and sample strategy
+is null: no sampling strategy was returned. `input_mode` is
+`fresh_live_empty_region`, `live_query_completed` is true and
+`live_sample_acquired` is false. `input_provenance.empty_region_evidence` records
+the original native message, that the zero counts were derived from that no-match
+response, and `source_frame_metadata_returned: false`. Source ID and coordinate
+space describe the validated request; no returned source/frame echo, bounds,
+points, scan attributes, or full-scene integrity evidence is fabricated.
+
+The normal successful-sample path is unchanged, including its existing
+`live_sample_acquired: true` marker for receipt of a structured sample reply.
+Offline snapshot analysis still does not contact the bridge.
+
+Missing/invalid clouds, a source cloud with no points, inability to inspect the
+source, invalid selectors, malformed replies, and connection/timeout/authentication
+failures remain errors. There is no retry, fallback region, or change to the shared
+transport or other tools. In particular, direct `query_live_region` retains its
+native error semantics. This fix requires no native rebuild. See
+`docs/WINDOWS_EMPTY_REGION_RETEST.md` for the focused issue #11 retest.
 
 The selected face filters final circles. It does not silently substitute another
 region or project a broad face onto a plane before detection. Localize the region

@@ -8,6 +8,7 @@ from mcp.types import Tool, ToolAnnotations
 
 from .feature_discovery import discover_circles
 from .feature_fit import FeatureFitError
+from .live import LiveBridgeError
 from .hole_patterns import analyze_hole_candidates, integer, number, settings, vector
 
 VECTOR = {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}
@@ -39,7 +40,8 @@ def tools() -> list[Tool]:
          ["circle_discovery"]),
         ("discover_live_hole_candidates", common_description +
          "Obtain one bounded region sample from the live host, discover circles and analyze them. "
-         "Specify radius bounds and fit threshold; results remain candidates, not hole identities.",
+         "Specify radius bounds and fit threshold; results remain candidates, not hole identities. "
+         "Valid no-match regions succeed with zero candidates; other host errors remain errors.",
          {
              "cloud_id": {"type": "integer", "minimum": 1},
              "region": {"type": "object", "description": "Existing global box/sphere/slab/nearest selector. Use a localized region; face settings are also global."},
@@ -142,7 +144,44 @@ def discover_live(args: dict, request_region) -> dict:
     if cfg["min_support_count"] > limit or cfg["min_support_fraction"] <= 0:
         raise FeatureFitError("Live discovery requires min_support_count <= sample_limit and positive min_support_fraction")
     region = _global_region(args["region"])
-    native = request_region(cloud_id=cloud, region=region, coordinate_space="global", max_points=limit)
+    try:
+        native = request_region(cloud_id=cloud, region=region, coordinate_space="global", max_points=limit)
+    except LiveBridgeError as exc:
+        # Accepted qMCPBridge 0.12/revision 8 returns errors, not empty samples,
+        # for these two no-match outcomes. Match the full message AND selector;
+        # never turn missing sources, malformed replies or transport failures
+        # into successful discovery. Keep this adapter local to the new tool.
+        message = str(exc)
+        empty = (
+            region["type"] in ("box", "sphere", "slab")
+            and message == "cloud.region_query selected no points"
+        ) or (
+            region["type"] == "nearest" and "max_distance" in region
+            and message == "No point was found within nearest.max_distance"
+        )
+        if not empty:
+            raise
+        discovery = {
+            "type": "circle_discovery", "coordinate_space": "global", "units": "native",
+            "source_cloud_id": cloud, "sample_count": 0, "candidate_count": 0,
+            "candidates": [], "distance_threshold": threshold, "min_radius": minimum_radius,
+            "max_radius": maximum_radius, "max_circles": maximum,
+            "region": region, "region_coordinate_space": "global",
+            "region_match_count": 0, "region_sample_count": 0,
+            "region_sample_truncated": False, "region_sample_strategy": None,
+        }
+        result = analyze_snapshot({**_analysis_kwargs(args), "circle_discovery": discovery})
+        # Counts follow from the native no-match outcome. No points, echoed
+        # source/frame metadata, bounds or sampling strategy were returned.
+        # Record that distinction instead of fabricating a successful native reply.
+        result["input_provenance"]["empty_region_evidence"] = {
+            "basis": "native_no_match_response", "native_error": message,
+            "counts_derived_from_no_match_response": True,
+            "source_frame_metadata_returned": False,
+        }
+        result.update(input_mode="fresh_live_empty_region", live_query_completed=True,
+                      live_sample_acquired=False, scene_mutations_requested=False)
+        return result
     if native.get("cloud_id") != cloud or native.get("coordinate_space") != "global":
         raise FeatureFitError("Live sample returned a different source or coordinate frame")
     records = native.get("points")

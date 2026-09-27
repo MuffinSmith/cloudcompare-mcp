@@ -84,3 +84,17 @@ The recovery used a manual GUI drag. Automated dragging did not succeed and must
 not be described as accepted. Previous broad synthetic/fan results retain their
 original report/runtime attribution and coverage limitations. This checkpoint is
 restart guidance; detailed reports and raw evidence remain outside Git.
+
+## 0.13 empty-region follow-up
+
+Continue `feature/live-hole-patterns` for issue #11. The targeted Windows report
+for `2c3338e8ab45624feeaf56dc3b88f0bcf1ae6750` passed the executed nonempty pattern,
+offline, transformed-coordinate and bounded fan checks, but empty native regions
+returned errors. Use `docs/WINDOWS_EMPTY_REGION_RETEST.md` for the focused follow-up;
+do not require another full fan run or rebuild the unchanged accepted DLL.
+
+The fix adapts only the new live hole tool's selector-specific no-match responses.
+Legacy region tools and native sources remain unchanged. Keep #11 and acceptance
+issue #9 open until the required Windows retest passes; keep draft PR #10 unmerged.
+A passing replay test uses real Python/MCP/TCP with a test peer, not a native host.
+Preserve the original broad report's exact coverage and test-run attribution.
