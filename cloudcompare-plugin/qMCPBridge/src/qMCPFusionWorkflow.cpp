@@ -3443,6 +3443,23 @@ bool clearFitOverlays(
     return true;
 }
 
+void removeFitOverlayGroupIfEmpty(
+    ccMainAppInterface* app,
+    ccHObject* group )
+{
+    if ( !app || !group || group->getChildrenNumber() != 0 )
+    {
+        return;
+    }
+    if ( group->getUniqueID() != g_fitOverlayGroupId )
+    {
+        return;
+    }
+
+    app->removeFromDB( group, true );
+    g_fitOverlayGroupId = 0;
+}
+
 bool readPositiveNumber(
     const QJsonObject& object,
     const char* key,
@@ -3798,6 +3815,7 @@ bool createFitOverlay(
                 if ( !axis )
                 {
                     app->removeFromDB( liveCylinder, true );
+                    removeFitOverlayGroupIfEmpty( app, group );
                     error = "CloudCompare could not allocate the cylinder axis overlay";
                     return true;
                 }
