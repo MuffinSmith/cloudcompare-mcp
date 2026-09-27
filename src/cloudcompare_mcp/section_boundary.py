@@ -734,16 +734,22 @@ def reconstruct_filled_section_profile_2d(
             "for every selected source sample to have two local neighbors"
         )
 
-    topology = reconstruct_profile_topology_2d(
-        evidence.boundary_points_uv,
-        max_edge_length=max_edge_length,
-        fit_tolerance=fit_tolerance,
-        angular_tolerance_degrees=angular_tolerance_degrees,
-        minimum_loop_points=minimum_loop_points,
-        max_loops=max_loops,
-        minimum_arc_angle_degrees=minimum_arc_angle_degrees,
-        max_segments_per_loop=max_segments_per_loop,
-    )
+    try:
+        topology = reconstruct_profile_topology_2d(
+            evidence.boundary_points_uv,
+            max_edge_length=max_edge_length,
+            fit_tolerance=fit_tolerance,
+            angular_tolerance_degrees=angular_tolerance_degrees,
+            minimum_loop_points=minimum_loop_points,
+            max_loops=max_loops,
+            minimum_arc_angle_degrees=minimum_arc_angle_degrees,
+            max_segments_per_loop=max_segments_per_loop,
+        )
+    except ProfileTopologyError as exc:
+        raise SectionBoundaryError(
+            "Accepted 0.15.1 topology solver rejected extracted boundary evidence: "
+            f"{exc}"
+        ) from exc
     if topology["loop_count"] != evidence.public["connected_contour_count"]:
         raise SectionBoundaryError(
             "Boundary evidence and accepted topology solver disagree on loop count; "
