@@ -190,24 +190,25 @@ class LiveFeatureDiscoveryContractTests(unittest.TestCase):
 
     def test_discovery_capabilities_are_composed_with_native_bridge(self) -> None:
         native = {
-            "plugin_version": "0.11.0",
-            "workflow_revision": 7,
+            "plugin_version": "0.12.0",
+            "workflow_revision": 8,
             "region_query": {
                 "available": True,
                 "region_types": ["sphere", "box", "slab", "nearest"],
             },
             "region_grid": {"available": True},
+            "fit_overlays": {"available": True},
         }
         with patch.object(server, "live_request", return_value=native):
             result = server.handle_get_live_workflow_capabilities({})
 
         body = _body(result)
-        self.assertEqual(body["plugin_version"], "0.11.0")
-        self.assertEqual(body["workflow_revision"], 7)
+        self.assertEqual(body["plugin_version"], "0.12.0")
+        self.assertEqual(body["workflow_revision"], 8)
         self.assertTrue(body["region_grid"]["available"])
         self.assertTrue(body["python_feature_discovery"]["structured_region_grid"])
         self.assertTrue(body["python_feature_discovery"]["plane_discovery"]["available"])
-        self.assertFalse(body["python_feature_discovery"]["visible_overlays"])
+        self.assertTrue(body["python_feature_discovery"]["visible_overlays"])
 
     def test_new_tools_are_discoverable(self) -> None:
         names = {tool.name for tool in server.TOOLS}
