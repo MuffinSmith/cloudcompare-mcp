@@ -1,9 +1,10 @@
 # 0.15 first increment: CAD section-profile reconstruction
 
-Branch: `feature/live-cad-profile-reconstruction`, based on accepted-main checkpoint
-`b462fb2733a7c57b590a283d1ed03dfdfc3df0bc`. Python 0.15.0; qMCPBridge remains
-0.12.0 / workflow revision 8. **Development only until real Windows acceptance and
-explicit merge approval.**
+Accepted first increment. PR #14 merged `feature/live-cad-profile-reconstruction`
+into `main` at `6044907781593221170f2fdaaffd5fa207bf73b3`. Python 0.15.0;
+qMCPBridge remains 0.12.0 / workflow revision 8 and was unchanged. Real
+Windows/CloudCompare acceptance completed after issue #13's focused fix/retest; see
+AGENTS.md for exact source and coverage attribution.
 
 The purpose of this stage is to turn already-extracted 2D scan sections into compact
 sketch-like geometry that a later CAD reconstruction graph and Fusion handoff can use.
