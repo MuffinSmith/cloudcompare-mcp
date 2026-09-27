@@ -56,9 +56,13 @@ The tool:
 - fingerprints source input and selected boundary evidence;
 - reports cell support, component, boundary-edge, contour, and grid sensitivity
   diagnostics;
-- returns no raw point array.
+- returns no raw point array;
+- runs one bounded one-cell erosion/dilation sensitivity diagnostic, but never uses
+  the perturbed occupancy for reconstruction.
 
-No erosion, dilation, closing, hole filling, or intent inference is performed.
+No erosion, dilation, closing, hole filling, or other morphology is applied as a
+repair step. The single erosion/dilation pass exists only to flag topology that is
+one-cell sensitive.
 
 ### `reconstruct_filled_section_profile`
 
@@ -110,6 +114,11 @@ returned.
 `cell_size` is deliberately not auto-hidden. A useful result must be interpreted
 together with its resolution and sensitivity diagnostics.
 
+Before calling the accepted 0.15.1 radius-graph topology solver, the composite also
+reports the minimum radius required for every selected original boundary sample to
+have two local neighbors. A caller-provided `max_edge_length` below that measured
+lower bound is rejected with the exact required value; it is not auto-expanded.
+
 ## Safety and ambiguity boundaries
 
 The implementation refuses or warns on evidence such as:
@@ -121,6 +130,8 @@ The implementation refuses or warns on evidence such as:
 - boundary evidence exceeding the explicit point budget;
 - representationally impossible grid resolution;
 - strong half-cell origin sensitivity;
+- material-component/contour changes under a single one-cell erosion/dilation
+  diagnostic;
 - strongly nonuniform or weak per-cell support;
 - possible multiple/thick projected live surfaces.
 
