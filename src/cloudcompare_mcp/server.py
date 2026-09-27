@@ -25,6 +25,11 @@ from .profile_tools import (
     capabilities as profile_capabilities, tools as profile_tools,
     handle_reconstruct_section_profile,
 )
+from .profile_topology_tools import (
+    capabilities as profile_topology_capabilities,
+    tools as profile_topology_tools,
+    handle_reconstruct_section_topology,
+)
 
 # ── CloudCompare binary discovery ────────────────────────────────────────────
 
@@ -2443,7 +2448,9 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
         native["python_feature_fitting"] = feature_fitting
         native["python_cad_datums"] = datum_capabilities()
         profile = profile_capabilities()
+        profile.update(profile_topology_capabilities())
         profile["live_section_profile_reconstruction"] = bool(region_available)
+        profile["live_boundary_topology"] = bool(region_available)
         native["python_cad_profiles"] = profile
         from .feature_discovery import discovery_capabilities
         discovery = discovery_capabilities()
@@ -3016,6 +3023,210 @@ def handle_reconstruct_live_section_profile(args: dict) -> list[TextContent] | C
         KeyError,
         TypeError,
         ValueError,
+    ) as exc:
+        return _err(str(exc))
+
+
+def handle_reconstruct_live_section_topology(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError, project_points_to_section
+    from .profile_topology import ProfileTopologyError, reconstruct_profile_topology_2d
+
+    try:
+        if args.get("boundary_samples_only") is not True:
+            raise ProfileTopologyError(
+                "boundary_samples_only=true is required; filled-section boundary "
+                "inference is not implemented"
+            )
+
+        sample_limit_value = args.get("sample_limit", 2048)
+        if isinstance(sample_limit_value, bool):
+            raise ProfileTopologyError(
+                "sample_limit must be an integer between 6 and 2048"
+            )
+        sample_limit = int(sample_limit_value)
+        if sample_limit != sample_limit_value or not 6 <= sample_limit <= 2048:
+            raise ProfileTopologyError(
+                "sample_limit must be an integer between 6 and 2048"
+            )
+
+        origin = args["origin"]
+        normal = args["normal"]
+        for label, value in (("origin", origin), ("normal", normal)):
+            if not isinstance(value, list) or len(value) != 3:
+                raise ProfileTopologyError(
+                    f"{label} must contain three finite numbers"
+                )
+            if any(isinstance(component, bool) for component in value):
+                raise ProfileTopologyError(
+                    f"{label} must contain three finite numbers"
+                )
+            try:
+                converted = [float(component) for component in value]
+            except (TypeError, ValueError) as exc:
+                raise ProfileTopologyError(
+                    f"{label} must contain three finite numbers"
+                ) from exc
+            if not all(math.isfinite(component) for component in converted):
+                raise ProfileTopologyError(
+                    f"{label} must contain three finite numbers"
+                )
+            if (
+                label == "normal"
+                and math.sqrt(sum(component * component for component in converted))
+                <= float.fromhex("0x1.0p-1022")
+            ):
+                raise ProfileTopologyError("normal has zero length")
+
+        half_thickness = float(args["half_thickness"])
+        if not math.isfinite(half_thickness) or half_thickness < 0:
+            raise ProfileTopologyError(
+                "half_thickness must be finite and non-negative"
+            )
+
+        # Validate the topology/fitting thresholds before native I/O where possible.
+        for label in ("max_edge_length", "fit_tolerance"):
+            value = args.get(label)
+            if isinstance(value, bool):
+                raise ProfileTopologyError(f"{label} must be finite and positive")
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError) as exc:
+                raise ProfileTopologyError(
+                    f"{label} must be finite and positive"
+                ) from exc
+            if not math.isfinite(numeric) or numeric <= 0:
+                raise ProfileTopologyError(f"{label} must be finite and positive")
+
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region={
+                "type": "slab",
+                "origin": origin,
+                "normal": normal,
+                "half_thickness": half_thickness,
+            },
+            coordinate_space="global",
+            max_points=sample_limit,
+        )
+
+        matched = native.get("matched_count")
+        returned = native.get("returned_count")
+        if native.get("truncated") is True or (
+            isinstance(matched, int)
+            and isinstance(returned, int)
+            and matched != returned
+        ):
+            raise ProfileTopologyError(
+                "Live boundary topology requires a complete slab sample; acquisition "
+                "was truncated. Increase sample_limit or isolate a smaller boundary cloud."
+            )
+
+        positions = _region_positions_global(native, minimum=6)
+        projection = project_points_to_section(
+            positions,
+            origin,
+            normal,
+            half_thickness=half_thickness,
+        )
+        topology = reconstruct_profile_topology_2d(
+            projection["uv"],
+            max_edge_length=args["max_edge_length"],
+            fit_tolerance=args["fit_tolerance"],
+            angular_tolerance_degrees=float(
+                args.get("angular_tolerance_degrees", 1.0)
+            ),
+            minimum_loop_points=int(args.get("minimum_loop_points", 6)),
+            max_loops=int(args.get("max_loops", 16)),
+            minimum_arc_angle_degrees=float(
+                args.get("minimum_arc_angle_degrees", 12.0)
+            ),
+            max_segments_per_loop=int(args.get("max_segments_per_loop", 64)),
+        )
+
+        source_coordinate_space = native.get("coordinate_space", "global")
+        if source_coordinate_space != "global":
+            raise ProfileTopologyError(
+                "Live profile topology expected global query coordinates"
+            )
+
+        source_shift = native.get("source_global_shift")
+        if source_shift is not None:
+            if (
+                not isinstance(source_shift, list)
+                or len(source_shift) != 3
+                or any(isinstance(component, bool) for component in source_shift)
+            ):
+                raise ProfileTopologyError("Native source_global_shift is malformed")
+            try:
+                source_shift = [float(component) for component in source_shift]
+            except (TypeError, ValueError) as exc:
+                raise ProfileTopologyError(
+                    "Native source_global_shift is malformed"
+                ) from exc
+            if not all(math.isfinite(component) for component in source_shift):
+                raise ProfileTopologyError(
+                    "Native source_global_shift is non-finite"
+                )
+
+        source_scale = native.get("source_global_scale")
+        if source_scale is not None:
+            if isinstance(source_scale, bool):
+                raise ProfileTopologyError("Native source_global_scale is malformed")
+            try:
+                source_scale = float(source_scale)
+            except (TypeError, ValueError) as exc:
+                raise ProfileTopologyError(
+                    "Native source_global_scale is malformed"
+                ) from exc
+            if not math.isfinite(source_scale) or source_scale <= 0:
+                raise ProfileTopologyError(
+                    "Native source_global_scale must be finite and positive"
+                )
+
+        result = dict(topology)
+        result["type"] = "live_cad_section_profile_topology"
+        result["live_connection_used"] = True
+        result["scene_mutations_requested"] = False
+        result["source_geometry_preserved"] = True
+        result["source_cloud_id"] = int(args["cloud_id"])
+        if isinstance(native.get("cloud_name"), str):
+            result["source_cloud_name"] = native["cloud_name"]
+
+        bookkeeping = {
+            "query_coordinate_space": source_coordinate_space,
+        }
+        if source_shift is not None:
+            bookkeeping["global_shift"] = source_shift
+        if source_scale is not None:
+            bookkeeping["global_scale"] = source_scale
+        result["source_coordinate_bookkeeping"] = bookkeeping
+        result["section_frame"] = {
+            "coordinate_space": "global",
+            "units": "native",
+            "origin_global": projection["origin"],
+            "normal": projection["normal"],
+            "basis_u": projection["basis_u"],
+            "basis_v": projection["basis_v"],
+            "half_thickness": half_thickness,
+        }
+        result["acquisition"] = {
+            "region_type": "slab",
+            "boundary_samples_asserted_by_caller": True,
+            "matched_count": matched,
+            "sampled_count": returned,
+            "sample_truncated": False,
+            "sample_strategy": native.get("sample_strategy"),
+            "raw_points_returned": False,
+        }
+        return _ok_compact(result)
+    except (
+        ProfileTopologyError,
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+        ArithmeticError,
     ) as exc:
         return _err(str(exc))
 
@@ -4172,6 +4383,7 @@ from .hole_tools import tools as _hole_tools
 TOOLS.extend(_hole_tools())
 TOOLS.extend(datum_tools())
 TOOLS.extend(profile_tools())
+TOOLS.extend(profile_topology_tools())
 
 
 @server.list_tools()
@@ -4204,6 +4416,7 @@ async def call_tool(
         "fit_live_region_cylinder": handle_fit_live_region_cylinder,
         "extract_live_section": handle_extract_live_section,
         "reconstruct_live_section_profile": handle_reconstruct_live_section_profile,
+        "reconstruct_live_section_topology": handle_reconstruct_live_section_topology,
         "describe_live_region_grid": handle_describe_live_region_grid,
         "discover_live_planes": handle_discover_live_planes,
         "discover_live_circles": handle_discover_live_circles,
@@ -4211,6 +4424,7 @@ async def call_tool(
         "analyze_feature_relationships": handle_analyze_feature_relationships,
         "build_live_datum_frame": handle_build_live_datum_frame,
         "reconstruct_section_profile": handle_reconstruct_section_profile,
+        "reconstruct_section_topology": handle_reconstruct_section_topology,
         "discover_live_hole_candidates": handle_discover_live_hole_candidates,
         "discover_live_cylinders": handle_discover_live_cylinders,
         "describe_live_section_grid": handle_describe_live_section_grid,
