@@ -2702,6 +2702,51 @@ bool createFitOverlay(
     return true;
 }
 
+bool fitOverlayStatus(
+    ccMainAppInterface* app,
+    QJsonValue& result )
+{
+    ccHObject* group = findOverlayGroup( app );
+    QJsonObject out;
+    if ( !group )
+    {
+        out[ "active" ] = false;
+        out[ "overlay_root_id" ] = QJsonValue();
+        out[ "fit_count" ] = 0;
+        out[ "fits" ] = QJsonArray();
+        result = out;
+        return true;
+    }
+
+    QJsonArray fits;
+    for ( unsigned i = 0; i < group->getChildrenNumber(); ++i )
+    {
+        ccHObject* child = group->getChild( i );
+        if ( child
+             && child->hasMetaData( MCP_OVERLAY_ENTITY_META )
+             && child->getMetaData( MCP_OVERLAY_ENTITY_META ).toBool() )
+        {
+            QJsonObject item = entityDescription( child, false );
+            item[ "overlay_kind" ] =
+                child->getMetaData( "MCPOverlayKind" ).toString();
+            item[ "source_cloud_id" ] =
+                static_cast<qint64>(
+                    child->getMetaData( "MCPOverlaySourceCloudId" ).toULongLong() );
+            item[ "primitive_count" ] =
+                static_cast<int>( child->getChildrenNumber() );
+            fits.append( item );
+        }
+    }
+
+    out[ "active" ] = true;
+    out[ "overlay_root_id" ] =
+        static_cast<qint64>( group->getUniqueID() );
+    out[ "fit_count" ] = fits.size();
+    out[ "fits" ] = fits;
+    result = out;
+    return true;
+}
+
 bool clearFitOverlays(
     ccMainAppInterface* app,
     const QJsonObject&,
@@ -3966,6 +4011,7 @@ QJsonObject capabilities()
         "cloud.region_query",
         "cloud.region_grid",
         "overlay.create",
+        "overlay.status",
         "overlay.clear",
         "metrology.pick.start",
         "metrology.pick.status",
@@ -3995,6 +4041,7 @@ QJsonObject capabilities()
         "cloud.region_query",
         "cloud.region_grid",
         "overlay.create",
+        "overlay.status",
         "overlay.clear",
         "metrology.pick.start",
         "metrology.pick.status",
@@ -4088,6 +4135,7 @@ QJsonObject capabilities()
     overlays[ "kinds" ] = QJsonArray{ "plane", "circle", "cylinder", "axis" };
     overlays[ "wireframe" ] = true;
     overlays[ "dedicated_tagged_group" ] = true;
+    overlays[ "status_query" ] = true;
     overlays[ "safe_clear" ] = true;
     overlays[ "source_geometry_preserved" ] = true;
     result[ "fit_overlays" ] = overlays;
@@ -4969,6 +5017,10 @@ bool dispatch(
     if ( method == "overlay.create" )
     {
         return createFitOverlay( app, params, result, error );
+    }
+    if ( method == "overlay.status" )
+    {
+        return fitOverlayStatus( app, result );
     }
     if ( method == "overlay.clear" )
     {
