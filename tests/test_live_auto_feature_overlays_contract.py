@@ -198,7 +198,7 @@ class AutoFeatureOverlayContractTests(unittest.TestCase):
             )
         params = request.call_args.args[1]
         self.assertEqual(params["kind"], "circle")
-        self.assertAlmostEqual(params["geometry"]["radius"], 5.0)
+        self.assertAlmostEqual(params["geometry"]["radius"], 4.0)
 
         with patch.object(server, "live_request", return_value={"ok": True}) as request2:
             server.handle_show_live_fit_overlay(
