@@ -47,6 +47,15 @@ Before requesting Windows testing, require full Python regression, compileall,
 MCP/schema/stdio coverage, exact generated fixture-file tests, `git diff --check`,
 a final diff proving no qMCPBridge source change, and green CI.
 
+Internal development validation reached runtime checkpoint
+`0fd59d19156f6d80087e1c43b2096482aa85715f`. GitHub Actions run
+`36345421522` passed with 506 tests, `compileall`, and `git diff --check`.
+The exact generated PLY fixture tests are included in that count. The final diff
+against accepted main `2747bdd54cbe4260e3b37382f2afbadc2b677694` contained no
+`cloudcompare-plugin`/qMCPBridge source change. This is internal/synthetic
+validation only; it is ready for the focused Windows/CloudCompare gate, not accepted
+real-host evidence.
+
 Read `docs/LIVE_CAD_SECTION_BOUNDARY_EXTRACTION.md` and
 `docs/WINDOWS_SECTION_BOUNDARY_ACCEPTANCE.md`.
 
