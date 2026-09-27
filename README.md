@@ -127,7 +127,6 @@ Environment variables:
 | `load_cloud_info` | Inspect file stats via CloudCompare |
 | `subsample` | Reduce density — random / spatial / octree |
 | `compute_cloud_to_cloud_distances` | C2C nearest-neighbour distances |
-| `compute_cloud_to_mesh_distances` | C2M signed distances |
 | `icp_registration` | Align two clouds with ICP |
 | `compute_normals` | Estimate surface normals |
 | `filter_by_scalar_field` | Threshold points by scalar value |
@@ -348,3 +347,30 @@ flattening, rather than weakening these accepted safety checks. No DLL rebuild.
 See [filled-section boundary contracts](docs/LIVE_CAD_SECTION_BOUNDARY_EXTRACTION.md)
 and the [retained Windows acceptance procedure](docs/WINDOWS_SECTION_BOUNDARY_ACCEPTANCE.md).
 See AGENTS.md for exact acceptance/merge attribution and coverage limitations.
+
+## Python-only 0.15.3 depth-aware section layers (development)
+
+`analyze_section_layers` and `analyze_live_section_layers` retain complete
+`[u, v, signed_depth]` samples before 2D flattening. Explicit UV/depth thresholds
+produce bounded, deterministic local-depth components with support, thickness,
+continuity, overlap and ambiguity diagnostics. Sparse/thick/crossing evidence is
+reported rather than deleted; disconnected patches are not silently joined.
+
+`reconstruct_section_layer_profile` and `reconstruct_live_section_layer_profile`
+feed one safe or explicitly chosen usable component into the unchanged accepted
+0.15.2 occupancy, 0.15.1 topology and primitive fitting. Multiple credible layers
+require an explicit candidate ID and current source/frame-bound fingerprint. No
+sign-based choice, parameter search, morphological repair, or confirmed manufacturing
+intent is introduced. Live acquisition must be complete, with at most 20,000 points;
+raw samples remain server-side. qMCPBridge remains unchanged: no DLL rebuild.
+
+Development CI at `0f94521284b734e447bc3386fcb1495850aeb2f2` passed 626 tests,
+including MCP schemas and actual stdio with snapshot and replayed native acquisition.
+Twelve exact generated PLY fixtures cover single/multiple/overlapping/sloped/noisy/
+unsupported and rotated/large-translated layers. Replay testing is not real
+CloudCompare acceptance; the targeted Windows gate is still required. The real fan
+may legitimately remain BLOCKED. This development branch is not merged into main.
+
+See [layer contracts and request examples](docs/LIVE_CAD_SECTION_LAYER_ISOLATION.md),
+[Windows acceptance procedure](docs/WINDOWS_SECTION_LAYER_ACCEPTANCE.md), and AGENTS.md
+for exact recovery checkpoints and coverage limits.
