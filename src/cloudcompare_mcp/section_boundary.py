@@ -284,31 +284,45 @@ def _representative_source_indices(
     origin: np.ndarray,
     cell_size: float,
 ) -> list[int]:
-    used: set[int] = set()
-    selected: list[int] = []
+    # A corner boundary cell can own two exposed edges. Feeding one source sample
+    # per edge into the accepted radius-graph topology solver creates local clusters
+    # and shortcut edges. Instead retain one original representative per boundary
+    # cell, targeted at the mean midpoint of that cell's exposed contour edges.
+    # Adjacent representatives then follow the cell chain without synthesizing grid
+    # vertices or modifying the accepted topology algorithm.
+    cell_order: list[tuple[int, int]] = []
+    midpoints_by_cell: dict[tuple[int, int], list[np.ndarray]] = defaultdict(list)
     for edge_index in loop:
         start, end, cell = edges[edge_index]
-        midpoint_lattice = (
-            (start[0] + end[0]) * 0.5,
-            (start[1] + end[1]) * 0.5,
+        if cell not in midpoints_by_cell:
+            cell_order.append(cell)
+        midpoint_lattice = np.asarray(
+            [
+                (start[0] + end[0]) * 0.5,
+                (start[1] + end[1]) * 0.5,
+            ],
+            dtype=np.float64,
         )
-        midpoint = origin + np.asarray(midpoint_lattice, dtype=np.float64) * cell_size
-        candidates = sorted(
+        midpoints_by_cell[cell].append(
+            origin + midpoint_lattice * cell_size
+        )
+
+    selected: list[int] = []
+    for cell in cell_order:
+        target = np.mean(np.vstack(midpoints_by_cell[cell]), axis=0)
+        chosen = min(
             occupied[cell],
             key=lambda index: (
-                float(np.linalg.norm(points[index] - midpoint)),
+                float(np.linalg.norm(points[index] - target)),
                 index,
             ),
         )
-        chosen = next((index for index in candidates if index not in used), None)
-        if chosen is None:
-            continue
-        used.add(chosen)
-        selected.append(chosen)
+        selected.append(int(chosen))
+
     if len(selected) < 6:
         raise SectionBoundaryError(
-            "A traced contour has fewer than six distinct associated source samples; "
-            "increase source density or cell_size"
+            "A traced contour has fewer than six distinct boundary cells with "
+            "associated source samples; use a finer supported cell_size or denser acquisition"
         )
     return selected
 
