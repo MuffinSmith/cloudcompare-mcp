@@ -573,6 +573,21 @@ TOOLS: list[Tool] = [
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
+        name="summarize_live_scene",
+        description=(
+            "Return a compact image-free inventory of live CloudCompare geometry, including IDs, hierarchy paths, "
+            "point/triangle counts, global bounds, frame metadata and attributes. Prefer this over a full recursive "
+            "scene dump when locating the clouds/meshes to analyze."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "geometry_only": {"type": "boolean", "default": True},
+                "max_entities": {"type": "integer", "minimum": 1, "maximum": 2048, "default": 256}
+            }
+        },
+    ),
+    Tool(
         name="query_live_region",
         description=(
             "Query the geometry of a sphere, box, slab, or nearest-point region of a live point cloud "
@@ -969,6 +984,171 @@ TOOLS: list[Tool] = [
             },
             "required": ["cloud_id", "region"]
         },
+    ),
+    Tool(
+        name="discover_live_circles",
+        description=(
+            "Discover circular edge/hole candidates inside a live point-cloud region without screenshots or manual picks. "
+            "Uses deterministic 3D RANSAC plus geometric circle refinement and returns support fraction, coverage, "
+            "radius/diameter, residuals, and candidate bounds."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "region": {
+                    "type": "object",
+                    "properties": {
+                        "type": {"type": "string", "enum": ["sphere", "box", "slab", "nearest"]},
+                        "center": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "radius": {"type": "number", "exclusiveMinimum": 0},
+                        "min": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "max": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "origin": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "normal": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "half_thickness": {"type": "number", "minimum": 0},
+                        "max_distance": {"type": "number", "minimum": 0}
+                    },
+                    "required": ["type"]
+                },
+                "coordinate_space": {"type": "string", "enum": ["global", "native_local"], "default": "global"},
+                "sample_limit": {"type": "integer", "minimum": 4, "maximum": 20000, "default": 5000},
+                "distance_threshold": {"type": "number", "exclusiveMinimum": 0},
+                "max_circles": {"type": "integer", "minimum": 1, "maximum": 32, "default": 8},
+                "min_points": {"type": "integer", "minimum": 4, "default": 12},
+                "min_inlier_fraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.02},
+                "iterations": {"type": "integer", "minimum": 10, "maximum": 10000, "default": 800},
+                "min_arc_coverage_degrees": {"type": "number", "minimum": 0, "maximum": 360, "default": 90},
+                "min_radius": {"type": "number", "exclusiveMinimum": 0},
+                "max_radius": {"type": "number", "exclusiveMinimum": 0}
+            },
+            "required": ["cloud_id", "region"]
+        },
+    ),
+    Tool(
+        name="discover_live_cylinders",
+        description=(
+            "Discover dominant cylinder/bore/shaft candidates inside a live point-cloud region without screenshots or manual picks. "
+            "Uses deterministic multi-start robust fitting and reports support fraction, axis, diameter, radial residuals, "
+            "angular coverage, axial span, and candidate bounds."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "region": {
+                    "type": "object",
+                    "properties": {
+                        "type": {"type": "string", "enum": ["sphere", "box", "slab", "nearest"]},
+                        "center": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "radius": {"type": "number", "exclusiveMinimum": 0},
+                        "min": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "max": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "origin": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "normal": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "half_thickness": {"type": "number", "minimum": 0},
+                        "max_distance": {"type": "number", "minimum": 0}
+                    },
+                    "required": ["type"]
+                },
+                "coordinate_space": {"type": "string", "enum": ["global", "native_local"], "default": "global"},
+                "sample_limit": {"type": "integer", "minimum": 6, "maximum": 20000, "default": 5000},
+                "distance_threshold": {"type": "number", "exclusiveMinimum": 0},
+                "max_cylinders": {"type": "integer", "minimum": 1, "maximum": 8, "default": 3},
+                "min_points": {"type": "integer", "minimum": 6, "default": 24},
+                "min_inlier_fraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.05},
+                "restarts": {"type": "integer", "minimum": 1, "maximum": 128, "default": 32},
+                "seed_size": {"type": "integer", "minimum": 6, "maximum": 24, "default": 6},
+                "min_angular_coverage_degrees": {"type": "number", "minimum": 0, "maximum": 360, "default": 90},
+                "min_radius": {"type": "number", "exclusiveMinimum": 0},
+                "max_radius": {"type": "number", "exclusiveMinimum": 0}
+            },
+            "required": ["cloud_id", "region"]
+        },
+    ),
+    Tool(
+        name="show_live_plane_overlay",
+        description=(
+            "Show a temporary cyan wireframe plane overlay in CloudCompare using global fit coordinates. "
+            "The overlay inherits the source cloud's shift/scale frame and can be removed with clear_live_fit_overlays."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_cloud_id": {"type": "integer"},
+                "center": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "normal": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "width": {"type": "number", "exclusiveMinimum": 0},
+                "height": {"type": "number", "exclusiveMinimum": 0},
+                "name": {"type": "string"}
+            },
+            "required": ["source_cloud_id", "center", "normal", "width", "height"]
+        },
+    ),
+    Tool(
+        name="show_live_circle_overlay",
+        description=(
+            "Show a temporary yellow circle overlay in CloudCompare using global fit coordinates. "
+            "The source cloud is preserved."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_cloud_id": {"type": "integer"},
+                "center": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "normal": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "radius": {"type": "number", "exclusiveMinimum": 0},
+                "name": {"type": "string"}
+            },
+            "required": ["source_cloud_id", "center", "normal", "radius"]
+        },
+    ),
+    Tool(
+        name="show_live_cylinder_overlay",
+        description=(
+            "Show a temporary magenta wireframe cylinder and optional green axis in CloudCompare. "
+            "Provide the fitted global span endpoints and radius; source geometry is preserved."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_cloud_id": {"type": "integer"},
+                "endpoint_a": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "endpoint_b": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "radius": {"type": "number", "exclusiveMinimum": 0},
+                "show_axis": {"type": "boolean", "default": True},
+                "name": {"type": "string"}
+            },
+            "required": ["source_cloud_id", "endpoint_a", "endpoint_b", "radius"]
+        },
+    ),
+    Tool(
+        name="show_live_axis_overlay",
+        description=(
+            "Show a temporary green 3D axis/line overlay between two global coordinates in CloudCompare."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_cloud_id": {"type": "integer"},
+                "endpoint_a": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "endpoint_b": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "name": {"type": "string"}
+            },
+            "required": ["source_cloud_id", "endpoint_a", "endpoint_b"]
+        },
+    ),
+    Tool(
+        name="get_live_fit_overlays",
+        description="Return the temporary MCP fit-overlay group and its currently visible entities.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="clear_live_fit_overlays",
+        description=(
+            "Remove the complete temporary MCP Fit Overlays group without touching source scan entities."
+        ),
+        inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
         name="describe_live_section_grid",
@@ -2221,7 +2401,21 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
 
         native["python_feature_fitting"] = feature_fitting
         from .feature_discovery import discovery_capabilities
-        native["python_feature_discovery"] = discovery_capabilities()
+        discovery = discovery_capabilities()
+        overlay_capability = native.get("fit_overlays")
+        overlay_available = (
+            isinstance(overlay_capability, dict)
+            and bool(overlay_capability.get("available"))
+        )
+        discovery["visible_overlays"] = overlay_available
+        native["python_feature_discovery"] = discovery
+        native["live_feature_candidates"] = {
+            "circle_discovery": True,
+            "cylinder_discovery": True,
+            "visible_overlays": overlay_available,
+            "image_required": False,
+            "manual_picking_required": False,
+        }
         native["live_region_fitting"] = {
             "available": region_available,
             "image_required": False,
@@ -2319,6 +2513,86 @@ def _compact_region_summary(
     return summary
 
 
+def handle_summarize_live_scene(args: dict) -> list[TextContent] | CallToolResult:
+    try:
+        native = live_request("scene.list", {"recursive": True})
+        if not isinstance(native, dict) or not isinstance(native.get("entities"), list):
+            raise LiveBridgeError("CloudCompare returned an invalid scene-list response")
+
+        geometry_only = bool(args.get("geometry_only", True))
+        max_entities = int(args.get("max_entities", 256))
+        if max_entities < 1 or max_entities > 2048:
+            raise ValueError("max_entities must be between 1 and 2048")
+
+        flattened: list[dict] = []
+
+        def walk(entity: dict, parent_path: str) -> None:
+            if not isinstance(entity, dict):
+                return
+            name = str(entity.get("name", ""))
+            path = f"{parent_path}/{name}" if parent_path else name
+            kind = entity.get("kind")
+            is_geometry = kind in ("point_cloud", "mesh")
+            if (not geometry_only) or is_geometry:
+                compact = {
+                    "id": entity.get("id"),
+                    "name": name,
+                    "path": path,
+                    "kind": kind,
+                    "visible": entity.get("visible"),
+                    "enabled": entity.get("enabled"),
+                }
+                for key in (
+                    "point_count",
+                    "triangle_count",
+                    "bounds_global_native",
+                    "global_shift",
+                    "global_scale",
+                    "is_shifted",
+                    "has_normals",
+                    "has_colors",
+                    "has_scalar_fields",
+                    "scalar_fields",
+                ):
+                    if key in entity:
+                        compact[key] = entity[key]
+                flattened.append(compact)
+            children = entity.get("children")
+            if isinstance(children, list):
+                for child in children:
+                    walk(child, path)
+
+        for entity in native["entities"]:
+            walk(entity, "")
+
+        # Put the largest geometry first so the primary scan is usually visible
+        # without consuming context on the whole project hierarchy.
+        if geometry_only:
+            flattened.sort(
+                key=lambda item: (
+                    -int(item.get("point_count") or 0),
+                    -int(item.get("triangle_count") or 0),
+                    str(item.get("path") or ""),
+                )
+            )
+
+        total = len(flattened)
+        returned = flattened[:max_entities]
+        return _ok_compact(
+            {
+                "geometry_only": geometry_only,
+                "entity_count": total,
+                "returned_count": len(returned),
+                "truncated": len(returned) < total,
+                "selected_ids": native.get("selected_ids", []),
+                "entities": returned,
+                "image_required": False,
+            }
+        )
+    except (LiveBridgeError, TypeError, ValueError) as exc:
+        return _err(str(exc))
+
+
 def handle_query_live_region(args: dict) -> list[TextContent] | CallToolResult:
     try:
         preview_points = int(args.get("preview_points", 16))
@@ -2397,7 +2671,7 @@ def handle_fit_live_region_circle(args: dict) -> list[TextContent] | CallToolRes
             max_points=sample_limit,
         )
         fit = fit_circle_3d(_region_positions_global(native, minimum=4))
-        return _ok(_decorate_region_fit(fit, native, args))
+        return _ok_compact(_decorate_region_fit(fit, native, args))
     except (
         FeatureFitError,
         LiveBridgeError,
@@ -2420,7 +2694,7 @@ def handle_fit_live_region_cylinder(args: dict) -> list[TextContent] | CallToolR
             max_points=sample_limit,
         )
         fit = fit_cylinder_3d(_region_positions_global(native, minimum=6))
-        return _ok(_decorate_region_fit(fit, native, args))
+        return _ok_compact(_decorate_region_fit(fit, native, args))
     except (
         FeatureFitError,
         LiveBridgeError,
@@ -2600,6 +2874,186 @@ def handle_discover_live_planes(args: dict) -> list[TextContent] | CallToolResul
         TypeError,
         ValueError,
     ) as exc:
+        return _err(str(exc))
+
+
+def _decorate_candidate_discovery(
+    discovery: dict,
+    native: dict,
+    args: dict,
+    *,
+    label: str,
+) -> dict:
+    out = dict(discovery)
+    out["coordinate_space"] = "global"
+    out["units"] = "native"
+    out["units_confirmed"] = False
+    out["source_cloud_id"] = int(args["cloud_id"])
+    out["source_geometry_preserved"] = True
+    out["region"] = args["region"]
+    out["region_coordinate_space"] = args.get("coordinate_space", "global")
+    out["region_match_count"] = native.get("matched_count")
+    out["region_sample_count"] = native.get("returned_count")
+    out["region_sample_truncated"] = native.get("truncated")
+    out["region_sample_strategy"] = native.get("sample_strategy")
+    out["image_required"] = False
+    out["manual_picking_required"] = False
+    if native.get("truncated"):
+        out["sampling_warning"] = (
+            f"{label} discovery used a deterministic bounded sample "
+            "of a larger matching region."
+        )
+    return out
+
+
+def handle_discover_live_circles(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_discovery import FeatureFitError, discover_circles
+
+    try:
+        sample_limit = int(args.get("sample_limit", 5000))
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region=args["region"],
+            coordinate_space=args.get("coordinate_space", "global"),
+            max_points=sample_limit,
+        )
+        positions = _region_positions_global(native, minimum=4)
+        kwargs = {
+            "max_circles": int(args.get("max_circles", 8)),
+            "min_points": int(args.get("min_points", 12)),
+            "min_inlier_fraction": float(args.get("min_inlier_fraction", 0.02)),
+            "iterations": int(args.get("iterations", 800)),
+            "min_arc_coverage_degrees": float(
+                args.get("min_arc_coverage_degrees", 90.0)
+            ),
+            "random_seed": 0,
+        }
+        for key in ("distance_threshold", "min_radius", "max_radius"):
+            if key in args:
+                kwargs[key] = float(args[key])
+
+        discovery = discover_circles(positions, **kwargs)
+        return _ok_compact(
+            _decorate_candidate_discovery(
+                discovery,
+                native,
+                args,
+                label="Circle",
+            )
+        )
+    except (
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return _err(str(exc))
+
+
+def handle_discover_live_cylinders(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_discovery import FeatureFitError, discover_cylinders
+
+    try:
+        sample_limit = int(args.get("sample_limit", 5000))
+        native = _request_live_region(
+            cloud_id=int(args["cloud_id"]),
+            region=args["region"],
+            coordinate_space=args.get("coordinate_space", "global"),
+            max_points=sample_limit,
+        )
+        positions = _region_positions_global(native, minimum=6)
+        kwargs = {
+            "max_cylinders": int(args.get("max_cylinders", 3)),
+            "min_points": int(args.get("min_points", 24)),
+            "min_inlier_fraction": float(args.get("min_inlier_fraction", 0.05)),
+            "restarts": int(args.get("restarts", 32)),
+            "seed_size": int(args.get("seed_size", 6)),
+            "min_angular_coverage_degrees": float(
+                args.get("min_angular_coverage_degrees", 90.0)
+            ),
+            "random_seed": 0,
+        }
+        for key in ("distance_threshold", "min_radius", "max_radius"):
+            if key in args:
+                kwargs[key] = float(args[key])
+
+        discovery = discover_cylinders(positions, **kwargs)
+        return _ok_compact(
+            _decorate_candidate_discovery(
+                discovery,
+                native,
+                args,
+                label="Cylinder",
+            )
+        )
+    except (
+        FeatureFitError,
+        LiveBridgeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return _err(str(exc))
+
+
+def _show_live_overlay(kind: str, args: dict) -> list[TextContent] | CallToolResult:
+    params = {
+        "kind": kind,
+        "source_cloud_id": args["source_cloud_id"],
+    }
+    for key in (
+        "center",
+        "normal",
+        "width",
+        "height",
+        "radius",
+        "endpoint_a",
+        "endpoint_b",
+        "show_axis",
+        "name",
+    ):
+        if key in args:
+            params[key] = args[key]
+    try:
+        return _ok_compact(
+            live_request(
+                "fit.overlay.create",
+                params,
+                timeout=30.0,
+            )
+        )
+    except LiveBridgeError as exc:
+        return _err(str(exc))
+
+
+def handle_show_live_plane_overlay(args: dict) -> list[TextContent] | CallToolResult:
+    return _show_live_overlay("plane", args)
+
+
+def handle_show_live_circle_overlay(args: dict) -> list[TextContent] | CallToolResult:
+    return _show_live_overlay("circle", args)
+
+
+def handle_show_live_cylinder_overlay(args: dict) -> list[TextContent] | CallToolResult:
+    return _show_live_overlay("cylinder", args)
+
+
+def handle_show_live_axis_overlay(args: dict) -> list[TextContent] | CallToolResult:
+    return _show_live_overlay("axis", args)
+
+
+def handle_get_live_fit_overlays(_args: dict) -> list[TextContent] | CallToolResult:
+    try:
+        return _ok_compact(live_request("fit.overlay.status", {}, timeout=30.0))
+    except LiveBridgeError as exc:
+        return _err(str(exc))
+
+
+def handle_clear_live_fit_overlays(_args: dict) -> list[TextContent] | CallToolResult:
+    try:
+        return _ok_compact(live_request("fit.overlay.clear", {}, timeout=30.0))
+    except LiveBridgeError as exc:
         return _err(str(exc))
 
 
@@ -3501,6 +3955,7 @@ async def call_tool(
         "set_live_view": handle_set_live_view,
         "capture_live_view": handle_capture_live_view,
         "get_live_workflow_capabilities": handle_get_live_workflow_capabilities,
+        "summarize_live_scene": handle_summarize_live_scene,
         "query_live_region": handle_query_live_region,
         "fit_live_region_plane": handle_fit_live_region_plane,
         "fit_live_region_circle": handle_fit_live_region_circle,
@@ -3508,7 +3963,15 @@ async def call_tool(
         "extract_live_section": handle_extract_live_section,
         "describe_live_region_grid": handle_describe_live_region_grid,
         "discover_live_planes": handle_discover_live_planes,
+        "discover_live_circles": handle_discover_live_circles,
+        "discover_live_cylinders": handle_discover_live_cylinders,
         "describe_live_section_grid": handle_describe_live_section_grid,
+        "show_live_plane_overlay": handle_show_live_plane_overlay,
+        "show_live_circle_overlay": handle_show_live_circle_overlay,
+        "show_live_cylinder_overlay": handle_show_live_cylinder_overlay,
+        "show_live_axis_overlay": handle_show_live_axis_overlay,
+        "get_live_fit_overlays": handle_get_live_fit_overlays,
+        "clear_live_fit_overlays": handle_clear_live_fit_overlays,
         "create_live_group": handle_create_live_group,
         "crop_live_cloud": handle_crop_live_cloud,
         "subsample_live_cloud": handle_subsample_live_cloud,
