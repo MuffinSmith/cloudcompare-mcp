@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 
 from cloudcompare_mcp.feature_discovery import (
+    discover_circles,
+    discover_cylinders,
     discover_planes,
     enrich_region_grid,
     occupancy_grid_2d,
@@ -156,6 +158,234 @@ def test_plane_discovery_rejects_invalid_controls() -> None:
         discover_planes(points, min_points=100)
     with pytest.raises(FeatureFitError, match="min_inlier_fraction"):
         discover_planes(points, min_inlier_fraction=0, min_points=3)
+
+
+def _basis(normal: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    normal = normal / np.linalg.norm(normal)
+    seed = np.eye(3)[int(np.argmin(np.abs(normal)))]
+    u = seed - normal * float(np.dot(seed, normal))
+    u /= np.linalg.norm(u)
+    v = np.cross(normal, u)
+    return u, v
+
+
+def _circle_points(
+    center: np.ndarray,
+    normal: np.ndarray,
+    radius: float,
+    count: int,
+    *,
+    radial_noise: float = 0.0,
+    plane_noise: float = 0.0,
+    seed: int = 261010,
+) -> np.ndarray:
+    normal = normal / np.linalg.norm(normal)
+    u, v = _basis(normal)
+    theta = np.linspace(0.0, 2.0 * math.pi, count, endpoint=False)
+    rng = np.random.default_rng(seed)
+    radial = radius + rng.normal(0.0, radial_noise, count)
+    axial = rng.normal(0.0, plane_noise, count)
+    return (
+        center
+        + radial[:, None] * np.cos(theta)[:, None] * u
+        + radial[:, None] * np.sin(theta)[:, None] * v
+        + axial[:, None] * normal
+    )
+
+
+def _cylinder_points(
+    center: np.ndarray,
+    axis: np.ndarray,
+    radius: float,
+    length: float,
+    *,
+    theta_count: int = 24,
+    axial_count: int = 7,
+    radial_noise: float = 0.0,
+    seed: int = 261011,
+) -> np.ndarray:
+    axis = axis / np.linalg.norm(axis)
+    u, v = _basis(axis)
+    theta = np.linspace(0.0, 2.0 * math.pi, theta_count, endpoint=False)
+    axial = np.linspace(-length / 2.0, length / 2.0, axial_count)
+    rng = np.random.default_rng(seed)
+    points = []
+    for z in axial:
+        for angle in theta:
+            noisy_radius = radius + rng.normal(0.0, radial_noise)
+            points.append(
+                center
+                + z * axis
+                + noisy_radius * math.cos(angle) * u
+                + noisy_radius * math.sin(angle) * v
+            )
+    return np.asarray(points)
+
+
+def test_circle_discovery_finds_two_noisy_circles() -> None:
+    rng = np.random.default_rng(261012)
+    normal_a = np.array([0.3, -0.4, 0.8660254])
+    normal_a /= np.linalg.norm(normal_a)
+    center_a = np.array([2.0, -3.0, 4.0])
+    center_b = np.array([-8.0, 4.0, -2.0])
+    normal_b = np.array([0.0, 0.0, 1.0])
+
+    circle_a = _circle_points(
+        center_a,
+        normal_a,
+        5.0,
+        180,
+        radial_noise=0.004,
+        plane_noise=0.003,
+        seed=261013,
+    )
+    circle_b = _circle_points(
+        center_b,
+        normal_b,
+        2.5,
+        100,
+        radial_noise=0.003,
+        plane_noise=0.002,
+        seed=261014,
+    )
+    outliers = rng.uniform(-15, 15, (100, 3))
+    points = np.vstack((circle_a, circle_b, outliers))
+
+    result = discover_circles(
+        points,
+        distance_threshold=0.025,
+        max_circles=3,
+        min_points=60,
+        min_inlier_fraction=0.15,
+        iterations=700,
+        min_arc_coverage_degrees=180.0,
+        min_radius=1.0,
+        max_radius=8.0,
+        random_seed=44,
+    )
+
+    assert result["candidate_count"] == 2
+    candidates = sorted(
+        result["candidates"],
+        key=lambda item: item["circle"]["radius"],
+        reverse=True,
+    )
+    large, small = candidates
+    assert np.linalg.norm(np.asarray(large["circle"]["center"]) - center_a) < 0.02
+    assert large["circle"]["radius"] == pytest.approx(5.0, abs=0.02)
+    assert abs(
+        float(np.dot(np.asarray(large["circle"]["normal"]), normal_a))
+    ) > 0.99999
+    assert large["support_count"] >= 170
+
+    assert np.linalg.norm(np.asarray(small["circle"]["center"]) - center_b) < 0.02
+    assert small["circle"]["radius"] == pytest.approx(2.5, abs=0.02)
+    assert abs(
+        float(np.dot(np.asarray(small["circle"]["normal"]), normal_b))
+    ) > 0.99999
+    assert small["support_count"] >= 95
+
+
+def test_circle_discovery_radius_and_coverage_controls() -> None:
+    points = _circle_points(
+        np.zeros(3),
+        np.array([0.0, 0.0, 1.0]),
+        5.0,
+        80,
+    )
+    excluded = discover_circles(
+        points,
+        distance_threshold=0.01,
+        min_points=20,
+        iterations=100,
+        min_radius=6.0,
+    )
+    assert excluded["candidate_count"] == 0
+
+    with pytest.raises(FeatureFitError, match="max_radius"):
+        discover_circles(
+            points,
+            min_points=20,
+            min_radius=6.0,
+            max_radius=5.0,
+        )
+    with pytest.raises(FeatureFitError, match="min_arc_coverage"):
+        discover_circles(
+            points,
+            min_points=20,
+            min_arc_coverage_degrees=361.0,
+        )
+
+
+def test_cylinder_discovery_recovers_dominant_noisy_cylinder() -> None:
+    rng = np.random.default_rng(261015)
+    axis = np.array([0.2, 0.4, 0.89442719])
+    axis /= np.linalg.norm(axis)
+    center = np.array([3.0, -2.0, 1.0])
+    cylinder = _cylinder_points(
+        center,
+        axis,
+        5.0,
+        18.0,
+        theta_count=24,
+        axial_count=7,
+        radial_noise=0.008,
+        seed=261016,
+    )
+    outliers = rng.uniform(-12, 12, (60, 3))
+    points = np.vstack((cylinder, outliers))
+
+    result = discover_cylinders(
+        points,
+        distance_threshold=0.04,
+        max_cylinders=1,
+        min_points=100,
+        min_inlier_fraction=0.5,
+        restarts=8,
+        subset_size=48,
+        min_angular_coverage_degrees=180.0,
+        min_radius=3.0,
+        max_radius=7.0,
+        random_seed=17,
+    )
+
+    assert result["candidate_count"] == 1
+    candidate = result["candidates"][0]
+    fit = candidate["cylinder"]
+    got_axis = np.asarray(fit["axis_direction"])
+    angle = math.degrees(
+        math.acos(np.clip(abs(float(np.dot(got_axis, axis))), -1.0, 1.0))
+    )
+    axis_offset = np.linalg.norm(
+        np.cross(np.asarray(fit["axis_point"]) - center, axis)
+    )
+    assert angle < 0.15
+    assert axis_offset < 0.05
+    assert fit["radius"] == pytest.approx(5.0, abs=0.03)
+    assert candidate["support_count"] >= 160
+    assert candidate["support_fraction_of_sample"] > 0.7
+
+
+def test_cylinder_discovery_controls_are_validated() -> None:
+    points = _cylinder_points(
+        np.zeros(3),
+        np.array([0.0, 0.0, 1.0]),
+        2.0,
+        6.0,
+        theta_count=8,
+        axial_count=3,
+    )
+    with pytest.raises(FeatureFitError, match="distance_threshold"):
+        discover_cylinders(points, distance_threshold=0, min_points=6)
+    with pytest.raises(FeatureFitError, match="subset_size"):
+        discover_cylinders(points, subset_size=5, min_points=6)
+    with pytest.raises(FeatureFitError, match="max_radius"):
+        discover_cylinders(
+            points,
+            min_points=6,
+            min_radius=3.0,
+            max_radius=2.0,
+        )
 
 
 def test_occupancy_grid_2d_counts_and_truncation() -> None:
