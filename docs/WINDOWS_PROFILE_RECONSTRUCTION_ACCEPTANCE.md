@@ -73,8 +73,9 @@ Expected compact result:
 
 Report actual residuals and dimensions. For the large translated fixture record the
 host's actual global shift/scale separately from the generator's mathematical
-translation. Do not claim native nonunit-scale coverage unless the host actually uses
-one.
+translation. Verify the MCP result preserves the native region query's shift/scale
+bookkeeping exactly and does not apply it again to the already-global profile geometry.
+Do not claim native nonunit-scale coverage unless the host actually uses one.
 
 Confirm the MCP result contains no raw `points_uv` or `position_global` sample arrays.
 Record all-match/sample counts, sampling strategy and whether truncation occurred.
