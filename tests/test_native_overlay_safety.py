@@ -13,15 +13,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture(scope="module")
 def native_policy_binary(tmp_path_factory):
-    compiler = os.environ.get("CXX") or shutil.which("c++") or shutil.which("g++")
+    compiler = os.environ.get("CXX") or shutil.which("c++") or shutil.which("g++") or (shutil.which("cl") if os.name == "nt" else None)
     if not compiler:
         pytest.skip("C++ compiler unavailable; native policy execution not performed")
     binary = tmp_path_factory.mktemp("native-policy") / ("policy.exe" if os.name == "nt" else "policy")
-    subprocess.run([
-        compiler, "-std=c++11", "-Wall", "-Wextra", "-Werror", "-pedantic",
-        "-I", str(ROOT / "cloudcompare-plugin/qMCPBridge/include"),
-        str(ROOT / "tests/native/test_overlay_safety.cpp"), "-o", str(binary),
-    ], check=True, capture_output=True, text=True, timeout=60)
+    source = ROOT / "tests/native/test_overlay_safety.cpp"
+    include = ROOT / "cloudcompare-plugin/qMCPBridge/include"
+    if Path(compiler).name.lower() in ("cl", "cl.exe", "clang-cl", "clang-cl.exe"):
+        command = [compiler, "/nologo", "/EHsc", "/std:c++14", "/W4", "/WX",
+                   "/I" + str(include), str(source), "/Fe:" + str(binary)]
+    else:
+        command = [compiler, "-std=c++11", "-Wall", "-Wextra", "-Werror", "-pedantic",
+                   "-I", str(include), str(source), "-o", str(binary)]
+    subprocess.run(command, cwd=binary.parent, check=True,
+                   capture_output=True, text=True, timeout=60)
     return binary
 
 @pytest.mark.parametrize("scenario", range(12), ids=[
