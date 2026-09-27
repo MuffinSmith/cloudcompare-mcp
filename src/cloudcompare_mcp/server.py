@@ -573,6 +573,21 @@ TOOLS: list[Tool] = [
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
+        name="summarize_live_scene",
+        description=(
+            "Return a compact image-free inventory of live CloudCompare geometry, including IDs, hierarchy paths, "
+            "point/triangle counts, global bounds, frame metadata and attributes. Prefer this over a full recursive "
+            "scene dump when locating the clouds/meshes to analyze."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "geometry_only": {"type": "boolean", "default": True},
+                "max_entities": {"type": "integer", "minimum": 1, "maximum": 2048, "default": 256}
+            }
+        },
+    ),
+    Tool(
         name="query_live_region",
         description=(
             "Query the geometry of a sphere, box, slab, or nearest-point region of a live point cloud "
@@ -2498,6 +2513,86 @@ def _compact_region_summary(
     return summary
 
 
+def handle_summarize_live_scene(args: dict) -> list[TextContent] | CallToolResult:
+    try:
+        native = live_request("scene.list", {"recursive": True})
+        if not isinstance(native, dict) or not isinstance(native.get("entities"), list):
+            raise LiveBridgeError("CloudCompare returned an invalid scene-list response")
+
+        geometry_only = bool(args.get("geometry_only", True))
+        max_entities = int(args.get("max_entities", 256))
+        if max_entities < 1 or max_entities > 2048:
+            raise ValueError("max_entities must be between 1 and 2048")
+
+        flattened: list[dict] = []
+
+        def walk(entity: dict, parent_path: str) -> None:
+            if not isinstance(entity, dict):
+                return
+            name = str(entity.get("name", ""))
+            path = f"{parent_path}/{name}" if parent_path else name
+            kind = entity.get("kind")
+            is_geometry = kind in ("point_cloud", "mesh")
+            if (not geometry_only) or is_geometry:
+                compact = {
+                    "id": entity.get("id"),
+                    "name": name,
+                    "path": path,
+                    "kind": kind,
+                    "visible": entity.get("visible"),
+                    "enabled": entity.get("enabled"),
+                }
+                for key in (
+                    "point_count",
+                    "triangle_count",
+                    "bounds_global_native",
+                    "global_shift",
+                    "global_scale",
+                    "is_shifted",
+                    "has_normals",
+                    "has_colors",
+                    "has_scalar_fields",
+                    "scalar_fields",
+                ):
+                    if key in entity:
+                        compact[key] = entity[key]
+                flattened.append(compact)
+            children = entity.get("children")
+            if isinstance(children, list):
+                for child in children:
+                    walk(child, path)
+
+        for entity in native["entities"]:
+            walk(entity, "")
+
+        # Put the largest geometry first so the primary scan is usually visible
+        # without consuming context on the whole project hierarchy.
+        if geometry_only:
+            flattened.sort(
+                key=lambda item: (
+                    -int(item.get("point_count") or 0),
+                    -int(item.get("triangle_count") or 0),
+                    str(item.get("path") or ""),
+                )
+            )
+
+        total = len(flattened)
+        returned = flattened[:max_entities]
+        return _ok_compact(
+            {
+                "geometry_only": geometry_only,
+                "entity_count": total,
+                "returned_count": len(returned),
+                "truncated": len(returned) < total,
+                "selected_ids": native.get("selected_ids", []),
+                "entities": returned,
+                "image_required": False,
+            }
+        )
+    except (LiveBridgeError, TypeError, ValueError) as exc:
+        return _err(str(exc))
+
+
 def handle_query_live_region(args: dict) -> list[TextContent] | CallToolResult:
     try:
         preview_points = int(args.get("preview_points", 16))
@@ -3860,6 +3955,7 @@ async def call_tool(
         "set_live_view": handle_set_live_view,
         "capture_live_view": handle_capture_live_view,
         "get_live_workflow_capabilities": handle_get_live_workflow_capabilities,
+        "summarize_live_scene": handle_summarize_live_scene,
         "query_live_region": handle_query_live_region,
         "fit_live_region_plane": handle_fit_live_region_plane,
         "fit_live_region_circle": handle_fit_live_region_circle,
