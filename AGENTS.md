@@ -1,96 +1,40 @@
 # Repository work and interruption recovery
 
-## Active 0.15 CAD profile reconstruction lane (not accepted or merged)
+## Accepted 0.15 first profile-reconstruction increment
 
-Continue `feature/live-cad-profile-reconstruction`, created from accepted-main
-checkpoint `b462fb2733a7c57b590a283d1ed03dfdfc3df0bc`. Inspect remote heads and
-local work before resuming; do not create a replacement branch after interruptions.
-Python becomes 0.15.0. Native qMCPBridge remains accepted 0.12.0 / workflow
-revision 8; no native source or DLL change is part of this stage.
+The user explicitly approved merging the accepted first 0.15 increment. PR #14 merged
+`feature/live-cad-profile-reconstruction` into `main` at
+`6044907781593221170f2fdaaffd5fa207bf73b3`.
 
-The first 0.15 increment adds a pure-Python ordered-profile reconstruction core,
-read-only snapshot tool `reconstruct_section_profile`, and live wrapper
-`reconstruct_live_section_profile`. The live wrapper reuses the accepted native slab
-region query, performs projection/reconstruction server-side, and does not return raw
-point arrays. Initial primitives are line, circular arc and circle. Initial higher-level
-outputs are circle/rectangle/slot **candidates**, never accepted manufacturing intent.
-Ordering assumptions are explicit (`input`, `polar_closed_loop`, `principal_open`).
-Polar ordering is only a bounded first-stage option for a single sufficiently
-star-shaped closed loop; do not generalize it to arbitrary topology.
+Python is 0.15.0. qMCPBridge remains accepted 0.12.0 / workflow revision 8 and did
+not change. The accepted increment adds the pure-Python profile reconstruction core,
+snapshot `reconstruct_section_profile`, live `reconstruct_live_section_profile`,
+line/arc/circle fitting, bounded circle/rectangle/slot candidates, explicit ordering
+assumptions, compact live acquisition, and source shift/scale provenance retention.
 
-Read `docs/LIVE_CAD_PROFILE_RECONSTRUCTION.md` and
-`docs/WINDOWS_PROFILE_RECONSTRUCTION_ACCEPTANCE.md`. Development tests must cover
-rotations, large translations, noisy geometry, tolerance boundaries, malformed
-inputs, deterministic ordering, MCP dispatch/stdio, live acquisition contracts and
-the full regression suite. Windows acceptance and explicit user approval are still
-required before a future 0.15 merge.
+Real Windows acceptance initially exposed issue #13: dense committed slot fixtures
+fragmented into extra two-point line slivers at tangent joins and across a cyclic cut.
+The bounded Python fix at `ebec95d64df08231881d1b5451d1c7da918784b7` added
+regression coverage for the exact generated fixtures. Focused real-Windows retest at
+`e2caa93ecc4ec983344f936416eceeb45f2a510a` passed: snapshot, original PLY and
+rotated/large-translated PLY all returned exactly two lines plus two arcs and a
+`slot_candidate` within the original acceptance bounds. Issue #13 is closed.
 
-Deferred within 0.15: ellipses, rounded-rectangle recognition, robust arbitrary
-multi-loop/non-star-shaped boundary ordering, self-intersection/topology repair,
-symmetry solving and spline fallback. These should be added deliberately rather than
-hidden behind overconfident heuristics.
+The final accepted feature-branch documentation checkpoint was
+`58b4d866032d80c7e654afb33b36eddac841ca44`; its CI passed. Do not repeat the
+full 0.15 first-increment acceptance, issue #13 retest, or fan exercise merely because
+a chat restarted or documentation changed.
 
-### Recovered first-increment development checkpoint
+Retain the fan profile result as a coverage limitation, not a defect: the first
+increment deliberately supports only one sufficiently simple closed loop under
+`polar_closed_loop`. The real fan section contained topology that did not justify
+that assumption. Later 0.15 work should address explicit boundary/loop extraction,
+multiple loops/holes/islands, and non-star-shaped sections instead of weakening that
+safety boundary.
 
-An interrupted session left the exact first-increment product tree in verified Git
-blobs rather than as the branch tree. Recovery preserved the existing branch and
-promoted that exact tree (tree `6885090ad5c0d719f7b09e7702ae6e70e6f09cfc`) at
-`4de587d1c287844eeb6018115f4bc36a5ae5b74e`; do not recreate or replace this lane.
-The earlier handoff-workflow failures were infrastructure/test-launcher failures, not
-product failures. Standard CI now invokes the suite with `python -m pytest`.
-
-Review then found one real provenance omission in the live wrapper: accepted native
-`cloud.region_query` already returns source global shift/scale, but the compact
-profile result had not preserved them. Runtime commit
-`edb245a482039c77b213183e2274365240a96adf` now validates and retains source cloud
-name plus query coordinate space/global shift/global scale as bookkeeping only,
-without reapplying them to already-global geometry. Tests and acceptance guidance
-cover malformed bookkeeping and double-application prevention.
-
-Development checkpoint `f478a33879afc89f7137cc7f02ccb2c5a1e27b90` passed
-the full Linux CI suite: **444 passed in 17.02 s**, with compileall and exact-source
-archive steps also passing. qMCPBridge remains byte-for-source unchanged from accepted
-0.14. This is development validation only; real Windows/CloudCompare acceptance is
-still required before any 0.15 merge.
-
-### Windows acceptance defect #13 and focused fix
-
-Real Windows acceptance at `4ae263ee4757edc104024ad1a04efc174335192f`
-failed the committed slot-fixture requirement and opened issue #13. The live original
-fixture produced 7 primitives and the transformed fixture 11; the snapshot fixture
-also fragmented. The defect was primitive segmentation, not native acquisition,
-coordinate bookkeeping, or the documented fan multi-loop limitation.
-
-Root cause: recursive splitting could leave two-point line slivers at tangent line/arc
-joins. The cleanup pass only merged same-kind neighbors, and a dense closed fixture
-could also split one real line across the cyclic start/end. The fix is intentionally
-bounded: a two-point internal boundary fragment may be absorbed across a line/arc
-join only when the combined span itself fits a valid neighboring primitive within the
-requested tolerance; a cyclic cut is refined only when first/last models are the same
-kind and one side is exactly a two-point wrap fragment. Do not generalize this into
-arbitrary topology repair.
-
-Regression coverage now includes the exact committed 41/61-point slot density and
-the generated PLY -> section projection -> reconstruction path for both original and
-rotated/large-translated fixtures. Fix checkpoint
-`ebec95d64df08231881d1b5451d1c7da918784b7` passed **447 tests in 19.79 s** in
-Linux CI. Issue #13 focused real-Windows retest completed PASS at
-`e2caa93ecc4ec983344f936416eceeb45f2a510a`. Snapshot, original live PLY, and
-rotated/large-translated live PLY paths all produced exactly two lines plus two arcs
-and a `slot_candidate` within the original acceptance bounds. Both live fixtures
-used all 200 matches with no truncation; source shift/scale bookkeeping was preserved
-without double application. Focused Windows tests passed 42/42.
-
-Treat issue #13 as completed after development review. The earlier full 0.15
-acceptance failure was solely this defect; all other executed product checks had
-passed, while the fan profile remained BLOCKED only by the documented first-increment
-single-loop ordering limitation. Therefore the first 0.15 increment has completed its
-required real-Windows product validation with that fan topology limitation retained as
-coverage, not a defect.
-
-Do not repeat the full 0.15 acceptance, focused #13 fixture retest, or fan exercise
-for documentation-only changes or chat restarts. qMCPBridge remains unchanged.
-Explicit user approval is still required before merging 0.15 to main.
+Future profile-topology work must branch deliberately from current accepted main and
+preserve the distinction between measured section samples, inferred loop topology,
+fitted CAD primitives, and accepted manufacturing intent.
 
 ## Accepted 0.14 baseline
 
