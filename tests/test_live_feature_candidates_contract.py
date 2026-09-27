@@ -46,6 +46,53 @@ def _region(points: list[list[float]], *, matched_count: int | None = None) -> d
 
 
 class LiveFeatureCandidateContractTests(unittest.TestCase):
+    def test_scene_summary_flattens_and_prioritizes_geometry(self) -> None:
+        native = {
+            "selected_ids": [7],
+            "entities": [
+                {
+                    "id": 1,
+                    "name": "fan",
+                    "kind": "group",
+                    "visible": True,
+                    "enabled": True,
+                    "children": [
+                        {
+                            "id": 2,
+                            "name": "small",
+                            "kind": "point_cloud",
+                            "point_count": 10,
+                            "visible": True,
+                            "enabled": True,
+                            "bounds_global_native": {"min": [0, 0, 0], "max": [1, 1, 1]},
+                        },
+                        {
+                            "id": 7,
+                            "name": "main scan",
+                            "kind": "point_cloud",
+                            "point_count": 1000,
+                            "visible": True,
+                            "enabled": True,
+                            "global_shift": [1, 2, 3],
+                            "global_scale": 0.5,
+                            "children": [],
+                        },
+                    ],
+                }
+            ],
+        }
+        with patch.object(server, "live_request", return_value=native) as request:
+            result = server.handle_summarize_live_scene({})
+
+        request.assert_called_once_with("scene.list", {"recursive": True})
+        body = _body(result)
+        self.assertFalse(body["image_required"])
+        self.assertEqual(body["entity_count"], 2)
+        self.assertEqual(body["entities"][0]["id"], 7)
+        self.assertEqual(body["entities"][0]["path"], "fan/main scan")
+        self.assertEqual(body["entities"][1]["id"], 2)
+        self.assertNotIn("children", body["entities"][0])
+
     def test_circle_discovery_handler_adds_region_provenance(self) -> None:
         native = _region(
             [[1, 0, 0], [0, 1, 0], [-1, 0, 0], [0, -1, 0]],
@@ -279,6 +326,7 @@ class LiveFeatureCandidateContractTests(unittest.TestCase):
     def test_new_tools_are_discoverable(self) -> None:
         names = {tool.name for tool in server.TOOLS}
         for name in (
+            "summarize_live_scene",
             "discover_live_circles",
             "discover_live_cylinders",
             "show_live_plane_overlay",
