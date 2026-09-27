@@ -103,9 +103,12 @@ rounded to nominal values.
 
 Section U/V values remain in `native` units. No millimetre assumption is introduced.
 Snapshot frame metadata and caller provenance are copied, not reapplied. The live
-wrapper reports its global section frame, source cloud ID, exact/all-match count when
-available, returned sample count, truncation and sampling strategy. A truncated live
-sample adds an explicit warning.
+wrapper reports its global section frame, source cloud ID/name, the native region
+query's source global shift/scale bookkeeping, exact/all-match count when available,
+returned sample count, truncation and sampling strategy. Shift/scale values are
+preserved as provenance only; projected points are already global and the metadata is
+never applied a second time. Malformed/non-finite native bookkeeping is rejected
+instead of being silently omitted. A truncated live sample adds an explicit warning.
 
 Large global translation is handled by projecting relative to the supplied section
 origin before 2D fitting. Precision already lost in upstream storage cannot be
