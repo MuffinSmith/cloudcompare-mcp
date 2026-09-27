@@ -1,12 +1,41 @@
-# 0.15.3 development: depth-aware section layer isolation
+# 0.15.3: depth-aware section layer isolation
 
 Branch: `feature/live-cad-section-layer-isolation`.
 Accepted-main parent: `cb1ee9eab9c64ff4806036a6317606938faa22e6`.
 PR #16 merged accepted 0.15.2 at `8f2e0317f9eeff14547db1d83c100549c65fb18c`.
-This increment is NOT Windows-accepted and must not be merged without its own
-acceptance and explicit user approval. See AGENTS.md for the latest exact checkpoint.
+This increment completed focused real Windows/CloudCompare acceptance at exact HEAD
+`2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`. Fixture, live-GUI, handoff and safety
+gates passed; the bounded fan remained correctly BLOCKED by excessive component
+complexity rather than a product defect. The branch is not merged and still requires
+explicit user merge authorization. See AGENTS.md for exact acceptance attribution.
 Python is 0.15.3. Native qMCPBridge remains unchanged 0.12.0 / workflow revision 8.
 No DLL rebuild, new native method, or Fusion 360 integration is introduced.
+
+
+## Windows acceptance summary
+
+The focused Windows gate used a clean isolated worktree at the exact tested HEAD.
+The local suite reported 610 passed plus 16 compiler-gated native policy skips; those
+16 subsequently passed under configured MSVC. compileall and diff checks passed.
+The final CI run at the same source, `36352480651`, also passed.
+
+All 12 freshly generated PLY files matched manifest hashes and point counts. Actual
+MCP stdio exposed all four 0.15.3 tools. Real CloudCompare fixture acquisitions were
+complete, point accounting was exact, and unsafe crossing/thick/sparse cases refused
+continuation. Original/transformed single-layer fixtures passed through the accepted
+0.15.2/0.15.1 reconstruction path. Parallel fixtures required explicit current
+fingerprint selection, and stale or snapshot-to-live fingerprints were rejected.
+
+The transformed GUI sources used global shift
+`[-100000000, 199999000, -299999000]` and scale 1 without double application.
+Integrity coverage was before/after metadata only; full-cloud geometry/attribute
+equality was not independently proved, and real native nonunit scale remains untested.
+
+The bounded fan source 359 (`Assembly | Fan - scan 1`) returned a complete
+5,605 / 5,605 slab with depth approximately -0.499512 to +0.499924. The declared
+analysis exceeded the 16-component limit, produced no candidate fingerprint, and
+correctly blocked before reconstruction. This result must not be converted into a
+pass by threshold search, sign selection, or simply raising the component budget.
 
 ## Why retain depth before projection?
 
