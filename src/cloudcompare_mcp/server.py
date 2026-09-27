@@ -17,6 +17,10 @@ from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, ImageContent, TextContent, Tool
 
 from .live import LiveBridgeError, request as live_request
+from .datum_tools import (
+    capabilities as datum_capabilities, tools as datum_tools,
+    handle_analyze_feature_relationships, handle_build_live_datum_frame,
+)
 
 # ── CloudCompare binary discovery ────────────────────────────────────────────
 
@@ -2400,6 +2404,7 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
                 )
 
         native["python_feature_fitting"] = feature_fitting
+        native["python_cad_datums"] = datum_capabilities()
         from .feature_discovery import discovery_capabilities
         discovery = discovery_capabilities()
         overlay_capability = native.get("fit_overlays")
@@ -3956,6 +3961,7 @@ def _ext_flag(path: str) -> str:
 from .hole_tools import tools as _hole_tools
 
 TOOLS.extend(_hole_tools())
+TOOLS.extend(datum_tools())
 
 
 @server.list_tools()
@@ -3991,6 +3997,8 @@ async def call_tool(
         "discover_live_planes": handle_discover_live_planes,
         "discover_live_circles": handle_discover_live_circles,
         "analyze_hole_candidates": handle_analyze_hole_candidates,
+        "analyze_feature_relationships": handle_analyze_feature_relationships,
+        "build_live_datum_frame": handle_build_live_datum_frame,
         "discover_live_hole_candidates": handle_discover_live_hole_candidates,
         "discover_live_cylinders": handle_discover_live_cylinders,
         "describe_live_section_grid": handle_describe_live_section_grid,
