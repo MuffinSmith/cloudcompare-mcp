@@ -1,8 +1,20 @@
-# 0.15.2 development: filled-section boundary evidence
+# Accepted 0.15.2: filled-section boundary evidence
 
 Branch: `feature/live-cad-section-boundary-extraction`, created from accepted main
 `2747bdd54cbe4260e3b37382f2afbadc2b677694`. Python is 0.15.2.
 qMCPBridge remains the accepted 0.12.0 / workflow revision 8 and is unchanged.
+
+Real Windows/CloudCompare acceptance completed at exact HEAD
+`7610eceff68704132ff44086d8d070fbb10b5c38` (runtime checkpoint
+`0fd59d19156f6d80087e1c43b2096482aa85715f`). Generated snapshot/live fixtures,
+including rotated/large-translated outer/hole/island geometry, and safety checks
+PASSed. Windows regression was 490 passed plus 16 initially skipped compiler-gated
+policy tests, all 16 subsequently passing with MSVC configured. No DLL rebuild.
+The bounded fan remained correctly BLOCKED by multiple/thick depth evidence and
+diagonal occupancy ambiguity, not a product defect. Source integrity coverage was
+metadata only; real-host nonunit scale remains untested. See AGENTS.md for exact
+acceptance attribution, numerical checkpoints and merge recovery state. The retained
+Windows procedure is not a request to repeat this completed gate.
 
 This increment addresses the acquisition limitation retained from accepted 0.15.1:
 ordinary scan sections usually contain material-interior samples, not an isolated
@@ -179,4 +191,6 @@ The first occupancy implementation is deliberately conservative. In particular:
 - no spline or manufacturing-intent inference is added;
 - native nonunit global-scale behavior still lacks real-host coverage.
 
-See `WINDOWS_SECTION_BOUNDARY_ACCEPTANCE.md` for the focused real-host gate.
+The accepted fan refusal motivates 0.15.3 depth-aware layer evidence before 2D
+occupancy. That future stage must preserve this solver and may still return BLOCKED.
+See `WINDOWS_SECTION_BOUNDARY_ACCEPTANCE.md` for the retained focused procedure.
