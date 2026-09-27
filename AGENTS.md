@@ -1,38 +1,34 @@
 # Repository work and interruption recovery
 
-## 0.14 Windows acceptance executed; awaiting explicit merge approval
+## Accepted 0.14 baseline
 
-Continue `feature/live-cad-datum-relationships`, based on accepted main
-`e39949759c6386e5cd0387983c43a74f26e6a58e`. Inspect remote heads and local changes
-before resuming; do not create a replacement branch or reset to historical SHAs.
-Read `docs/LIVE_CAD_DATUM_RELATIONSHIPS.md` and
-`docs/WINDOWS_DATUM_RELATIONSHIP_ACCEPTANCE.md` for the snapshot-only tools.
-Python is 0.14.0; native remains accepted 0.12.0 / revision 8, with no native
-source or build changes. Do not rebuild an unchanged DLL.
+The user explicitly approved merging the accepted 0.14 increment. PR #12 merged
+`feature/live-cad-datum-relationships` into `main` at
+`e0e1b96e4f8b5a28e465303059ae3fbbbe767647`.
 
-Real Windows acceptance ran at documentation checkpoint
-`0a5ca860d8a2f425b7e8a83659f524ecf1ac6a9c`, whose runtime/product source is the
-tested 0.14 checkpoint `477403785b0693e431227db79d1954326dbc081a`. All executed
-product checks passed. The Windows suite produced 389 passes and 16 compiler-gated
-skips; after configuring the installed MSVC environment those 16 native policy tests
-also passed, for 405 distinct passing tests across the two runs. Synthetic MCP
-dispatch, no-host stdio, bookkeeping, original fixture, rotated/large-translated
-fixture, fan relationship analysis, and bounded source-integrity checks passed.
+The accepted 0.14 runtime/product checkpoint is
+`477403785b0693e431227db79d1954326dbc081a`. Later commits on the feature branch
+were documentation/acceptance guidance only. Real Windows acceptance ran at
+`0a5ca860d8a2f425b7e8a83659f524ecf1ac6a9c`: all executed product checks passed.
+The final pre-merge branch head `099f861760793cf27cf9fb07017ceb303fc04e73`
+recorded the acceptance outcome and coverage limits. Python is 0.14.0. Native
+qMCPBridge remains accepted 0.12.0 / workflow revision 8 and did not change.
 
-The fan datum subtest is a retained **coverage limitation, not a product defect**:
-bounded acquisition found two strong fan planes only 0.05599773824 degrees apart,
-below the intentional 1-degree minimum, and did not find a robust nonparallel
-secondary observation. No direction was invented and no tolerance was loosened.
-The selected 460,198-point bearing-cap cloud received full exported XYZ/normals
-equality coverage; other fan entities and fixtures retain the report's narrower
-metadata-only coverage. Real native nonunit global scale remains untested (loaded
-scales were 1; offline scale 2.5 covered bookkeeping only).
+Retain the fan datum result as a coverage limitation, not a defect: bounded
+acquisition on the selected bearing-cap component found two strong planes only
+0.05599773824 degrees apart, below the intentional 1-degree datum minimum, and no
+robust nonparallel secondary observation was acquired. Do not repeat the full 0.14
+Windows gate merely to force a successful fan datum. The selected 460,198-point
+bearing-cap cloud received full exported XYZ/normals equality coverage; other fan
+entities and the fixture clouds retain narrower metadata-only integrity coverage.
+Real native nonunit global scale remains untested; loaded scales were 1, while
+offline scale 2.5 covered bookkeeping only.
 
-Do not request another Windows run solely to turn that fan acquisition limitation
-into a synthetic success. A future targeted fan-datum exercise is useful only if a
-robust nonparallel measured feature can actually be acquired. No product defect issue
-was opened. The branch is awaiting the user's explicit merge decision. Do not merge
-automatically; CI/numerical/Windows passes are not merge authorization.
+Do not reopen or repeat accepted 0.14 testing for documentation-only changes or
+chat restarts. Future work should branch deliberately from current accepted main,
+preserve this evidence attribution, and require a new targeted Windows gate only
+for behavior actually changed by that later stage.
+
 
 
 ## Current accepted baseline
