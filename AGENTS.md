@@ -18,9 +18,11 @@ New MCP surface:
 
 The implementation uses caller-selected native-unit occupancy `cell_size`, traces
 exposed 4-neighbor cell edges, associates them back to original source samples,
-reports per-cell support and half-cell grid-origin sensitivity, and refuses ambiguous
+reports per-cell support, half-cell grid-origin sensitivity, and a diagnostic-only
+single-cell erosion/dilation sensitivity check, and refuses ambiguous
 diagonal/non-manifold connectivity rather than morphologically repairing it.
-Composite reconstruction reuses `reconstruct_profile_topology_2d`; do not replace
+Composite reconstruction also reports the measured two-neighbor locality lower bound,
+then reuses `reconstruct_profile_topology_2d`; do not replace
 the accepted 0.15.1 solver casually.
 
 Live reconstruction reuses the existing native `cloud.region_query` slab method.
