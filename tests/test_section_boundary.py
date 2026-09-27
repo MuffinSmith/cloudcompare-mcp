@@ -164,8 +164,38 @@ def test_nonuniform_density_is_preserved_or_warned_without_repair():
     assert evidence.public["connected_contour_count"] == 3
     assert evidence.public["support_statistics"]["coefficient_of_variation"] >= 0
     assert any(
-        "no morphological closing" in assumption.lower()
+        "no morphological repair" in assumption.lower()
         for assumption in evidence.public["assumptions"]
+    )
+    assert evidence.public["ambiguity"]["one_cell_perturbation"][
+        "applied_to_reconstruction"
+    ] is False
+
+
+def test_one_cell_bridge_reports_topology_sensitivity_without_repair():
+    occupied_cells = {
+        *[(i, j) for i in range(3) for j in range(3)],
+        *[(i, j) for i in range(5, 8) for j in range(3)],
+        (3, 1),
+        (4, 1),
+    }
+    points = []
+    for i, j in sorted(occupied_cells):
+        for du, dv in ((0.10, 0.10), (0.20, 0.10), (0.10, 0.20), (0.20, 0.20)):
+            points.append((i * 0.5 + du, j * 0.5 + dv))
+    evidence = extract_section_boundary_evidence_2d(
+        np.asarray(points, dtype=np.float64),
+        cell_size=0.5,
+        min_component_cells=1,
+        check_grid_origin_sensitivity=False,
+    )
+    diagnostic = evidence.public["ambiguity"]["one_cell_perturbation"]
+    assert diagnostic["applied_to_reconstruction"] is False
+    assert diagnostic["topology_stable"] is False
+    assert diagnostic["base"]["material_component_count"] == 1
+    assert any(
+        "one-cell" in warning
+        for warning in evidence.public["ambiguity"]["warnings"]
     )
 
 
