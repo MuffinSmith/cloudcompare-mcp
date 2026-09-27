@@ -670,6 +670,23 @@ def extract_section_boundary_evidence_2d(
     )
 
 
+def _minimum_two_neighbor_radius(points: np.ndarray) -> float:
+    if points.shape[0] < 3:
+        raise SectionBoundaryError(
+            "Boundary evidence has too few points for two-neighbor topology"
+        )
+    delta = points[:, None, :] - points[None, :, :]
+    distances = np.sqrt(np.sum(delta * delta, axis=2))
+    np.fill_diagonal(distances, np.inf)
+    second_nearest = np.partition(distances, 1, axis=1)[:, 1]
+    required = float(np.max(second_nearest))
+    if not math.isfinite(required):
+        raise SectionBoundaryError(
+            "Boundary evidence cannot establish two finite local neighbors per sample"
+        )
+    return required
+
+
 def reconstruct_filled_section_profile_2d(
     points_uv: Iterable[Sequence[float]],
     *,
@@ -704,6 +721,17 @@ def reconstruct_filled_section_profile_2d(
             "Filled-section reconstruction is grid-sensitive at the requested cell_size; "
             "inspect extract_section_boundary_evidence diagnostics and choose a better-supported "
             "resolution instead of fabricating stable topology"
+        )
+
+    edge_limit = _validate_positive_float(max_edge_length, "max_edge_length")
+    required_two_neighbor_radius = _minimum_two_neighbor_radius(
+        evidence.boundary_points_uv
+    )
+    if edge_limit < required_two_neighbor_radius:
+        raise SectionBoundaryError(
+            f"max_edge_length {edge_limit:.17g} is too small for extracted boundary "
+            f"evidence; at least {required_two_neighbor_radius:.17g} is required "
+            "for every selected source sample to have two local neighbors"
         )
 
     topology = reconstruct_profile_topology_2d(
@@ -747,6 +775,11 @@ def reconstruct_filled_section_profile_2d(
         "raw_points_returned": False,
         "extraction": evidence.public,
         "topology": topology,
+        "topology_handoff_diagnostics": {
+            "max_edge_length": edge_limit,
+            "minimum_two_neighbor_radius": required_two_neighbor_radius,
+            "margin": edge_limit - required_two_neighbor_radius,
+        },
         "profile_candidates": candidates,
         "provenance": {
             "boundary_evidence_source_point_count": len(
