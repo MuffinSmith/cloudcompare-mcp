@@ -282,7 +282,7 @@ revision 8, unchanged. The increment passed real Windows/CloudCompare acceptance
 and was merged through PR #12; the fan datum acquisition limitation is retained as
 coverage, not a product defect. See [contracts and examples](docs/LIVE_CAD_DATUM_RELATIONSHIPS.md).
 
-## Python-only 0.15 CAD profile reconstruction (development)
+## Python-only 0.15 CAD profile reconstruction (accepted first increment)
 
 `reconstruct_section_profile` turns an explicit 2D section snapshot into compact
 line/arc/circle primitives plus adjacency/tangency and circle/rectangle/slot
@@ -291,7 +291,9 @@ native slab-region query, keeps raw sampled points server-side, projects them to
 stable section frame, and returns the same compact candidate representation.
 Ordering assumptions are explicit: caller order, polar closed-loop ordering, or
 principal-axis open ordering. Candidate geometry is not accepted manufacturing
-intent. Ellipses, rounded-rectangle classification, arbitrary multi-loop topology,
-and spline fallback remain later 0.15 work. The native bridge is still unchanged at
-0.12.0 / revision 8. See [profile contracts](docs/LIVE_CAD_PROFILE_RECONSTRUCTION.md)
-and the [Windows acceptance procedure](docs/WINDOWS_PROFILE_RECONSTRUCTION_ACCEPTANCE.md).
+intent. The first increment passed its real Windows/CloudCompare gate after issue #13
+was fixed and retested, then merged through PR #14. Ellipses, rounded-rectangle
+classification, explicit multi-loop/non-star-shaped topology, and spline fallback
+remain later 0.15 work. The native bridge remains unchanged at 0.12.0 / revision 8.
+See [profile contracts](docs/LIVE_CAD_PROFILE_RECONSTRUCTION.md) and AGENTS.md for
+accepted source/retest attribution and retained coverage limits.
