@@ -2,18 +2,23 @@
 
 ## Active development lane
 
-The 0.12 candidate-discovery and visible-overlay work on
-`feature/live-feature-candidates-overlays` has completed its required acceptance.
-Retain this existing branch pending explicit user approval to merge into `main`.
-Do not create a new branch merely because a chat, tool session, or execution
- environment restarted.
+The user approved the 0.12 merge and the next development stage. PR #8 merged
+`feature/live-feature-candidates-overlays` into `main` at
+`38f92c1dd62fdba92a4fc51959289287ae6eaaed`.
 
-The accepted checkout is `b62f9b4d238e7f169e76c36e630b2060320d261a`; its product/runtime
-sources are identical to the Windows-tested
-`fc51824d9edf7328614653c57bf3644c1db02769`. Resolve the current remote head before
-continuing; do not reset to these historical checkpoints. At this checkpoint,
-`main` still contains the accepted 0.11.0 retest at
-`c2dfc46c3e445efa6a50afa5997297567f2d80ab` and has not received the 0.12 work.
+Continue **`feature/live-hole-patterns`** for the 0.13 Python-only mounting-hole
+candidate grouping and spacing increment. This branch was deliberately created
+from the accepted merge; do not create another merely because a chat or container
+restarted. Resolve the current remote head and preserve any unexpected local work.
+Read `docs/LIVE_HOLE_PATTERNS.md` on the active branch.
+
+Keep the accepted 0.12 branch intact. Its accepted checkout was
+`b62f9b4d238e7f169e76c36e630b2060320d261a`, with native/runtime baseline
+`fc51824d9edf7328614653c57bf3644c1db02769`. The 0.13 increment changes Python only;
+its new tools require targeted Windows acceptance, NOT reopening 0.12 or rebuilding
+an unchanged DLL. Use `docs/WINDOWS_HOLE_PATTERN_ACCEPTANCE.md` on the active branch.
+This approval covers merging 0.12 and starting 0.13, not automatically merging the
+new unaccepted stage.
 
 The older `feature/live-auto-feature-overlays` and `feature/live-candidate-overlays`
 branches came from interrupted attempts. Leave them intact. Inspect their diffs

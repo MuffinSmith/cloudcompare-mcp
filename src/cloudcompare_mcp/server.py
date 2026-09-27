@@ -2409,6 +2409,11 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
         )
         discovery["visible_overlays"] = overlay_available
         native["python_feature_discovery"] = discovery
+        native["python_hole_patterns"] = {
+            "version": "0.13.0", "snapshot_analysis": True,
+            "live_discovery": region_available, "native_rebuild_required": False,
+            "max_candidates": 32, "confirmed_holes": False,
+        }
         native["live_feature_candidates"] = {
             "circle_discovery": True,
             "cylinder_discovery": True,
@@ -2994,6 +2999,22 @@ def handle_discover_live_cylinders(args: dict) -> list[TextContent] | CallToolRe
         TypeError,
         ValueError,
     ) as exc:
+        return _err(str(exc))
+
+
+def handle_analyze_hole_candidates(args: dict) -> list[TextContent] | CallToolResult:
+    from .hole_tools import analyze_snapshot
+    try:
+        return _ok_compact(analyze_snapshot(args))
+    except (ValueError, TypeError, KeyError, OverflowError) as exc:
+        return _err(str(exc))
+
+
+def handle_discover_live_hole_candidates(args: dict) -> list[TextContent] | CallToolResult:
+    from .hole_tools import discover_live
+    try:
+        return _ok_compact(discover_live(args, _request_live_region))
+    except (LiveBridgeError, ValueError, TypeError, KeyError, OverflowError) as exc:
         return _err(str(exc))
 
 
@@ -3932,6 +3953,11 @@ def _ext_flag(path: str) -> str:
 
 # ── MCP event handlers ────────────────────────────────────────────────────────
 
+from .hole_tools import tools as _hole_tools
+
+TOOLS.extend(_hole_tools())
+
+
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     return TOOLS
@@ -3964,6 +3990,8 @@ async def call_tool(
         "describe_live_region_grid": handle_describe_live_region_grid,
         "discover_live_planes": handle_discover_live_planes,
         "discover_live_circles": handle_discover_live_circles,
+        "analyze_hole_candidates": handle_analyze_hole_candidates,
+        "discover_live_hole_candidates": handle_discover_live_hole_candidates,
         "discover_live_cylinders": handle_discover_live_cylinders,
         "describe_live_section_grid": handle_describe_live_section_grid,
         "show_live_plane_overlay": handle_show_live_plane_overlay,

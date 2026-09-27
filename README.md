@@ -253,3 +253,13 @@ LAS · LAZ · PLY · PCD · XYZ · ASC · TXT · E57 · OBJ · BIN · SHP
 ## License
 
 MIT
+
+## Python-only 0.13 candidate relationships (development)
+
+The accepted native bridge remains 0.12.0 / workflow revision 8. New read-only
+`analyze_hole_candidates` and `discover_live_hole_candidates` tools filter circular
+candidates against a face, group by diameter and measure center spacing, with
+provisional row/bolt-circle checks. Numerical patterns are not confirmed physical
+holes. See [scope and examples](docs/LIVE_HOLE_PATTERNS.md) and the
+[focused Windows test procedure](docs/WINDOWS_HOLE_PATTERN_ACCEPTANCE.md).
+No DLL rebuild is required for this increment; Windows acceptance is pending.
