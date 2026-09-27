@@ -1,5 +1,32 @@
 # Repository work and interruption recovery
 
+## Active 0.15.3 lane: numerical core saved, not Windows-ready
+
+Resume the EXISTING `feature/live-cad-section-layer-isolation` branch, created from
+accepted main `cb1ee9eab9c64ff4806036a6317606938faa22e6`.
+Latest numerical/runtime checkpoint: `9c6b45b7b758029d8031ce0ea9d89e8c7fc1c54d`.
+Python is 0.15.3. Native qMCPBridge is unchanged 0.12.0 / workflow revision 8.
+
+The new `section_layers.py` retains complete U/V/depth samples, explicit local depth
+modes, 4-neighbor continuity, compact candidates and overlap, and refuses sparse,
+thick or crossing/merging evidence. Selection is automatic only for one safe
+component; explicit selection requires the exact analysis fingerprint. Disconnected
+patches are separate candidates, never implicitly joined. All points are accounted
+for. The initial numerical suite passed 43 tests in the development container.
+CI is triggered for this branch; inspect its current result, do not infer success.
+
+Read `docs/LIVE_CAD_SECTION_LAYER_ISOLATION.md`. Remaining work: MCP snapshot/live
+plumbing, safe selected-layer handoff into accepted occupancy/topology, exact generated
+fixture-file tests, schema and actual stdio coverage, full regression/compileall/diff,
+green CI, README and a focused Windows procedure. Do NOT request Windows testing yet.
+The container's package network is unavailable and MCP/PLY dependencies are absent;
+run available exact-source numerical tests locally and full installed tests in CI,
+without presenting dependency failures or mocked acquisition as real-host validation.
+
+This lane is NOT accepted. The user's merge approval covered 0.15.2 only. Do not
+merge 0.15.3 without its own Windows acceptance and explicit approval. Save each
+coherent increment and update this checkpoint before substantial additional work.
+
 ## Accepted main: 0.15.2
 
 The user explicitly authorized the 0.15.2 merge and then a separate 0.15.3
@@ -7,12 +34,13 @@ layer-isolation increment. PR #16 merged `feature/live-cad-section-boundary-extr
 into main at `8f2e0317f9eeff14547db1d83c100549c65fb18c`.
 The retained feature HEAD is `e4e53f7632e58843ea78780b88a2ab539cee1a94`.
 Push CI `36350201179` and PR CI `36350227336` both completed successfully before
-merge. The merge tree exactly matches that checked HEAD. This follow-up is recovery
-documentation only. Preserve the feature branch; do not merge it again.
+merge. The merge tree exactly matches that checked HEAD. The later main checkpoint
+`cb1ee9eab9c64ff4806036a6317606938faa22e6` records this recovery state only.
+Preserve the feature branch; do not merge it again.
 
 Windows-tested HEAD: `7610eceff68704132ff44086d8d070fbb10b5c38`.
 Runtime/product checkpoint: `0fd59d19156f6d80087e1c43b2096482aa85715f`.
-Python: 0.15.2. qMCPBridge: unchanged accepted 0.12.0 / workflow revision 8.
+Accepted Python: 0.15.2. qMCPBridge: unchanged accepted 0.12.0 / workflow revision 8.
 No DLL rebuild is required. Generated snapshot/live fixtures and safety gates PASSed.
 Windows regression: 490 passed plus 16 compiler-gated policy tests that subsequently
 PASSed under configured MSVC. compileall and diff checking PASSed. The fan profile
@@ -27,13 +55,7 @@ superseded by the exact merged state above, not a request to repeat completed wo
 Also read `docs/LIVE_CAD_SECTION_BOUNDARY_EXTRACTION.md`; the corresponding Windows
 acceptance document is a retained procedure, not an outstanding 0.15.2 test gate.
 
-## Next deliberate lane: 0.15.3 layer isolation
-
-Create or resume `feature/live-cad-section-layer-isolation` from current accepted
-main; inspect remote heads first, never recreate it after a disconnect. Do not
-continue runtime development on the accepted 0.15.2 branch. The user's approval
-DOES NOT authorize merging 0.15.3; that requires its own targeted real-Windows
-acceptance and explicit user approval.
+## Layer-isolation responsibility boundary
 
 Keep complete slab `(u,v,signed_depth)` evidence until coherent layers have been
 analyzed. Python owns local depth observations, continuity, ambiguity and selection;
