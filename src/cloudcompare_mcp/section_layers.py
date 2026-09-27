@@ -83,6 +83,19 @@ def precision_floor(points: np.ndarray) -> float:
             raise SectionLayerError("Coordinate span exceeds representable precision") from exc
 
 
+def depth_summary(values: np.ndarray, *, percentiles: bool = False) -> dict[str, float]:
+    """Rebase quantile arithmetic so finite large same-sign depths do not overflow."""
+    base = float(values.min())
+    relative = values - base
+    result = {"min": base, "median": base + float(np.median(relative)),
+              "max": float(values.max())}
+    if percentiles:
+        result.update(p10=base + float(np.percentile(relative, 10)),
+                      p90=base + float(np.percentile(relative, 90)))
+    return result
+
+
+
 def validate_options(*, uv_cell_size: float, depth_separation: float,
                      max_layer_thickness: float, max_neighbor_depth_step: float,
                      min_cell_points: int = 3, min_layer_cells: int = 4,
@@ -263,8 +276,7 @@ def analyze_section_layers_uvd(samples_uvd: Iterable[Sequence[float]], *,
             "source_geometry_sha256": fingerprint, "uv_cell_count": len(footprint),
             "uv_coverage_fraction": len(footprint) / len(cells),
             "uv_bounds": [p[:, :2].min(axis=0).tolist(), p[:, :2].max(axis=0).tolist()],
-            "depth": {"min": float(p[:, 2].min()), "median": float(np.median(p[:, 2])),
-                      "max": float(p[:, 2].max())},
+            "depth": depth_summary(p[:, 2]),
             "max_local_depth_span": max(nodes[i]["span"] for i in members),
             "rms_local_depth_residual": rms,
             "local_unique_support": {"min": min(counts), "median": float(np.median(counts)), "max": max(counts)},
@@ -300,9 +312,7 @@ def analyze_section_layers_uvd(samples_uvd: Iterable[Sequence[float]], *,
         "analysis_fingerprint": fingerprint, "parameters": options,
         "grid_origin_uv": origin.tolist(), "uv_cell_count": len(cells), "uv_occupied_cell_area": area,
         "coordinate_precision_floor": {"uv": uv_floor, "depth": depth_floor},
-        "depth": {"min": float(points[:, 2].min()), "p10": float(np.percentile(points[:, 2], 10)),
-                  "median": float(np.median(points[:, 2])), "p90": float(np.percentile(points[:, 2], 90)),
-                  "max": float(points[:, 2].max())},
+        "depth": depth_summary(points[:, 2], percentiles=True),
         "local_observation_count": len(nodes), "multimodal_uv_cell_count": multimodal,
         "sparse_uv_cell_count": sparse, "thick_uv_cell_count": thick,
         "ambiguous_neighbor_pair_count": branch_pairs,
