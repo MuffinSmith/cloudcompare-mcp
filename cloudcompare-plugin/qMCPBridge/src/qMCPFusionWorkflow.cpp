@@ -2352,7 +2352,17 @@ bool createFitOverlay(
         return true;
     }
 
-    double widthRaw = params.value( "line_width" ).toDouble( 3.0 );
+    double widthRaw = 3.0;
+    if ( params.contains( "line_width" ) )
+    {
+        const QJsonValue widthValue = params.value( "line_width" );
+        if ( !widthValue.isDouble() )
+        {
+            error = "line_width must be finite and between 0 and 20";
+            return true;
+        }
+        widthRaw = widthValue.toDouble();
+    }
     if ( !std::isfinite( widthRaw ) || widthRaw < 0.0 || widthRaw > 20.0 )
     {
         error = "line_width must be finite and between 0 and 20";
@@ -2361,19 +2371,25 @@ bool createFitOverlay(
     const PointCoordinateType lineWidth =
         static_cast<PointCoordinateType>( widthRaw );
 
-    int segments = static_cast<int>( params.value( "segments" ).toDouble( 96.0 ) );
-    if ( segments < 8 || segments > 720 )
+    int segments = 96;
+    if ( params.contains( "segments" ) )
     {
-        error = "segments must be an integer between 8 and 720";
-        return true;
-    }
-    if ( params.contains( "segments" )
-         && ( !params.value( "segments" ).isDouble()
-              || std::floor( params.value( "segments" ).toDouble() )
-                     != params.value( "segments" ).toDouble() ) )
-    {
-        error = "segments must be an integer between 8 and 720";
-        return true;
+        const QJsonValue segmentsValue = params.value( "segments" );
+        if ( !segmentsValue.isDouble() )
+        {
+            error = "segments must be an integer between 8 and 720";
+            return true;
+        }
+        const double rawSegments = segmentsValue.toDouble();
+        if ( !std::isfinite( rawSegments )
+             || rawSegments < 8.0
+             || rawSegments > 720.0
+             || std::floor( rawSegments ) != rawSegments )
+        {
+            error = "segments must be an integer between 8 and 720";
+            return true;
+        }
+        segments = static_cast<int>( rawSegments );
     }
 
     QString defaultName;
@@ -2386,6 +2402,11 @@ bool createFitOverlay(
     else
         defaultName = "MCP Axis";
 
+    if ( params.contains( "name" ) && !params.value( "name" ).isString() )
+    {
+        error = "overlay name must be a string";
+        return true;
+    }
     const QString name =
         params.value( "name" ).toString( defaultName ).trimmed();
     if ( name.isEmpty() )
