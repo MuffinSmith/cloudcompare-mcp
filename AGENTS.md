@@ -42,9 +42,13 @@ correctly refused to assert `boundary_samples_only=true`. Do not repeat the 0.15
 topology acceptance solely to force this fan subtest through. This is direct evidence
 for the next filled-section boundary-extraction stage.
 
-The user explicitly authorized merging this accepted increment. Preserve
-`feature/live-cad-profile-topology` after merge. After merge, record the exact PR
-and merge commit here, then start the next runtime lane from current main rather than
+The user explicitly authorized merging this accepted increment. PR #15 merged
+`feature/live-cad-profile-topology` into `main` at
+`cf213649fea5717d9a9d5e6c1104240dc8b6f668`. Preserve the feature branch.
+The exact real-Windows tested runtime remains
+`e0043eab698e407cdb5df05ea4e827b6f05b1802`; the later
+`faf011f8e7ed64995934cf9f5e0e39feebcf4c8d` checkpoint is documentation-only
+acceptance recording. Start later runtime work from current accepted main rather than
 continuing development on this accepted branch.
 
 ## Accepted 0.15 first profile-reconstruction increment
