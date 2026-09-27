@@ -195,10 +195,21 @@ def discover_planes(
         if support_fraction < min_inlier_fraction:
             break
 
-        refined = fit_plane(subset[mask])
+        try:
+            refined = fit_plane(subset[mask])
+        except FeatureFitError:
+            break
         centroid = np.asarray(refined["centroid"], dtype=np.float64)
         normal = np.asarray(refined["normal"], dtype=np.float64)
-        signed = (subset[mask] - centroid) @ normal
+        # The last refit can move the feature. Accept and remove only points
+        # supporting the geometry that is actually returned, not the prior fit.
+        signed_all = (subset - centroid) @ normal
+        mask = np.abs(signed_all) <= threshold
+        support_count = int(np.count_nonzero(mask))
+        support_fraction = support_count / float(xyz.shape[0])
+        if support_count < min_points or support_fraction < min_inlier_fraction:
+            break
+        signed = signed_all[mask]
         inliers = subset[mask]
         bounds_min = np.min(inliers, axis=0)
         bounds_max = np.max(inliers, axis=0)
@@ -210,6 +221,7 @@ def discover_planes(
                 "support_fraction_of_sample": float(support_fraction),
                 "distance_threshold": threshold,
                 "residuals": _residual_stats(signed),
+                "refinement_sample_count": refined["sample_count"],
                 "bounds_global": {
                     "min": bounds_min.astype(float).tolist(),
                     "max": bounds_max.astype(float).tolist(),
@@ -503,21 +515,21 @@ def discover_circles(
             break
         if not radius_allowed(float(refined["radius"])):
             break
-        if (
-            float(refined["arc_coverage_degrees"])
-            < min_arc_coverage_degrees
-        ):
-            break
-
         center = np.asarray(refined["center"], dtype=np.float64)
         normal = np.asarray(refined["normal"], dtype=np.float64)
-        residual = _circle_residuals(
-            subset[mask],
-            center,
-            normal,
-            float(refined["radius"]),
+        residual_all = _circle_residuals(
+            subset, center, normal, float(refined["radius"])
         )
+        mask = residual_all <= threshold
+        support_count = int(np.count_nonzero(mask))
+        support_fraction = support_count / float(xyz.shape[0])
+        if support_count < min_points or support_fraction < min_inlier_fraction:
+            break
         inliers = subset[mask]
+        support_coverage = _angular_coverage(inliers, center, normal)
+        if support_coverage < min_arc_coverage_degrees:
+            break
+        residual = residual_all[mask]
         bounds_min = np.min(inliers, axis=0)
         bounds_max = np.max(inliers, axis=0)
 
@@ -528,6 +540,8 @@ def discover_circles(
                 "support_fraction_of_sample": float(support_fraction),
                 "distance_threshold": threshold,
                 "orthogonal_residuals": _residual_stats(residual),
+                "refinement_sample_count": refined["sample_count"],
+                "support_angular_coverage_degrees": support_coverage,
                 "bounds_global": {
                     "min": bounds_min.astype(float).tolist(),
                     "max": bounds_max.astype(float).tolist(),
@@ -785,19 +799,27 @@ def discover_cylinders(
                 dtype=np.int64,
             )
             fit_points = inliers[keep]
-        refined = fit_cylinder_3d(fit_points)
-        if (
-            float(refined["angular_coverage_degrees"])
-            < min_angular_coverage_degrees
-        ):
+        try:
+            refined = fit_cylinder_3d(fit_points)
+        except FeatureFitError:
             break
-
-        residual = _cylinder_residuals(
-            inliers,
-            np.asarray(refined["axis_point"], dtype=np.float64),
-            np.asarray(refined["axis_direction"], dtype=np.float64),
-            float(refined["radius"]),
+        if not radius_allowed(float(refined["radius"])):
+            break
+        axis_point = np.asarray(refined["axis_point"], dtype=np.float64)
+        axis_direction = np.asarray(refined["axis_direction"], dtype=np.float64)
+        residual_all = _cylinder_residuals(
+            subset, axis_point, axis_direction, float(refined["radius"])
         )
+        mask = residual_all <= threshold
+        support_count = int(np.count_nonzero(mask))
+        support_fraction = support_count / float(xyz.shape[0])
+        if support_count < min_points or support_fraction < min_inlier_fraction:
+            break
+        inliers = subset[mask]
+        support_coverage = _angular_coverage(inliers, axis_point, axis_direction)
+        if support_coverage < min_angular_coverage_degrees:
+            break
+        residual = residual_all[mask]
         bounds_min = np.min(inliers, axis=0)
         bounds_max = np.max(inliers, axis=0)
 
@@ -808,6 +830,8 @@ def discover_cylinders(
                 "support_fraction_of_sample": float(support_fraction),
                 "distance_threshold": threshold,
                 "radial_residuals": _residual_stats(residual),
+                "refinement_sample_count": refined["sample_count"],
+                "support_angular_coverage_degrees": support_coverage,
                 "bounds_global": {
                     "min": bounds_min.astype(float).tolist(),
                     "max": bounds_max.astype(float).tolist(),
