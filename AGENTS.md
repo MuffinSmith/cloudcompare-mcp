@@ -1,19 +1,30 @@
 # Repository work and interruption recovery
 
-## 0.15.3 Windows acceptance complete — merge approval still required
+## Accepted main: 0.15.3 depth-aware section layer isolation
 
-Resume the EXISTING `feature/live-cad-section-layer-isolation` branch. Do not
-recreate it after a disconnect. The exact real-Windows/CloudCompare tested HEAD is
-`2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`, created from accepted main
-`cb1ee9eab9c64ff4806036a6317606938faa22e6`. Python is 0.15.3.
-qMCPBridge remains unchanged at accepted 0.12.0 / workflow revision 8; no DLL
-rebuild occurred or is required.
+The user explicitly authorized merging the accepted 0.15.3 increment. PR #17 merged
+`feature/live-cad-section-layer-isolation` into `main` at
+`27cfd286331db177c76ce627056150e439d418c9`. Preserve the feature branch.
+
+Exact real-Windows/CloudCompare tested runtime HEAD:
+`2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`.
+
+Final acceptance-record feature HEAD:
+`dda5032a60143f7a17691034c337a83492a8613f`.
+
+Accepted-main parent before the increment:
+`cb1ee9eab9c64ff4806036a6317606938faa22e6`.
+
+Push CI `36354475752` and PR CI `36354635066` both passed at the final
+acceptance-record feature HEAD before merge. Python is 0.15.3. qMCPBridge remains
+unchanged at accepted 0.12.0 / workflow revision 8; no DLL rebuild occurred or is
+required. Post-merge README/layer-doc commits are documentation only.
 
 Focused Windows acceptance completed successfully for the fixture, live-GUI,
 handoff and safety gates. The bounded real fan analysis was legitimately BLOCKED;
-no reproducible product defect was found, no GitHub issue was opened, no runtime
-fix was made, and the branch was not merged. Detailed reports/raw evidence remain
-outside Git.
+no reproducible product defect was found, no GitHub issue was opened, and no runtime
+fix was made. PR #17 later merged the accepted branch after explicit user approval.
+Detailed reports/raw evidence remain outside Git.
 
 Exact acceptance identity and regression:
 - clean isolated Windows worktree at
@@ -77,10 +88,75 @@ retune solely to force this fan slab through. The BLOCKED result demonstrates th
 the safety boundary is functioning. A smaller/better isolated acquisition can be a
 future workflow improvement, but it is not required to accept 0.15.3.
 
-This lane is now Windows-accepted but NOT merged. The user's previous explicit merge
-authorization covered 0.15.2 only. Do not merge 0.15.3 until the user explicitly
-authorizes this accepted increment. Documentation-only acceptance recording after the
-tested SHA does not invalidate the tested runtime; verify its CI before merge.
+The accepted runtime remains the Windows-tested SHA above. Later acceptance and
+post-merge documentation commits do not create a new runtime acceptance obligation.
+Do not repeat the 0.15.3 Windows/fan gate merely because another chat starts.
+
+## Suggested next development lane: 0.15.4 section-target isolation
+
+The next chat should first inspect current `main`, remote branches, open PRs/issues,
+recent commits and CI. Do not create a replacement branch if a legitimate 0.15.4
+branch already exists. If no newer deliberate lane exists, create one branch from
+current accepted main, suggested name:
+
+`feature/live-cad-section-target-isolation`
+
+Suggested Python version: 0.15.4.
+
+Primary goal: make complex scan slabs easier to use without weakening 0.15.3 safety.
+The accepted fan result exceeded the declared 16-component layer-analysis limit.
+Do NOT solve that by simply raising `max_components`, selecting a depth sign, dropping
+small components, or searching thresholds until reconstruction succeeds.
+
+Instead add a bounded, deterministic target-region/patch isolation stage BEFORE full
+0.15.3 layer analysis. Conceptual pipeline:
+
+complete slab acquisition
+-> section coordinates (u, v, signed_depth)
+-> compact spatial target/patch evidence
+-> explicit safe/caller-selected target region
+-> accepted 0.15.3 layer analysis
+-> accepted 0.15.2 occupancy boundary extraction
+-> accepted 0.15.1 loop topology
+-> existing primitive fitting
+
+A useful first design may use explicit coarse U/V/depth connectivity, a bounded ROI,
+or an explicit seed/pick to identify one spatially coherent target while preserving
+all rejected/unselected-point accounting. Return compact candidate summaries,
+coverage, bounding ranges, support, ambiguity, source fingerprints and selection
+fingerprints. Automatic continuation should require exactly one unambiguous supported
+target. Multiple targets require explicit selection. A selected target is still
+inferred geometry, not manufacturing intent.
+
+Prefer the existing read-only `cloud.region_query` and existing picking/region
+capabilities. Do not add native qMCPBridge code unless structured acquisition is
+proven insufficient. Keep raw point arrays server-side. Require complete acquisition
+for topology-bearing decisions and never treat truncated reservoir samples as proof.
+
+Add snapshot and live MCP surfaces only after the numerical core is separately tested.
+Possible names, subject to clearer API design:
+- `analyze_section_target_regions`
+- `analyze_live_section_target_regions`
+- `reconstruct_section_target_profile`
+- `reconstruct_live_section_target_profile`
+
+Fixtures should include: one target plus disconnected clutter, multiple separated
+targets, nearby targets with a narrow bridge, overlapping depth layers inside one
+target, large rotation/translation, sparse/ambiguous target evidence, and a generic
+fan-like many-component slab. Exact generated files must be exercised through product
+code; do not tune fixtures or thresholds solely to make the retained real fan pass.
+
+Keep bounded multiresolution occupancy diagnostics as a later/separate enhancement
+unless they are independently necessary for this increment. Do not combine unrelated
+profile-classification work (ellipse/rounded-rectangle/spline inference) into 0.15.4.
+
+Before requesting another Windows gate require full regression, compileall,
+`git diff --check`, schemas, actual MCP stdio, exact generated-file tests, final
+diff against accepted main, proof of no native diff when claiming no rebuild, and
+green CI. The Windows machine is for testing/reporting, not implementing fixes.
+
+The real fan may remain BLOCKED after 0.15.4. Success is a trustworthy way to isolate
+or explain complex target regions, not forcing a CAD profile.
 
 ## Accepted main: 0.15.2
 
