@@ -2376,13 +2376,6 @@ bool createFitOverlay(
         return true;
     }
 
-    bool groupCreated = false;
-    ccHObject* overlayRoot = ensureOverlayGroup( app, error, groupCreated );
-    if ( !overlayRoot )
-    {
-        return true;
-    }
-
     QString defaultName;
     if ( kind == "plane" )
         defaultName = "MCP Plane";
@@ -2668,6 +2661,14 @@ bool createFitOverlay(
             return true;
         }
         polylines.push_back( axis );
+    }
+
+    bool groupCreated = false;
+    ccHObject* overlayRoot = ensureOverlayGroup( app, error, groupCreated );
+    if ( !overlayRoot )
+    {
+        cleanupPolylines();
+        return true;
     }
 
     ccHObject* liveFitGroup = fitGroup.release();
