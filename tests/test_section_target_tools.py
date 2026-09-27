@@ -10,14 +10,14 @@ import jsonschema
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
 from mcp.types import CallToolResult
-import numpy as np
 import pytest
 
 from cloudcompare_mcp import server
 from cloudcompare_mcp.section_target_tools import KINDS
 from test_section_target_workflow import snapshot, live_args
-from test_section_layer_workflow import native_result, rectangle
+from test_section_layer_workflow import native_result
 from test_section_layer_tools import body, stdio_parameters, ReplayServer, ReplayHandler
+from test_section_target_fixtures import generator, snapshot_from_file, native_from_file
 
 
 def test_target_registered_schemas_and_annotations():
@@ -74,16 +74,21 @@ def test_snapshot_dispatch_never_opens_socket():
     assert result['status'] == 'candidate'
 
 
-def test_actual_target_stdio_snapshot_no_bridge():
+def test_actual_target_stdio_snapshot_no_bridge(tmp_path):
+    output = tmp_path / 'generated'
+    manifest = generator.generate(output)
+    record = next(r for r in manifest['fixtures'] if r['name'] == 'transformed_single')
+    _, snapshot_args = snapshot_from_file(output, record)
     async def run():
         async with stdio_client(stdio_parameters('invalid-no-host')) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 assert set(KINDS) <= {t.name for t in (await session.list_tools()).tools}
-                response = await session.call_tool('analyze_section_target_regions', snapshot())
+                response = await session.call_tool('analyze_section_target_regions', snapshot_args)
                 analysis = body(response)
                 assert analysis['status'] == 'ready'
-                args = snapshot(reconstruct=True)
+                args = deepcopy(snapshot_args) | {'layer_parameters': record['layer_parameters'],
+                                                    'profile_parameters': record['profile_parameters']}
                 response = await session.call_tool('reconstruct_section_target_profile', args)
                 result = body(response)
                 assert result['status'] == 'candidate'
@@ -93,9 +98,13 @@ def test_actual_target_stdio_snapshot_no_bridge():
     asyncio.run(asyncio.wait_for(run(), timeout=45))
 
 
-def test_actual_target_stdio_live_tcp_replay_nested_choices_and_truncation():
-    points = np.vstack([rectangle(-.4), rectangle(.4), rectangle() + [20, 0, 0]])
-    native = native_result(points)
+def test_actual_target_stdio_live_tcp_replay_nested_choices_and_truncation(tmp_path):
+    output = tmp_path / 'generated'
+    manifest = generator.generate(output)
+    record = next(r for r in manifest['fixtures'] if r['name'] == 'nested_choices')
+    native = native_from_file(output, record)
+    analysis_args = {k: record[k] for k in ('origin', 'normal', 'half_thickness', 'target_parameters')}
+    analysis_args['cloud_id'] = 359
     saved = deepcopy(native)
     with ReplayServer(('127.0.0.1', 0), ReplayHandler) as peer:
         peer.native, peer.requests = native, []
@@ -106,9 +115,10 @@ def test_actual_target_stdio_live_tcp_replay_nested_choices_and_truncation():
             async with stdio_client(stdio_parameters(peer.server_address[1])) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
-                    analysis = body(await session.call_tool('analyze_live_section_target_regions', live_args()))
+                    analysis = body(await session.call_tool('analyze_live_section_target_regions', analysis_args))
                     assert analysis['candidate_target_count'] == 2
-                    args = live_args(True)
+                    args = deepcopy(analysis_args) | {'layer_parameters': record['layer_parameters'],
+                                                       'profile_parameters': record['profile_parameters']}
                     result = body(await session.call_tool('reconstruct_live_section_target_profile', args))
                     assert result['blocked_stage'] == 'target_selection'
                     c = analysis['candidate_targets'][0]
@@ -126,7 +136,7 @@ def test_actual_target_stdio_live_tcp_replay_nested_choices_and_truncation():
                     assert 'position_global' not in json.dumps(result)
                     stale = args | {'expected_target_fingerprint': 'stale'}
                     assert (await session.call_tool('reconstruct_live_section_target_profile', stale)).isError
-                    bad = live_args()
+                    bad = deepcopy(analysis_args)
                     bad['target_parameters']['max_points'] = 10
                     assert (await session.call_tool('analyze_live_section_target_regions', bad)).isError
         try:

@@ -7,13 +7,16 @@ Accepted-main parent: `0201cdd46381e0c79c05b33ee9de48851a18b877`.
 Initial recovery commit: `4b456f38affa8fdb250893ba5e1c148d8015ea26` (remote verified).
 No merge is authorized. Preserve every retained branch and unexpected work.
 
-Milestone: numerical core, snapshot/live workflow and four MCP tools integrated.
-Workflow checkpoint: `34e0606882a881f860661f742e5f77aecdf0b271` (remote verified).
-Core CI `36355473588` passed. Local numerical + workflow/replayed native tests:
-91 passed (48 core + 43 workflow); compileall and diff check passed. This is NOT
-real CloudCompare validation. Ten new MCP schema/dispatch/actual-stdio tests are
-committed for installed CI; local MCP dependencies are unavailable, so they were
-not executed locally. Python package is now 0.15.4. No native changes or DLL rebuild.
+Milestone: core/workflow/MCP and exact generated-file coverage implemented.
+MCP runtime checkpoint: `b22e18f1a2b785642e57b7a7d1231e282caa9d77` (remote verified).
+Installed CI `36355988329` passed, including schema and actual MCP stdio/TCP replay.
+Local numerical/workflow/exact-file suite: 111 passed (48 core, 43 workflow,
+20 file tests). All 14 freshly generated ASCII-double PLY fixtures were exercised
+through product projection, snapshot and native replay, including arbitrary 3D
+rotation plus [1e8,-2e8,3e8] translation. Single/parallel transformed profile handoff
+passed without threshold changes. Ten MCP tests now use exact generated files for
+stdio snapshot/live replay. Local MCP dependencies remain unavailable; use installed
+CI for full regression/transport. Python is 0.15.4. No native/DLL changes.
 
 Registration delegates through the existing layer-tools registry without changing
 server.py or accepted handlers/solvers. Capabilities are exposed under
@@ -41,10 +44,11 @@ boundary/topology refusal retains the accepted diagnostics. Native replay covera
 includes unique indices, complete counts, source/global frame, shift/scale and
 no mutation; it is not real-GUI or full-cloud integrity coverage.
 
-Next: exact generated PLY fixtures, arbitrary 3D rotation/large translation,
-file-to-product tests and file-backed stdio tests; review installed CI, finish
-regression/refusal boundaries and focused Windows procedure. Do not request Windows
-yet. Preserve committed core/workflow/tools; never recreate the lane after interruption.
+Next: final review, installed regression/CI, focused Windows documentation and
+recovery checkpoint. Do not request Windows until these gates pass. New fixtures
+must stay outside Git. The fan-like synthetic slab has 20 explicit spatial targets;
+not every target is necessarily supported, and a profile is not required. This is
+not the retained real fan and no real CloudCompare test has occurred here.
 
 ## Accepted history and boundaries
 
