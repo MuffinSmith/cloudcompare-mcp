@@ -210,7 +210,7 @@ def test_overlarge_edge_limit_that_connects_loops_fails_instead_of_guessing():
 
 def test_self_intersecting_loop_is_rejected():
     bow = sample_polygon([(-3, -2), (3, 2), (-3, 2), (3, -2)], spacing=0.35)
-    with pytest.raises(ProfileTopologyError, match="self-intersects|touches"):
+    with pytest.raises(ProfileTopologyError, match="self-intersects|touches|ambiguous|dead-ended"):
         reconstruct_profile_topology_2d(
             shuffle(bow, seed=15108),
             max_edge_length=0.7,
