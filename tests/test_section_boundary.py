@@ -51,15 +51,15 @@ def filled_fixture(
 
 
 def extract(points: np.ndarray, **kwargs):
-    return extract_section_boundary_evidence_2d(
-        points,
-        cell_size=0.5,
-        min_cell_support=1,
-        min_component_cells=2,
-        max_cells=20_000,
-        max_boundary_points=2048,
-        **kwargs,
-    )
+    options = {
+        "cell_size": 0.5,
+        "min_cell_support": 1,
+        "min_component_cells": 2,
+        "max_cells": 20_000,
+        "max_boundary_points": 2048,
+    }
+    options.update(kwargs)
+    return extract_section_boundary_evidence_2d(points, **options)
 
 
 def test_filled_outer_loop_extracts_one_contour():
@@ -118,7 +118,10 @@ def test_nonuniform_density_is_preserved_or_warned_without_repair():
     evidence = extract(points[keep])
     assert evidence.public["connected_contour_count"] == 3
     assert evidence.public["support_statistics"]["coefficient_of_variation"] >= 0
-    assert "morphological" not in json.dumps(evidence.public).lower()
+    assert any(
+        "no morphological closing" in assumption.lower()
+        for assumption in evidence.public["assumptions"]
+    )
 
 
 def test_disconnected_one_cell_noise_is_rejected_not_discarded():
@@ -129,13 +132,17 @@ def test_disconnected_one_cell_noise_is_rejected_not_discarded():
 
 
 def test_diagonal_only_connectivity_is_rejected():
-    # Dense samples inside two cells that touch only at one corner.
-    a = np.asarray(
-        [[0.1, 0.1], [0.2, 0.1], [0.1, 0.2], [0.2, 0.2]],
-        dtype=np.float64,
-    )
-    b = a + np.asarray([0.5, 0.5])
-    points = np.vstack((a, b))
+    # Two 2x2 material blocks touch only at one lattice corner. Each occupied
+    # cell has several source samples so the ambiguity reaches the connectivity gate.
+    cells = [
+        (0, 0), (1, 0), (0, 1), (1, 1),
+        (2, 2), (3, 2), (2, 3), (3, 3),
+    ]
+    points = []
+    for i, j in cells:
+        for du, dv in ((0.10, 0.10), (0.20, 0.10), (0.10, 0.20), (0.20, 0.20)):
+            points.append((i * 0.5 + du, j * 0.5 + dv))
+    points = np.asarray(points, dtype=np.float64)
     with pytest.raises(SectionBoundaryError, match="diagonal-only"):
         extract_section_boundary_evidence_2d(
             points,
