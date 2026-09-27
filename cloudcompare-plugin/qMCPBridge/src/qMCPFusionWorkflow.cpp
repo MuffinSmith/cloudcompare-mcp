@@ -27,7 +27,9 @@
 #include <ccHObjectCaster.h>
 #include <ccMesh.h>
 #include <ccPointCloud.h>
+#include <ccPolyline.h>
 #include <ccScalarField.h>
+#include <ccColorTypes.h>
 #include <ccGlobalShiftManager.h>
 #include <ccGLMatrix.h>
 
@@ -2156,6 +2158,588 @@ bool gridCloudRegion(
     return true;
 }
 
+const QString MCP_OVERLAY_GROUP_META = "MCPOverlayGroup";
+const QString MCP_OVERLAY_ENTITY_META = "MCPFitOverlay";
+
+bool readOverlayColor(
+    const QJsonObject& params,
+    ccColor::Rgb& color,
+    QString& error )
+{
+    color = ccColor::greenRGB;
+    if ( !params.contains( "color" ) )
+    {
+        return true;
+    }
+
+    const QJsonArray values = params.value( "color" ).toArray();
+    if ( values.size() != 3 )
+    {
+        error = "overlay color must be [r,g,b]";
+        return false;
+    }
+
+    unsigned char components[3];
+    for ( int i = 0; i < 3; ++i )
+    {
+        if ( !values.at( i ).isDouble() )
+        {
+            error = "overlay color values must be integers from 0 to 255";
+            return false;
+        }
+        const double raw = values.at( i ).toDouble();
+        if ( raw < 0.0 || raw > 255.0 || std::floor( raw ) != raw )
+        {
+            error = "overlay color values must be integers from 0 to 255";
+            return false;
+        }
+        components[i] = static_cast<unsigned char>( raw );
+    }
+    color = ccColor::Rgb( components[0], components[1], components[2] );
+    return true;
+}
+
+ccHObject* findOverlayGroup( ccMainAppInterface* app )
+{
+    ccHObject* root = app ? app->dbRootObject() : nullptr;
+    if ( !root )
+    {
+        return nullptr;
+    }
+
+    for ( unsigned i = 0; i < root->getChildrenNumber(); ++i )
+    {
+        ccHObject* child = root->getChild( i );
+        if ( child
+             && child->isA( CC_TYPES::HIERARCHY_OBJECT )
+             && child->hasMetaData( MCP_OVERLAY_GROUP_META )
+             && child->getMetaData( MCP_OVERLAY_GROUP_META ).toBool() )
+        {
+            return child;
+        }
+    }
+    return nullptr;
+}
+
+ccHObject* ensureOverlayGroup(
+    ccMainAppInterface* app,
+    QString& error,
+    bool& created )
+{
+    created = false;
+    if ( ccHObject* existing = findOverlayGroup( app ) )
+    {
+        return existing;
+    }
+
+    if ( !app || !app->dbRootObject() )
+    {
+        error = "CloudCompare DB root is unavailable";
+        return nullptr;
+    }
+
+    std::unique_ptr<ccHObject> group(
+        new ccHObject( QStringLiteral( "MCP Fit Overlays" ) ) );
+    group->setVisible( true );
+    group->setEnabled( true );
+    group->setMetaData( MCP_OVERLAY_GROUP_META, true );
+
+    ccHObject* liveGroup = group.release();
+    attachToDestination( app, liveGroup, app->dbRootObject() );
+    created = true;
+    return liveGroup;
+}
+
+ccPolyline* createOverlayPolyline(
+    ccPointCloud* source,
+    const std::vector<CCVector3d>& globalPoints,
+    bool closed,
+    const QString& name,
+    const ccColor::Rgb& color,
+    PointCoordinateType width,
+    QString& error )
+{
+    if ( !source || globalPoints.size() < 2 )
+    {
+        error = "Overlay polyline requires a source cloud and at least two points";
+        return nullptr;
+    }
+
+    std::unique_ptr<ccPointCloud> vertices(
+        new ccPointCloud( name + ".vertices" ) );
+    if ( !vertices->reserve( static_cast<unsigned>( globalPoints.size() ) ) )
+    {
+        error = "Could not allocate overlay polyline vertices";
+        return nullptr;
+    }
+
+    for ( const CCVector3d& globalPoint : globalPoints )
+    {
+        const CCVector3d local = source->toLocal3d<double>( globalPoint );
+        vertices->addPoint(
+            CCVector3(
+                static_cast<PointCoordinateType>( local.x ),
+                static_cast<PointCoordinateType>( local.y ),
+                static_cast<PointCoordinateType>( local.z ) ) );
+    }
+    vertices->copyGlobalShiftAndScale( *source );
+    vertices->setEnabled( false );
+
+    std::unique_ptr<ccPolyline> polyline( new ccPolyline( vertices.get() ) );
+    if ( !polyline->reserve( static_cast<unsigned>( globalPoints.size() ) ) )
+    {
+        error = "Could not allocate overlay polyline indexes";
+        return nullptr;
+    }
+    polyline->addChild( vertices.get() );
+    polyline->addPointIndex( 0, static_cast<unsigned>( globalPoints.size() ) );
+    polyline->setClosed( closed );
+    polyline->setName( name );
+    polyline->setColor( color );
+    polyline->showColors( true );
+    polyline->setWidth( width );
+    polyline->setVisible( true );
+    polyline->setEnabled( true );
+    polyline->setMetaData( MCP_OVERLAY_ENTITY_META, true );
+    polyline->copyGlobalShiftAndScale( *source );
+    polyline->setDisplay( source->getDisplay() );
+    polyline->prepareDisplayForRefresh_recursive();
+
+    vertices.release(); // ownership transferred to polyline child
+    return polyline.release();
+}
+
+bool createFitOverlay(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned sourceCloudId = 0;
+    if ( !readId( params, "source_cloud_id", sourceCloudId ) )
+    {
+        error = "overlay.create requires a numeric source_cloud_id";
+        return true;
+    }
+
+    ccPointCloud* source = requireStandaloneCloud( app, sourceCloudId, error );
+    if ( !source )
+    {
+        return true;
+    }
+
+    const QString kind = params.value( "kind" ).toString().trimmed().toLower();
+    if ( kind != "plane"
+         && kind != "circle"
+         && kind != "cylinder"
+         && kind != "axis" )
+    {
+        error = "overlay kind must be 'plane', 'circle', 'cylinder', or 'axis'";
+        return true;
+    }
+
+    const QJsonValue geometryValue = params.value( "geometry" );
+    if ( !geometryValue.isObject() )
+    {
+        error = "overlay.create requires a geometry object";
+        return true;
+    }
+    const QJsonObject geometry = geometryValue.toObject();
+
+    ccColor::Rgb color;
+    if ( !readOverlayColor( params, color, error ) )
+    {
+        return true;
+    }
+
+    double widthRaw = params.value( "line_width" ).toDouble( 3.0 );
+    if ( !std::isfinite( widthRaw ) || widthRaw < 0.0 || widthRaw > 20.0 )
+    {
+        error = "line_width must be finite and between 0 and 20";
+        return true;
+    }
+    const PointCoordinateType lineWidth =
+        static_cast<PointCoordinateType>( widthRaw );
+
+    int segments = static_cast<int>( params.value( "segments" ).toDouble( 96.0 ) );
+    if ( segments < 8 || segments > 720 )
+    {
+        error = "segments must be an integer between 8 and 720";
+        return true;
+    }
+    if ( params.contains( "segments" )
+         && ( !params.value( "segments" ).isDouble()
+              || std::floor( params.value( "segments" ).toDouble() )
+                     != params.value( "segments" ).toDouble() ) )
+    {
+        error = "segments must be an integer between 8 and 720";
+        return true;
+    }
+
+    bool groupCreated = false;
+    ccHObject* overlayRoot = ensureOverlayGroup( app, error, groupCreated );
+    if ( !overlayRoot )
+    {
+        return true;
+    }
+
+    QString defaultName;
+    if ( kind == "plane" )
+        defaultName = "MCP Plane";
+    else if ( kind == "circle" )
+        defaultName = "MCP Circle";
+    else if ( kind == "cylinder" )
+        defaultName = "MCP Cylinder";
+    else
+        defaultName = "MCP Axis";
+
+    const QString name =
+        params.value( "name" ).toString( defaultName ).trimmed();
+    if ( name.isEmpty() )
+    {
+        error = "overlay name must be non-empty";
+        return true;
+    }
+
+    std::unique_ptr<ccHObject> fitGroup( new ccHObject( name ) );
+    fitGroup->setVisible( true );
+    fitGroup->setEnabled( true );
+    fitGroup->setMetaData( MCP_OVERLAY_ENTITY_META, true );
+    fitGroup->setMetaData( "MCPOverlayKind", kind );
+    fitGroup->setMetaData(
+        "MCPOverlaySourceCloudId",
+        static_cast<qulonglong>( sourceCloudId ) );
+
+    std::vector<ccPolyline*> polylines;
+    auto cleanupPolylines = [&polylines]()
+    {
+        for ( ccPolyline* polyline : polylines )
+        {
+            delete polyline;
+        }
+        polylines.clear();
+    };
+
+    if ( kind == "axis" )
+    {
+        CCVector3d center;
+        CCVector3d direction;
+        if ( !readVector3( geometry, "center", center, error )
+             || !readVector3( geometry, "direction", direction, error ) )
+        {
+            return true;
+        }
+        const double norm = direction.normd();
+        const double length = geometry.value( "length" ).toDouble( -1.0 );
+        if ( norm <= std::numeric_limits<double>::epsilon()
+             || !std::isfinite( norm )
+             || !std::isfinite( length )
+             || length <= 0.0 )
+        {
+            error = "axis overlay requires non-zero direction and length > 0";
+            return true;
+        }
+        direction /= norm;
+        const CCVector3d half = direction * ( 0.5 * length );
+        std::vector<CCVector3d> points{ center - half, center + half };
+        ccPolyline* axis = createOverlayPolyline(
+            source, points, false, name + ".axis", color, lineWidth, error );
+        if ( !axis )
+            return true;
+        polylines.push_back( axis );
+    }
+    else if ( kind == "circle" )
+    {
+        CCVector3d center;
+        CCVector3d normal;
+        if ( !readVector3( geometry, "center", center, error )
+             || !readVector3( geometry, "normal", normal, error ) )
+        {
+            return true;
+        }
+        const double normalNorm = normal.normd();
+        const double radius = geometry.value( "radius" ).toDouble( -1.0 );
+        if ( normalNorm <= std::numeric_limits<double>::epsilon()
+             || !std::isfinite( normalNorm )
+             || !std::isfinite( radius )
+             || radius <= 0.0 )
+        {
+            error = "circle overlay requires non-zero normal and radius > 0";
+            return true;
+        }
+        normal /= normalNorm;
+        CCVector3d u = normal.orthogonal();
+        u.normalize();
+        CCVector3d v = normal.cross( u );
+        v.normalize();
+
+        std::vector<CCVector3d> points;
+        points.reserve( static_cast<size_t>( segments ) );
+        for ( int i = 0; i < segments; ++i )
+        {
+            const double angle =
+                2.0 * M_PI * static_cast<double>( i )
+                / static_cast<double>( segments );
+            points.push_back(
+                center
+                + u * ( radius * std::cos( angle ) )
+                + v * ( radius * std::sin( angle ) ) );
+        }
+        ccPolyline* circle = createOverlayPolyline(
+            source, points, true, name + ".circle", color, lineWidth, error );
+        if ( !circle )
+            return true;
+        polylines.push_back( circle );
+    }
+    else if ( kind == "plane" )
+    {
+        CCVector3d center;
+        CCVector3d normal;
+        CCVector3d basisU;
+        CCVector3d basisV;
+        if ( !readVector3( geometry, "center", center, error )
+             || !readVector3( geometry, "normal", normal, error )
+             || !readVector3( geometry, "basis_u", basisU, error )
+             || !readVector3( geometry, "basis_v", basisV, error ) )
+        {
+            return true;
+        }
+        const double width = geometry.value( "width" ).toDouble( -1.0 );
+        const double height = geometry.value( "height" ).toDouble( -1.0 );
+        if ( !std::isfinite( width ) || width <= 0.0
+             || !std::isfinite( height ) || height <= 0.0 )
+        {
+            error = "plane overlay requires width > 0 and height > 0";
+            return true;
+        }
+        const double normalNorm = normal.normd();
+        if ( normalNorm <= std::numeric_limits<double>::epsilon() )
+        {
+            error = "plane overlay normal has zero length";
+            return true;
+        }
+        normal /= normalNorm;
+        basisU -= normal * basisU.dot( normal );
+        if ( basisU.normd() <= std::numeric_limits<double>::epsilon() )
+        {
+            error = "plane overlay basis_u is parallel to the normal";
+            return true;
+        }
+        basisU.normalize();
+        basisV = normal.cross( basisU );
+        basisV.normalize();
+
+        const CCVector3d hu = basisU * ( 0.5 * width );
+        const CCVector3d hv = basisV * ( 0.5 * height );
+        std::vector<CCVector3d> rectangle{
+            center - hu - hv,
+            center + hu - hv,
+            center + hu + hv,
+            center - hu + hv
+        };
+        ccPolyline* border = createOverlayPolyline(
+            source, rectangle, true, name + ".border", color, lineWidth, error );
+        if ( !border )
+            return true;
+        polylines.push_back( border );
+
+        const double normalLength =
+            0.25 * std::max( width, height );
+        std::vector<CCVector3d> normalPoints{
+            center,
+            center + normal * normalLength
+        };
+        ccPolyline* normalLine = createOverlayPolyline(
+            source,
+            normalPoints,
+            false,
+            name + ".normal",
+            ccColor::yellowRGB,
+            lineWidth,
+            error );
+        if ( !normalLine )
+        {
+            cleanupPolylines();
+            return true;
+        }
+        polylines.push_back( normalLine );
+    }
+    else // cylinder
+    {
+        CCVector3d center;
+        CCVector3d direction;
+        if ( !readVector3( geometry, "center", center, error )
+             || !readVector3( geometry, "direction", direction, error ) )
+        {
+            return true;
+        }
+        const double directionNorm = direction.normd();
+        const double radius = geometry.value( "radius" ).toDouble( -1.0 );
+        const double height = geometry.value( "height" ).toDouble( -1.0 );
+        if ( directionNorm <= std::numeric_limits<double>::epsilon()
+             || !std::isfinite( directionNorm )
+             || !std::isfinite( radius )
+             || radius <= 0.0
+             || !std::isfinite( height )
+             || height <= 0.0 )
+        {
+            error =
+                "cylinder overlay requires non-zero direction, radius > 0, and height > 0";
+            return true;
+        }
+        direction /= directionNorm;
+        CCVector3d u = direction.orthogonal();
+        u.normalize();
+        CCVector3d v = direction.cross( u );
+        v.normalize();
+        const CCVector3d halfAxis = direction * ( 0.5 * height );
+
+        std::vector<CCVector3d> top;
+        std::vector<CCVector3d> bottom;
+        top.reserve( static_cast<size_t>( segments ) );
+        bottom.reserve( static_cast<size_t>( segments ) );
+        for ( int i = 0; i < segments; ++i )
+        {
+            const double angle =
+                2.0 * M_PI * static_cast<double>( i )
+                / static_cast<double>( segments );
+            const CCVector3d radial =
+                u * ( radius * std::cos( angle ) )
+                + v * ( radius * std::sin( angle ) );
+            top.push_back( center + halfAxis + radial );
+            bottom.push_back( center - halfAxis + radial );
+        }
+        ccPolyline* topCircle = createOverlayPolyline(
+            source, top, true, name + ".top", color, lineWidth, error );
+        if ( !topCircle )
+            return true;
+        polylines.push_back( topCircle );
+        ccPolyline* bottomCircle = createOverlayPolyline(
+            source, bottom, true, name + ".bottom", color, lineWidth, error );
+        if ( !bottomCircle )
+        {
+            cleanupPolylines();
+            return true;
+        }
+        polylines.push_back( bottomCircle );
+
+        for ( int quarter = 0; quarter < 4; ++quarter )
+        {
+            const double angle =
+                0.5 * M_PI * static_cast<double>( quarter );
+            const CCVector3d radial =
+                u * ( radius * std::cos( angle ) )
+                + v * ( radius * std::sin( angle ) );
+            std::vector<CCVector3d> generator{
+                center - halfAxis + radial,
+                center + halfAxis + radial
+            };
+            ccPolyline* line = createOverlayPolyline(
+                source,
+                generator,
+                false,
+                QString( "%1.generator%2" ).arg( name ).arg( quarter + 1 ),
+                color,
+                lineWidth,
+                error );
+            if ( !line )
+            {
+                cleanupPolylines();
+                return true;
+            }
+            polylines.push_back( line );
+        }
+
+        std::vector<CCVector3d> axisPoints{
+            center - halfAxis,
+            center + halfAxis
+        };
+        ccPolyline* axis = createOverlayPolyline(
+            source,
+            axisPoints,
+            false,
+            name + ".axis",
+            ccColor::yellowRGB,
+            lineWidth,
+            error );
+        if ( !axis )
+        {
+            cleanupPolylines();
+            return true;
+        }
+        polylines.push_back( axis );
+    }
+
+    ccHObject* liveFitGroup = fitGroup.release();
+    liveFitGroup->setDisplay( source->getDisplay() );
+    attachToDestination( app, liveFitGroup, overlayRoot );
+
+    QJsonArray entityIds;
+    for ( ccPolyline* polyline : polylines )
+    {
+        liveFitGroup->addChild( polyline );
+        app->addToDB( polyline, false, true, false, false );
+        entityIds.append( static_cast<qint64>( polyline->getUniqueID() ) );
+    }
+    polylines.clear(); // ownership transferred into DB/group
+
+    liveFitGroup->prepareDisplayForRefresh_recursive();
+    app->refreshAll();
+    app->updateUI();
+
+    QJsonObject out;
+    out[ "kind" ] = kind;
+    out[ "source_cloud_id" ] = static_cast<qint64>( sourceCloudId );
+    out[ "overlay_root_id" ] =
+        static_cast<qint64>( overlayRoot->getUniqueID() );
+    out[ "overlay_root_created" ] = groupCreated;
+    out[ "fit_group_id" ] =
+        static_cast<qint64>( liveFitGroup->getUniqueID() );
+    out[ "entity_ids" ] = entityIds;
+    out[ "fit_group" ] = entityDescription( liveFitGroup, true );
+    out[ "source_geometry_preserved" ] = true;
+    result = out;
+    return true;
+}
+
+bool clearFitOverlays(
+    ccMainAppInterface* app,
+    const QJsonObject&,
+    QJsonValue& result,
+    QString& error )
+{
+    ccHObject* group = findOverlayGroup( app );
+    if ( !group )
+    {
+        QJsonObject out;
+        out[ "cleared" ] = false;
+        out[ "deleted_group_id" ] = QJsonValue();
+        out[ "deleted_child_count" ] = 0;
+        result = out;
+        return true;
+    }
+
+    if ( !group->hasMetaData( MCP_OVERLAY_GROUP_META )
+         || !group->getMetaData( MCP_OVERLAY_GROUP_META ).toBool() )
+    {
+        error = "Refusing to clear an untagged overlay group";
+        return true;
+    }
+
+    const qint64 groupId = static_cast<qint64>( group->getUniqueID() );
+    const int childCount = static_cast<int>( group->getChildrenNumber() );
+    app->removeFromDB( group, true );
+    app->refreshAll();
+    app->updateUI();
+
+    QJsonObject out;
+    out[ "cleared" ] = true;
+    out[ "deleted_group_id" ] = groupId;
+    out[ "deleted_child_count" ] = childCount;
+    result = out;
+    return true;
+}
+
 bool createGroup(
     ccMainAppInterface* app,
     const QJsonObject& params,
@@ -3344,13 +3928,13 @@ QJsonObject capabilities()
 {
     QJsonObject result;
     result[ "protocol_version" ] = 1;
-    result[ "workflow_revision" ] = 7;
+    result[ "workflow_revision" ] = 8;
     result[ "units_policy" ] =
         "Coordinates are reported in native units. Units remain unknown unless supplied by the caller.";
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    result[ "plugin_version" ] = "0.11.0";
+    result[ "plugin_version" ] = "0.12.0";
 
     QJsonArray bridgeOperations{
         "ping",
@@ -3381,6 +3965,8 @@ QJsonObject capabilities()
         "cloud.distance_c2m",
         "cloud.region_query",
         "cloud.region_grid",
+        "overlay.create",
+        "overlay.clear",
         "metrology.pick.start",
         "metrology.pick.status",
         "metrology.pick.clear",
@@ -3408,6 +3994,8 @@ QJsonObject capabilities()
         "cloud.distance_c2m",
         "cloud.region_query",
         "cloud.region_grid",
+        "overlay.create",
+        "overlay.clear",
         "metrology.pick.start",
         "metrology.pick.status",
         "metrology.pick.clear",
@@ -3494,6 +4082,15 @@ QJsonObject capabilities()
     regionGrid[ "stable_cell_covariance" ] = true;
     regionGrid[ "source_preserved" ] = true;
     result[ "region_grid" ] = regionGrid;
+
+    QJsonObject overlays;
+    overlays[ "available" ] = true;
+    overlays[ "kinds" ] = QJsonArray{ "plane", "circle", "cylinder", "axis" };
+    overlays[ "wireframe" ] = true;
+    overlays[ "dedicated_tagged_group" ] = true;
+    overlays[ "safe_clear" ] = true;
+    overlays[ "source_geometry_preserved" ] = true;
+    result[ "fit_overlays" ] = overlays;
 
     QJsonArray meshing;
     {
@@ -4368,6 +4965,14 @@ bool dispatch(
     if ( method == "cloud.region_grid" )
     {
         return gridCloudRegion( app, params, result, error );
+    }
+    if ( method == "overlay.create" )
+    {
+        return createFitOverlay( app, params, result, error );
+    }
+    if ( method == "overlay.clear" )
+    {
+        return clearFitOverlays( app, params, result, error );
     }
     if ( method == "cloud.subsample" )
     {
