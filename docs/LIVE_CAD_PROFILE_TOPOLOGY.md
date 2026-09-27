@@ -1,8 +1,18 @@
-# 0.15.1 development: explicit section boundary topology
+# 0.15.1 accepted: explicit section boundary topology
 
 Branch: `feature/live-cad-profile-topology`, based on accepted main
-`efd2e7aff2e2c9a68fde83373b804450f20ebbe2`. Python becomes 0.15.1.
+`efd2e7aff2e2c9a68fde83373b804450f20ebbe2`. The exact Windows-tested feature
+HEAD is `e0043eab698e407cdb5df05ea4e827b6f05b1802`. Python is 0.15.1.
 qMCPBridge remains accepted 0.12.0 / workflow revision 8 and is unchanged.
+
+Real Windows/CloudCompare acceptance passed at that exact head: 455 Python tests
+passed, the 16 compiler-gated native policy tests passed after configuring MSVC,
+`compileall` passed, and `git diff --check` passed. Snapshot and real-host fixtures
+both recovered the intended outer -> hole -> island topology. The real fan exercise
+was BLOCKED because the available slab contained ordinary filled/mixed section
+samples, which do not satisfy this increment's explicit boundary-only contract.
+That result motivates the next filled-section boundary-evidence stage and is not a
+0.15.1 defect.
 
 This increment addresses the largest limitation retained from the accepted first
 0.15 profile stage: a section can contain more than one closed loop and a useful
