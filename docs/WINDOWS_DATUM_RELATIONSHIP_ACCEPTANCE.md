@@ -10,10 +10,15 @@ to chat. Save all probes, raw outputs and reports outside Git.
 ## 1. Checkout and runtime identity
 
 Inspect status, current branch, remote heads and AGENTS.md. Preserve unrelated work.
-Fetch and fast-forward only `feature/live-cad-datum-relationships` to the supplied
-exact SHA. A mismatch or dirty-tree conflict is BLOCKED, not permission to discard
-work. Confirm no diff under `cloudcompare-plugin` versus accepted main
-`e39949759c6386e5cd0387983c43a74f26e6a58e`.
+A clean checkout on another retained branch (for example `feature/live-hole-patterns`)
+is **not** a conflict and is not a reason to stop. Fetch the target branch, switch to
+`feature/live-cad-datum-relationships`, and fast-forward it only to the supplied
+exact SHA. If the target branch does not yet exist locally, create a tracking checkout
+from the matching remote branch. Do not reset, clean, force-checkout, or discard work.
+BLOCK only for actual uncommitted/staged work that would be endangered, unexpected
+branch divergence, a remote target that does not match the supplied SHA, or a failed
+safe switch/fast-forward. Confirm no diff under `cloudcompare-plugin` versus accepted
+main `e39949759c6386e5cd0387983c43a74f26e6a58e`.
 
 Using the actual MCP interpreter, install the Python checkout and test dependencies
 as needed, then restart only its Python MCP process if needed. Verify package path,
