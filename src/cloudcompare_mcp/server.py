@@ -37,6 +37,12 @@ from .section_boundary_tools import (
     handle_reconstruct_filled_section_profile,
 )
 
+from .section_layer_tools import (
+    capabilities as section_layer_capabilities,
+    tools as section_layer_tools,
+    handlers as section_layer_handlers,
+)
+
 # ── CloudCompare binary discovery ────────────────────────────────────────────
 
 _CC_CANDIDATES: dict[str, list[str]] = {
@@ -2460,6 +2466,7 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
         profile["live_boundary_topology"] = bool(region_available)
         profile["live_filled_section_reconstruction"] = bool(region_available)
         native["python_cad_profiles"] = profile
+        native["python_section_layers"] = section_layer_capabilities(live_available=region_available)
         from .feature_discovery import discovery_capabilities
         discovery = discovery_capabilities()
         overlay_capability = native.get("fit_overlays")
@@ -4664,6 +4671,7 @@ TOOLS.extend(datum_tools())
 TOOLS.extend(profile_tools())
 TOOLS.extend(profile_topology_tools())
 TOOLS.extend(section_boundary_tools())
+TOOLS.extend(section_layer_tools())
 
 
 @server.list_tools()
@@ -4764,6 +4772,7 @@ async def call_tool(
         "convert_format": handle_convert,
         "run_cloudcompare_command": handle_raw_command,
     }
+    dispatch.update(section_layer_handlers(live_request))
     try:
         handler = dispatch.get(name)
         if handler is None:
