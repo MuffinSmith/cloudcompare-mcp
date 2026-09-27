@@ -971,6 +971,171 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="discover_live_circles",
+        description=(
+            "Discover circular edge/hole candidates inside a live point-cloud region without screenshots or manual picks. "
+            "Uses deterministic 3D RANSAC plus geometric circle refinement and returns support fraction, coverage, "
+            "radius/diameter, residuals, and candidate bounds."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "region": {
+                    "type": "object",
+                    "properties": {
+                        "type": {"type": "string", "enum": ["sphere", "box", "slab", "nearest"]},
+                        "center": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "radius": {"type": "number", "exclusiveMinimum": 0},
+                        "min": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "max": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "origin": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "normal": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "half_thickness": {"type": "number", "minimum": 0},
+                        "max_distance": {"type": "number", "minimum": 0}
+                    },
+                    "required": ["type"]
+                },
+                "coordinate_space": {"type": "string", "enum": ["global", "native_local"], "default": "global"},
+                "sample_limit": {"type": "integer", "minimum": 4, "maximum": 20000, "default": 5000},
+                "distance_threshold": {"type": "number", "exclusiveMinimum": 0},
+                "max_circles": {"type": "integer", "minimum": 1, "maximum": 32, "default": 8},
+                "min_points": {"type": "integer", "minimum": 4, "default": 12},
+                "min_inlier_fraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.02},
+                "iterations": {"type": "integer", "minimum": 10, "maximum": 10000, "default": 800},
+                "min_arc_coverage_degrees": {"type": "number", "minimum": 0, "maximum": 360, "default": 90},
+                "min_radius": {"type": "number", "exclusiveMinimum": 0},
+                "max_radius": {"type": "number", "exclusiveMinimum": 0}
+            },
+            "required": ["cloud_id", "region"]
+        },
+    ),
+    Tool(
+        name="discover_live_cylinders",
+        description=(
+            "Discover dominant cylinder/bore/shaft candidates inside a live point-cloud region without screenshots or manual picks. "
+            "Uses deterministic multi-start robust fitting and reports support fraction, axis, diameter, radial residuals, "
+            "angular coverage, axial span, and candidate bounds."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cloud_id": {"type": "integer"},
+                "region": {
+                    "type": "object",
+                    "properties": {
+                        "type": {"type": "string", "enum": ["sphere", "box", "slab", "nearest"]},
+                        "center": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "radius": {"type": "number", "exclusiveMinimum": 0},
+                        "min": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "max": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "origin": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "normal": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                        "half_thickness": {"type": "number", "minimum": 0},
+                        "max_distance": {"type": "number", "minimum": 0}
+                    },
+                    "required": ["type"]
+                },
+                "coordinate_space": {"type": "string", "enum": ["global", "native_local"], "default": "global"},
+                "sample_limit": {"type": "integer", "minimum": 6, "maximum": 20000, "default": 5000},
+                "distance_threshold": {"type": "number", "exclusiveMinimum": 0},
+                "max_cylinders": {"type": "integer", "minimum": 1, "maximum": 8, "default": 3},
+                "min_points": {"type": "integer", "minimum": 6, "default": 24},
+                "min_inlier_fraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.05},
+                "restarts": {"type": "integer", "minimum": 1, "maximum": 64, "default": 12},
+                "subset_size": {"type": "integer", "minimum": 6, "maximum": 512, "default": 64},
+                "min_angular_coverage_degrees": {"type": "number", "minimum": 0, "maximum": 360, "default": 90},
+                "min_radius": {"type": "number", "exclusiveMinimum": 0},
+                "max_radius": {"type": "number", "exclusiveMinimum": 0}
+            },
+            "required": ["cloud_id", "region"]
+        },
+    ),
+    Tool(
+        name="show_live_plane_overlay",
+        description=(
+            "Show a temporary cyan wireframe plane overlay in CloudCompare using global fit coordinates. "
+            "The overlay inherits the source cloud's shift/scale frame and can be removed with clear_live_fit_overlays."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_cloud_id": {"type": "integer"},
+                "center": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "normal": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "width": {"type": "number", "exclusiveMinimum": 0},
+                "height": {"type": "number", "exclusiveMinimum": 0},
+                "name": {"type": "string"}
+            },
+            "required": ["source_cloud_id", "center", "normal", "width", "height"]
+        },
+    ),
+    Tool(
+        name="show_live_circle_overlay",
+        description=(
+            "Show a temporary yellow circle overlay in CloudCompare using global fit coordinates. "
+            "The source cloud is preserved."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_cloud_id": {"type": "integer"},
+                "center": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "normal": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "radius": {"type": "number", "exclusiveMinimum": 0},
+                "name": {"type": "string"}
+            },
+            "required": ["source_cloud_id", "center", "normal", "radius"]
+        },
+    ),
+    Tool(
+        name="show_live_cylinder_overlay",
+        description=(
+            "Show a temporary magenta wireframe cylinder and optional green axis in CloudCompare. "
+            "Provide the fitted global span endpoints and radius; source geometry is preserved."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_cloud_id": {"type": "integer"},
+                "endpoint_a": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "endpoint_b": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "radius": {"type": "number", "exclusiveMinimum": 0},
+                "show_axis": {"type": "boolean", "default": True},
+                "name": {"type": "string"}
+            },
+            "required": ["source_cloud_id", "endpoint_a", "endpoint_b", "radius"]
+        },
+    ),
+    Tool(
+        name="show_live_axis_overlay",
+        description=(
+            "Show a temporary green 3D axis/line overlay between two global coordinates in CloudCompare."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_cloud_id": {"type": "integer"},
+                "endpoint_a": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "endpoint_b": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+                "name": {"type": "string"}
+            },
+            "required": ["source_cloud_id", "endpoint_a", "endpoint_b"]
+        },
+    ),
+    Tool(
+        name="get_live_fit_overlays",
+        description="Return the temporary MCP fit-overlay group and its currently visible entities.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="clear_live_fit_overlays",
+        description=(
+            "Remove the complete temporary MCP Fit Overlays group without touching source scan entities."
+        ),
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
         name="describe_live_section_grid",
         description=(
             "Create a compact sparse 2D occupancy map of a full-cloud slab section without returning an image or raw profile. "
