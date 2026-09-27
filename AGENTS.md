@@ -1,27 +1,46 @@
 # Repository work and interruption recovery
 
-## Active 0.15.3 lane: numerical core saved, not Windows-ready
+## Active 0.15.3 lane: integrated, final validation in progress
 
 Resume the EXISTING `feature/live-cad-section-layer-isolation` branch, created from
 accepted main `cb1ee9eab9c64ff4806036a6317606938faa22e6`.
-Latest numerical/runtime checkpoint: `9c6b45b7b758029d8031ce0ea9d89e8c7fc1c54d`.
+Latest integrated runtime checkpoint: `1643fedbb6904d26b4e10788f5e83d4e8e51ae16`.
 Python is 0.15.3. Native qMCPBridge is unchanged 0.12.0 / workflow revision 8.
 
-The new `section_layers.py` retains complete U/V/depth samples, explicit local depth
-modes, 4-neighbor continuity, compact candidates and overlap, and refuses sparse,
-thick or crossing/merging evidence. Selection is automatic only for one safe
-component; explicit selection requires the exact analysis fingerprint. Disconnected
-patches are separate candidates, never implicitly joined. All points are accounted
-for. The initial numerical suite passed 43 tests in the development container.
-CI is triggered for this branch; inspect its current result, do not infer success.
+Numerical core checkpoint `9c6b45b7b758029d8031ce0ea9d89e8c7fc1c54d` passed 43
+local tests; recovery HEAD `4290d67c7e23dee61feb1961c10f88d96f4ad792` passed full
+CI run `36350995683`. Workflow/provenance/selection checkpoint
+`055fc189c5559e02f740d364f989ca9620dea3a0` added complete live acquisition and
+safe selected-layer handoff to unchanged accepted occupancy/topology/fitting.
 
-Read `docs/LIVE_CAD_SECTION_LAYER_ISOLATION.md`. Remaining work: MCP snapshot/live
-plumbing, safe selected-layer handoff into accepted occupancy/topology, exact generated
-fixture-file tests, schema and actual stdio coverage, full regression/compileall/diff,
-green CI, README and a focused Windows procedure. Do NOT request Windows testing yet.
+The integrated lane adds four tools: `analyze_section_layers`,
+`analyze_live_section_layers`, `reconstruct_section_layer_profile`, and
+`reconstruct_live_section_layer_profile`. Server.py changes are nine registration
+lines only; its expected blob is `e95be714b297fcb95e14578b9b17d302257f7193`.
+A temporary branch-only, hash-checked registration job applied those lines; that
+one-shot workflow is removed by this checkpoint and must not be recreated.
+
+Core/workflow/exact generated-file tests: 106 passed locally. Twelve generated PLY
+fixtures cover single/parallel/three/overlapping/sloped/crossing/noisy/thick/sparse,
+fan-like, and rotated/large-translated layers. Both single-layer PLY files hand off to
+accepted 0.15.2 successfully. Actual MCP stdio/schema tests are now committed;
+inspect this checkpoint's full CI before claiming them passed. The TCP replay peer
+is NOT real CloudCompare. No 0.15.3 Windows acceptance has been performed yet.
+
 The container's package network is unavailable and MCP/PLY dependencies are absent;
-run available exact-source numerical tests locally and full installed tests in CI,
-without presenting dependency failures or mocked acquisition as real-host validation.
+run available exact-source numerical tests locally and full installed tests in CI.
+Do not label dependency failures, replay acquisition, or mocked calls as real-host
+validation. Remaining: green full CI with new MCP tests, final diff/exact-source
+review, README/contracts and a reusable Windows acceptance procedure, then final
+recovery record. Do not request Windows until those gates pass.
+
+The numerical layer retains every U/V/depth sample, explicit local depth modes,
+4-neighbor continuity and compact candidates. Sparse, thick or merging/crossing
+components block continuation, even after an explicit choice. Selection is automatic
+only for one usable component. Explicit selection binds the exact geometry, source,
+frame, acquisition and parameters through an analysis fingerprint. Disconnected
+patches are separate candidates, never implicitly joined. All source points are
+accounted for. Read `docs/LIVE_CAD_SECTION_LAYER_ISOLATION.md` for contracts.
 
 This lane is NOT accepted. The user's merge approval covered 0.15.2 only. Do not
 merge 0.15.3 without its own Windows acceptance and explicit approval. Save each
@@ -63,9 +82,6 @@ CloudCompare owns read-only complete acquisition and source provenance. Prefer
 existing `cloud.region_query`, with NO native/DLL change. Do not begin Fusion 360
 integration in this increment.
 
-Return compact deterministic layer candidates, support/thickness/overlap/crossing
-warnings and source/layer fingerprints. Hand only a safe or explicitly chosen usable
-layer to the unchanged accepted 0.15.2 occupancy, 0.15.1 topology and primitive fitter.
 Never select by depth sign, drop inconvenient samples, use truncated reservoir samples
 as topology proof, or search parameters until a CAD outline looks good. Automatic
 continuation requires one unambiguous supported coherent layer. Explicit selection
@@ -94,7 +110,7 @@ UV occupancy contacts. Do not assume this exact slab must become reconstructable
 ## Validation boundary
 
 Use the development container for every available numerical, unit, protocol, CLI,
-static and build check. Test the actual source, not a handwritten reference presented
+static and build check. Test actual source, not a handwritten reference presented
 as product validation. Distinguish exact-source tests, replay/mocked acquisition,
 native policy compilation and real CloudCompare GUI tests. Missing dependencies,
 network or builds are limitations, not passing tests; preserve evidence outside Git.
