@@ -54,6 +54,7 @@ These tools operate on the **CloudCompare instance that is already open** instea
 |------|-------------|
 | `get_live_cloudcompare_info` | Check connectivity to the open CloudCompare GUI |
 | `list_live_entities` | Read the current DB tree and entity IDs |
+| `summarize_live_scene` | Compact image-free geometry inventory for locating major clouds/meshes |
 | `get_live_selection` | Read the current GUI selection |
 | `set_live_selection` | Select entities by CloudCompare unique ID |
 | `load_file_live` | Load a file into the open GUI |
