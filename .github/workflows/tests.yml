@@ -1,118 +1,49 @@
-name: profile-source-handoff
+name: tests
 
 on:
   push:
     branches:
+      - feature/fusion-reference-mesh-workflow
+      - feature/live-scan-preparation
+      - feature/live-registration
+      - feature/live-registration-analysis
+      - feature/live-metrology
+      - feature/live-feature-fitting
+      - feature/live-cylinder-sections
+      - feature/live-region-fitting
+      - feature/live-feature-discovery
+      - feature/live-feature-candidates-overlays
+      - feature/live-hole-patterns
+      - feature/live-cad-datum-relationships
       - feature/live-cad-profile-reconstruction
+      - main
+  pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
-      - name: Recover and verify exact locally tested 0.15 tree
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python - <<'PY'
-          import base64, hashlib, json, lzma, os, pathlib, subprocess
-          baseline = "b462fb2733a7c57b590a283d1ed03dfdfc3df0bc"
-          desired = "6885090ad5c0d719f7b09e7702ae6e70e6f09cfc"
-          patch_sha256 = "ca96639b110c688898a715655fb934ae37950b9d3fc902c5b73cfacd43e1a10b"
-          patch_len = 101519
-          chunk_shas = [
-              "051671cfc458e37d2b67c386bcefbf4ec0a32a7e",
-              "ed0cfe4f68c4927b2e271e1a9d7473208db1e2fb",
-              "c132ac82e41ac5cbadf9dfc22af1021448ce2b20",
-              "7b267fb31c9c55f8aae4069d4cb611bee8e3f2a3",
-              "9bec60b03fa81fd708ecd7f3935797544a13f776",
-              "a2b76ee1b990af480ece0a3963ca925f9837d1c1",
-          ]
-          def git(*args):
-              return subprocess.check_output(["git", *args]).decode().strip()
-          assert git("merge-base", "HEAD", baseline) == baseline
-          assert git("diff", "--name-only", baseline, "HEAD") == ".github/workflows/tests.yml"
-          chunks=[]
-          for sha in chunk_shas:
-              raw=json.loads(subprocess.check_output([
-                  "gh","api",f"repos/MuffinSmith/cloudcompare-mcp/git/blobs/{sha}"
-              ]))
-              data=base64.b64decode(raw["content"])
-              assert hashlib.sha1(b"blob "+str(len(data)).encode()+b"\0"+data).hexdigest()==sha
-              chunks.append(data)
-          patch=lzma.decompress(b"".join(chunks))
-          assert len(patch)==patch_len
-          assert hashlib.sha256(patch).hexdigest()==patch_sha256
-          pathlib.Path(".github/workflows/tests.yml").write_bytes(
-              subprocess.check_output(["git","show",baseline+":.github/workflows/tests.yml"])
-          )
-          subprocess.run(["git","apply","--check"],input=patch,check=True)
-          subprocess.run(["git","apply"],input=patch,check=True)
-          subprocess.run(["git","add","-A"],check=True)
-          assert git("write-tree")==desired
-          subprocess.run(["git","diff","--cached","--check"],check=True)
-          subprocess.run([
-              "git","diff","--cached","--exit-code",baseline,"--","cloudcompare-plugin"
-          ],check=True)
-          print("Verified exact 0.15 product tree:", desired)
-          PY
+          python-version: "3.12"
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[test]"
       - run: python -m compileall -q src scripts tests
-      - run: python -m pytest -q tests
-      - name: Store exact tested file blobs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python - <<'PY'
-          import base64, hashlib, json, os, pathlib, subprocess
-          baseline="b462fb2733a7c57b590a283d1ed03dfdfc3df0bc"
-          desired="6885090ad5c0d719f7b09e7702ae6e70e6f09cfc"
-          assert subprocess.check_output(["git","write-tree"]).decode().strip()==desired
-          names=subprocess.check_output(
-              ["git","diff","--cached","--name-only",baseline]
-          ).decode().splitlines()
-          assert len(names)==14, names
-          entries=[]
-          for name in names:
-              data=pathlib.Path(name).read_bytes()
-              expected=hashlib.sha1(
-                  b"blob "+str(len(data)).encode()+b"\0"+data
-              ).hexdigest()
-              payload=json.dumps({
-                  "content":base64.b64encode(data).decode(),
-                  "encoding":"base64",
-              }).encode()
-              result=json.loads(subprocess.check_output([
-                  "gh","api","--method","POST",
-                  "repos/MuffinSmith/cloudcompare-mcp/git/blobs","--input","-"
-              ],input=payload))
-              assert result["sha"]==expected
-              entries.append({
-                  "path":name,"mode":"100644","type":"blob","sha":expected
-              })
-          descriptor={
-              "baseline":baseline,
-              "handoff_commit":os.environ["GITHUB_SHA"],
-              "tested_product_tree":desired,
-              "entries":entries,
-          }
-          out=pathlib.Path(os.environ["RUNNER_TEMP"])/"profile-product-descriptor.json"
-          out.write_text(json.dumps(descriptor,indent=2))
-          print(json.dumps(descriptor,indent=2))
-          PY
-      - uses: actions/upload-artifact@v4
+      - run: pytest -q tests
+      # Only tracked public source is archived. Do not include the workspace,
+      # credentials, local evidence, or the user's fan_project.bin fixture.
+      - name: Archive exact tested source
+        if: always()
+        run: git archive --format=tar --output=cloudcompare-source.tar HEAD
+      - name: Publish source snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: profile-product-descriptor
-          path: ${{ runner.temp }}/profile-product-descriptor.json
+          name: tested-source-${{ github.sha }}
+          path: cloudcompare-source.tar
           if-no-files-found: error
           retention-days: 3

@@ -45,6 +45,7 @@ are documented in [docs/LIVE_FEATURE_CANDIDATES.md](docs/LIVE_FEATURE_CANDIDATES
 |------|-------------|
 | `read_cloud_metadata` | Parse a cloud and return point count, bounding box, extent, density, RGB/intensity/normals presence |
 | `visualize_cloud` | **Render top / front / side views + metadata panel as a base64 PNG the model can see directly** |
+| `reconstruct_section_profile` | Reconstruct candidate line/arc/circle CAD geometry from a supplied 2D section snapshot without live I/O |
 
 ### Live CloudCompare GUI tools (requires qMCPBridge plugin)
 
@@ -96,6 +97,7 @@ These tools operate on the **CloudCompare instance that is already open** instea
 | `fit_live_region_circle` | Fit a circle/hole directly to a live-cloud region |
 | `fit_live_region_cylinder` | Fit a cylinder/bore/shaft directly to a live-cloud region |
 | `extract_live_section` | Extract and project a full-cloud slab into a compact 2D section summary |
+| `reconstruct_live_section_profile` | Reconstruct compact line/arc/circle profile candidates from a bounded live slab sample while keeping raw points server-side |
 | `describe_live_region_grid` | Numerical 3D spatial view with exact cell counts and shape metrics |
 | `discover_live_planes` | Discover dominant planar patches inside a live-cloud region |
 | `describe_live_section_grid` | Compact sparse 2D occupancy summary of a full-cloud slab section |
@@ -267,7 +269,7 @@ merged through PR #10. See AGENTS.md for exact source attribution and coverage
 limits. No DLL rebuild was required.
 
 
-## Python-only 0.14 CAD datums and feature relationships (development)
+## Python-only 0.14 CAD datums and feature relationships (accepted)
 
 `analyze_feature_relationships` measures relationships between supplied global/native
 plane, line, circle, cylinder and point snapshots. `build_live_datum_frame` constructs
@@ -275,8 +277,21 @@ an explicit right-handed coordinate frame from a primary plane, a secondary
 plane/axis and an optional origin feature. Both tools analyze snapshots **without
 connecting to CloudCompare**; the `live` datum name does not imply live validation.
 Results retain source fingerprints/provenance and distinguish numerical candidates
-from physical manufacturing intent. They do not modify scans, create CAD, infer
-millimetres, or store acceptance states. The native bridge remains 0.12.0 / workflow
-revision 8, unchanged. This new increment is pending Windows acceptance and merge
-approval. See [contracts and examples](docs/LIVE_CAD_DATUM_RELATIONSHIPS.md) and
-[Windows acceptance](docs/WINDOWS_DATUM_RELATIONSHIP_ACCEPTANCE.md).
+from physical manufacturing intent. The native bridge remains 0.12.0 / workflow
+revision 8, unchanged. The increment passed real Windows/CloudCompare acceptance
+and was merged through PR #12; the fan datum acquisition limitation is retained as
+coverage, not a product defect. See [contracts and examples](docs/LIVE_CAD_DATUM_RELATIONSHIPS.md).
+
+## Python-only 0.15 CAD profile reconstruction (development)
+
+`reconstruct_section_profile` turns an explicit 2D section snapshot into compact
+line/arc/circle primitives plus adjacency/tangency and circle/rectangle/slot
+candidates without live I/O. `reconstruct_live_section_profile` reuses the accepted
+native slab-region query, keeps raw sampled points server-side, projects them to a
+stable section frame, and returns the same compact candidate representation.
+Ordering assumptions are explicit: caller order, polar closed-loop ordering, or
+principal-axis open ordering. Candidate geometry is not accepted manufacturing
+intent. Ellipses, rounded-rectangle classification, arbitrary multi-loop topology,
+and spline fallback remain later 0.15 work. The native bridge is still unchanged at
+0.12.0 / revision 8. See [profile contracts](docs/LIVE_CAD_PROFILE_RECONSTRUCTION.md)
+and the [Windows acceptance procedure](docs/WINDOWS_PROFILE_RECONSTRUCTION_ACCEPTANCE.md).

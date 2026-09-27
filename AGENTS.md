@@ -1,5 +1,35 @@
 # Repository work and interruption recovery
 
+## Active 0.15 CAD profile reconstruction lane (not accepted or merged)
+
+Continue `feature/live-cad-profile-reconstruction`, created from accepted-main
+checkpoint `b462fb2733a7c57b590a283d1ed03dfdfc3df0bc`. Inspect remote heads and
+local work before resuming; do not create a replacement branch after interruptions.
+Python becomes 0.15.0. Native qMCPBridge remains accepted 0.12.0 / workflow
+revision 8; no native source or DLL change is part of this stage.
+
+The first 0.15 increment adds a pure-Python ordered-profile reconstruction core,
+read-only snapshot tool `reconstruct_section_profile`, and live wrapper
+`reconstruct_live_section_profile`. The live wrapper reuses the accepted native slab
+region query, performs projection/reconstruction server-side, and does not return raw
+point arrays. Initial primitives are line, circular arc and circle. Initial higher-level
+outputs are circle/rectangle/slot **candidates**, never accepted manufacturing intent.
+Ordering assumptions are explicit (`input`, `polar_closed_loop`, `principal_open`).
+Polar ordering is only a bounded first-stage option for a single sufficiently
+star-shaped closed loop; do not generalize it to arbitrary topology.
+
+Read `docs/LIVE_CAD_PROFILE_RECONSTRUCTION.md` and
+`docs/WINDOWS_PROFILE_RECONSTRUCTION_ACCEPTANCE.md`. Development tests must cover
+rotations, large translations, noisy geometry, tolerance boundaries, malformed
+inputs, deterministic ordering, MCP dispatch/stdio, live acquisition contracts and
+the full regression suite. Windows acceptance and explicit user approval are still
+required before a future 0.15 merge.
+
+Deferred within 0.15: ellipses, rounded-rectangle recognition, robust arbitrary
+multi-loop/non-star-shaped boundary ordering, self-intersection/topology repair,
+symmetry solving and spline fallback. These should be added deliberately rather than
+hidden behind overconfident heuristics.
+
 ## Accepted 0.14 baseline
 
 The user explicitly approved merging the accepted 0.14 increment. PR #12 merged
