@@ -273,6 +273,10 @@ def test_composite_reuses_accepted_topology_for_outer_hole_island():
         "island",
     ]
     assert result["extraction"]["connected_contour_count"] == 3
+    assert all(
+        loop["profile"]["primitive_count"] >= 1
+        for loop in result["topology"]["loops"]
+    )
     assert result["state"] == "inferred_candidate"
     assert result["manufacturing_intent_confirmed"] is False
     assert "points_uv" not in json.dumps(result)
