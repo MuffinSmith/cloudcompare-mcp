@@ -60,7 +60,9 @@ A general minimal cylinder RANSAC solver is deliberately avoided in this first
 version. Instead the discovery layer uses deterministic multi-start robust fitting:
 
 1. build one broad seed from a deterministic sample;
-2. build additional seeds from deterministic pseudorandom subsets;
+2. build additional seeds from small deterministic pseudorandom subsets (six
+   points by default) so useful hypotheses can still be generated when the
+   surrounding region contains unrelated geometry;
 3. fit each seed with the accepted `fit_cylinder_3d` solver;
 4. score every seed against the complete bounded sample by radial error;
 5. keep the candidate with the strongest threshold support;
@@ -84,7 +86,11 @@ When no explicit maximum radius is supplied, discovery rejects candidates larger
 than twice the sampled-region diagonal. This suppresses huge-radius "cylinders"
 that are effectively just flat patches.
 
-This is intended for reasonably localized candidate regions rather than blind
+The small seed size makes the candidate stage substantially more tolerant of
+outliers than fitting large random subsets. Candidate hypotheses are always
+scored against the complete bounded sample before acceptance.
+
+This is still intended for reasonably localized candidate regions rather than blind
 classification of an entire building-sized scan. The normal workflow is:
 structured grid -> numerical zoom -> candidate search.
 
