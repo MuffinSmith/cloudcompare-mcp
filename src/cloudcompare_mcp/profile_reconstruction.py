@@ -348,14 +348,12 @@ def _rotation_break(points: np.ndarray) -> int:
     change = np.abs(turns - np.roll(turns, 1))
     index = int(np.argmax(change))
     previous = (index - 1) % n
-    # A sharp polygon corner lives at the larger-turn endpoint.  At a smooth
-    # line/arc transition the boundary sample carries roughly half the local
-    # arc turn, so choose the smaller-turn endpoint instead.  This keeps the
-    # cyclic cut on a natural primitive boundary instead of leaving a tiny
-    # wrap-around fragment.
-    if max(float(turns[index]), float(turns[previous])) >= math.radians(30.0):
-        return index if turns[index] >= turns[previous] else previous
-    return index if turns[index] <= turns[previous] else previous
+    # The larger-turn endpoint is the actual shared boundary sample.  At a
+    # polygon corner it is the corner itself; at a tangent line/arc transition
+    # it carries roughly half the neighboring arc turn while the first interior
+    # line sample carries zero turn.  Cutting at the smaller-turn sample splits
+    # one real primitive across the cyclic start/end and creates a tiny sliver.
+    return index if turns[index] >= turns[previous] else previous
 
 
 def _serialize_primitive(model: dict[str, Any], *, start_index: int, end_index: int, source_order: np.ndarray) -> dict[str, Any]:
