@@ -53,6 +53,31 @@ archive steps also passing. qMCPBridge remains byte-for-source unchanged from ac
 0.14. This is development validation only; real Windows/CloudCompare acceptance is
 still required before any 0.15 merge.
 
+### Windows acceptance defect #13 and focused fix
+
+Real Windows acceptance at `4ae263ee4757edc104024ad1a04efc174335192f`
+failed the committed slot-fixture requirement and opened issue #13. The live original
+fixture produced 7 primitives and the transformed fixture 11; the snapshot fixture
+also fragmented. The defect was primitive segmentation, not native acquisition,
+coordinate bookkeeping, or the documented fan multi-loop limitation.
+
+Root cause: recursive splitting could leave two-point line slivers at tangent line/arc
+joins. The cleanup pass only merged same-kind neighbors, and a dense closed fixture
+could also split one real line across the cyclic start/end. The fix is intentionally
+bounded: a two-point internal boundary fragment may be absorbed across a line/arc
+join only when the combined span itself fits a valid neighboring primitive within the
+requested tolerance; a cyclic cut is refined only when first/last models are the same
+kind and one side is exactly a two-point wrap fragment. Do not generalize this into
+arbitrary topology repair.
+
+Regression coverage now includes the exact committed 41/61-point slot density and
+the generated PLY -> section projection -> reconstruction path for both original and
+rotated/large-translated fixtures. Fix checkpoint
+`ebec95d64df08231881d1b5451d1c7da918784b7` passed **447 tests in 19.79 s** in
+Linux CI. Issue #13 remains open pending a focused real-Windows fixture retest.
+Do not repeat the full 0.15 acceptance or fan exercise for this fix unless another
+behavioral regression appears. qMCPBridge remains unchanged.
+
 ## Accepted 0.14 baseline
 
 The user explicitly approved merging the accepted 0.14 increment. PR #12 merged
