@@ -381,3 +381,23 @@ available for source/acceptance attribution.
 See [layer contracts and request examples](docs/LIVE_CAD_SECTION_LAYER_ISOLATION.md),
 [Windows acceptance procedure](docs/WINDOWS_SECTION_LAYER_ACCEPTANCE.md), and AGENTS.md
 for exact recovery checkpoints and coverage limits.
+
+## Python-only 0.15.4 section-target isolation (unmerged; Windows pending)
+
+`analyze_section_target_regions` and `analyze_live_section_target_regions` report
+bounded spatial targets **before** the accepted depth-layer stage. Explicit UV/depth
+voxels, support and connectivity diagnostics retain every point, including clutter.
+`reconstruct_section_target_profile` and `reconstruct_live_section_target_profile`
+pass only one supported or explicitly selected target into unchanged accepted
+layer, occupancy, topology and primitive fitting. Multiple targets require a current
+candidate fingerprint; being largest is never enough. Unsafe bridges, overlap,
+sparse support, perturbation sensitivity and truncated acquisition are refused.
+
+Development CI passed 765 tests, including actual MCP stdio and exact generated-file
+replay coverage. Fourteen reusable hashed PLY fixtures cover clutter, multiple targets,
+bridges, depth layers and arbitrary rotation/large translation. This is **not** real
+CloudCompare acceptance or proof the retained fan can reconstruct. The native bridge
+remains 0.12.0 / revision 8, unchanged; no DLL rebuild. No merge is authorized here.
+
+See [target contracts and limits](docs/LIVE_CAD_SECTION_TARGET_ISOLATION.md),
+[focused Windows procedure](docs/WINDOWS_SECTION_TARGET_ACCEPTANCE.md), and AGENTS.md.

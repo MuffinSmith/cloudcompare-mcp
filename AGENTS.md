@@ -1,107 +1,97 @@
 # Repository work and interruption recovery
 
-## Active UNMERGED 0.15.4 section-target isolation
+## Active UNMERGED 0.15.4: implementation complete, Windows next
 
 Branch: `feature/live-cad-section-target-isolation`.
 Accepted-main parent: `0201cdd46381e0c79c05b33ee9de48851a18b877`.
-Initial recovery commit: `4b456f38affa8fdb250893ba5e1c148d8015ea26` (remote verified).
-No merge is authorized. Preserve every retained branch and unexpected work.
+Exact complete runtime/test checkpoint: `f2ba2eb5b09c6cc267cd2eaf33dbfde268e59080`.
+Installed CI `36356259255` / job `108724473998`: **765 passed, zero skips**, 36.24 s;
+compileall and diff check passed. Source tree `e13878ceebcd49c5bf19459bf738996b884fe950`.
+Subsequent finalization changes are documentation only. Inspect actual remote HEAD
+and current CI after a disconnect; do not recreate or restart this lane.
 
-Milestone: core/workflow/MCP and exact generated-file coverage implemented.
-MCP runtime checkpoint: `b22e18f1a2b785642e57b7a7d1231e282caa9d77` (remote verified).
-Installed CI `36355988329` passed, including schema and actual MCP stdio/TCP replay.
-Local numerical/workflow/exact-file suite: 111 passed (48 core, 43 workflow,
-20 file tests). All 14 freshly generated ASCII-double PLY fixtures were exercised
-through product projection, snapshot and native replay, including arbitrary 3D
-rotation plus [1e8,-2e8,3e8] translation. Single/parallel transformed profile handoff
-passed without threshold changes. Ten MCP tests now use exact generated files for
-stdio snapshot/live replay. Local MCP dependencies remain unavailable; use installed
-CI for full regression/transport. Python is 0.15.4. No native/DLL changes.
+Local dependency-available regression: **550 passed**, zero skips, including all
+16 compiled native policy tests (not a plugin build). Focused new coverage is 139
+tests: 48 core, 43 workflow/replay, 18 boundary/precision/provenance, 20 exact-file,
+10 MCP schema/dispatch/actual stdio tests. Local focused non-MCP subset129 passed;
+the MCP tests and complete installed suite ran in CI, not the dependency-limited
+container. All 14 fresh hashed PLY files passed product projection/snapshot/replay;
+original and arbitrary-rotated/large-translated single/parallel handoff passed.
+Generated files, logs and raw evidence remain outside Git.
 
-Registration delegates through the existing layer-tools registry without changing
-server.py or accepted handlers/solvers. Capabilities are exposed under
-`python_section_layers.section_targets` (version 0.15.4); parent layer/profile
-capabilities retain their accepted 0.15.3/0.15.2 versions. Snapshot/live analyze and
-reconstruct tools use target_id + expected_target_fingerprint, then optionally
-layer_id + expected_layer_fingerprint, as separate paired explicit choices.
+Python 0.15.4. qMCPBridge remains accepted 0.12.0 / workflow revision 8. Native diff
+against accepted main is empty. No DLL rebuild. Accepted layer/boundary/topology/
+primitive solvers and server.py are unchanged; only the layer-tool registry delegates
+new tools. **No real Windows/CloudCompare 0.15.4 acceptance has occurred here.**
 
-The core uses explicit UV/depth voxel sizes, six-neighbor connectivity, unique-point
-support, iterative articulation detection, one UV-cell erosion and six fixed
-+/- origin perturbations. These are diagnostics, not repairs or parameter searches.
-All points belong to reported candidates. Sparse, bridge/appendage, thin, marginal
-edge/corner-contact, UV-overlap and membership-sensitive targets cannot be selected.
-Multiple targets ALWAYS require explicit selection, even with one dominant/usable
-target and distant unsupported clutter. A usable explicit choice can leave separate
-clutter unselected, with full counts/reasons. Selection tokens bind the candidate,
-whole source, frame, acquisition and parameters; snapshot/live tokens differ.
+Next action: follow `docs/WINDOWS_SECTION_TARGET_ACCEPTANCE.md` at the supplied final
+HEAD after confirming green CI. Read `docs/LIVE_CAD_SECTION_TARGET_ISOLATION.md` for
+contracts/refusal boundaries. Testing/reporting only, not implementation or DLL work.
+Do not merge 0.15.4 and do not ask for merge authorization merely because tests pass.
 
-`section_target_workflow.py` acquires one complete slab BEFORE any layer analysis,
-selects a supported spatial target, and passes every selected depth sample into the
-UNCHANGED accepted 0.15.3 -> 0.15.2 -> 0.15.1/profile solvers. Upstream target identity
-is bound into downstream layer selection. Target and layer unselected counts remain
-separate with aggregate accounting. Layer budgets/refusals retain target evidence;
-boundary/topology refusal retains the accepted diagnostics. Native replay coverage
-includes unique indices, complete counts, source/global frame, shift/scale and
-no mutation; it is not real-GUI or full-cloud integrity coverage.
+## Implemented scope and deliberate limits
 
-Next: final review, installed regression/CI, focused Windows documentation and
-recovery checkpoint. Do not request Windows until these gates pass. New fixtures
-must stay outside Git. The fan-like synthetic slab has 20 explicit spatial targets;
-not every target is necessarily supported, and a profile is not required. This is
-not the retained real fan and no real CloudCompare test has occurred here.
+Four snapshot/live target analysis/reconstruction tools; capabilities at
+`python_section_layers.section_targets`. Pure numerical core uses declared UV/depth
+voxels, six-face connectivity, unique-point support, iterative articulation guards,
+one-cell UV erosion and six fixed +/- origin probes. Diagnostics never repair or
+replace baseline membership. Every acquired point belongs to a reported candidate.
+Multiple targets require an explicit candidate-bound token even if only one is large
+or usable. Distant unsupported clutter can remain explicitly unselected; an unsafe
+target itself cannot be overridden. Target then layer selection preserve all counts.
 
-## Accepted history and boundaries
+Complete global-coordinate native acquisition only, no reservoir topology proof.
+Source/frame/acquisition/parameter fingerprints bind selection; live index mapping
+is included. No double shift/scale. Fingerprints cover acquired slab geometry, not
+independent whole-cloud geometry/attribute equality. A selected target still passes
+UNCHANGED accepted 0.15.3 -> 0.15.2 -> 0.15.1/fitting guards (layer default16).
+Subcell/unsampled connections, wide necks and all possible grid phases are not proved
+absent; harmless thin appendages can conservatively block. No manufacturing intent,
+largest-target preference, sign selection, adaptive search, Fusion, ellipse or spline.
 
-Read `docs/ACCEPTED_0_15_3_HISTORY.md` (verbatim previous main AGENTS.md),
-`docs/ACCEPTED_DEVELOPMENT_HISTORY.md`, and relevant accepted CAD/profile/layer docs.
-Historical next/pending wording is superseded by this active lane; never recreate it.
+## Accepted history is not an outstanding gate
 
-Accepted 0.15.3: PR #17, merge `27cfd286331db177c76ce627056150e439d418c9`;
+Original main AGENTS.md is preserved verbatim in `docs/ACCEPTED_0_15_3_HISTORY.md`.
+Also read `docs/ACCEPTED_DEVELOPMENT_HISTORY.md` and relevant accepted CAD documents.
+Their historical next/pending wording is superseded by this active lane.
+Accepted 0.15.3: PR17 merge `27cfd286331db177c76ce627056150e439d418c9`;
 retained feature HEAD `dda5032a60143f7a17691034c337a83492a8613f`;
-real-Windows tested runtime `2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`.
-Windows: 610 passed plus 16 compiler-gated tests subsequently passed under MSVC.
-Installed CI: 626 passed. All 12 exact fixtures and actual stdio/live GUI/safety/
-handoff gates passed. Integrity was METADATA ONLY, not independent full-cloud
-geometry/attribute equality. No real nonunit-scale source was tested. Do not promote
-those claims or repeat this completed gate merely for a chat restart.
+actual Windows runtime `2f952f005243ee8cbdb3c4c1a0a3363a4b40cb05`.
+Windows610 passed +16 policy tests later passed under MSVC; CI626 passed. All12 exact
+fixtures and actual stdio/GUI/safety/handoff gates passed. Integrity was METADATA
+ONLY, not independently full-cloud; no actual nonunit-scale source was tested.
+Do not repeat this completed acceptance just because a chat restarted or inflate it.
 
-Retained fan: BLOCKED, not failed. Historical source 359, `Assembly | Fan - scan 1`,
-406,276 source points. Slab origin [40,0,135], normal [0,0,1], half-thickness 0.5;
-complete 5,605/5,605 acquisition. The declared 0.15.3 analysis exceeded 16 components,
-produced no selection fingerprint and correctly did not reconstruct. Do not raise
-that limit, choose a depth sign, delete clutter or parameter-search for a pass.
-The new fan result may remain legitimately BLOCKED.
+Retained real fan: BLOCKED, not failed. Historical cloud359, `Assembly | Fan - scan 1`,
+406276 points; slab [40,0,135], normal[0,0,1], half0.5, complete5605/5605. Declared
+0.15.3 analysis exceeded16 components, produced no token and did not reconstruct.
+Never raise limits, remove clutter, choose a depth sign or parameter-search to make
+it pass. New target-stage fan diagnostics may also remain legitimately BLOCKED.
+The focused Windows procedure predeclares one bounded coarse target analysis.
+Resolve actual fan_project.bin and scene identity; use a working copy, not assumptions.
 
-## Local source provenance and validation
+## Persistence and reproducibility
 
-Direct container git network access is unavailable. Accepted source came from
-Actions artifact 10943288751; ZIP SHA-256
+Remote checkpoints (all verified): recovery `4b456f38affa8fdb250893ba5e1c148d8015ea26`,
+core `b910000fe435a0589e1e2e64df9bbc084d5edff0`, workflow
+`34e0606882a881f860661f742e5f77aecdf0b271`, MCP
+`b22e18f1a2b785642e57b7a7d1231e282caa9d77`, fixtures
+`7cb0df8b416dbdc85cdcd23d91f7c9a675554843`, full tests `f2ba2eb5b09c6cc267cd2eaf33dbfde268e59080`.
+
+Direct container Git networking was unavailable. Accepted source came from Actions
+artifact10943288751, ZIP SHA256
 `06a934a875c6b725a68edc1d848aabbf3df9c2a0083c90996cb70c3d688d36cb`.
-Archive commit comment matches accepted main. Reconstructed local Git tree exactly
-matches accepted tree `6a14df038d0354f474fea37666c3e24fce2c5787`.
-Local snapshot commit IDs are comparison-only, not remote commits. NumPy and pytest
-are present; MCP/PLY dependencies were unavailable initially. Use actual source for
-available local checks and installed CI for complete regression/transport checks.
-Never claim a missing-dependency check passed. Archive tracked public source only,
-not workspace credentials or user data. Keep generated files and evidence outside Git.
+The archive commit comment matched accepted main; reconstructed local Git tree
+matched `6a14df038d0354f474fea37666c3e24fce2c5787`. Every checkpoint's local source
+tree matched the remote tree. Local mirror commit IDs are not remote commit IDs.
+CI artifacts archive tracked public source only, never credentials or user data.
 
-## Recovery and completion gate
-
-Commit coherent increments, verify returned SHAs and remote HEAD before substantial
-next work, and update this checkpoint. Save before long tests/diffs. A failed stream
-is not evidence a write failed: inspect remote HEAD, recent commits, AGENTS and CI.
-Never reset, clean, force-push, delete retained branches or create retry/recovery
-branches. Avoid giant repeated logs and rapid polling loops.
-
-Use only complete read-only native acquisition. Keep raw arrays server-side and
-shift/scale as provenance; never apply them twice. No native changes unless existing
-acquisition is proven insufficient. No Fusion, ellipse/spline, manufacturing-intent
-inference or multiresolution parameter search in this increment.
-
-Before Windows require complete installed regression, compileall, diff checks,
-schemas, ACTUAL MCP stdio, clearly labeled native replay, exact generated-file tests,
-final accepted-main comparison, no-native-diff proof and green CI. Windows is
-focused testing/reporting, not implementing fixes. Do not merge or ask to merge on
-development tests. Return exact branch/HEAD/parent, algorithm/tools, test counts,
-changed files, refusal limits/native status/CI and one copyable Windows prompt.
-Use a resolved working copy of authorized `fan_project.bin`, never assume its path.
+Commit coherent increments and verify returned SHAs plus remote persistence before
+substantial next work. Update this file at milestones and save before long tests.
+A failed stream does not imply a failed GitHub write: inspect HEAD, commits, AGENTS
+and CI. Never reset, clean, force-push, delete retained branches or create retry/
+recovery/-2 branches. Preserve unexpected work and unrelated active checkouts.
+Avoid giant repeated log dumps and rapid polling loops. Before any later Windows
+gate require installed full regression, compileall/diff checks, actual stdio/schema,
+replay/file coverage, final accepted-main/native comparison, green CI and this
+checkpoint. Return exact identities, counts, limitations and one focused test prompt.
