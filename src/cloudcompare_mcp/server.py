@@ -1085,6 +1085,28 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="show_live_discovery_overlays",
+        description=(
+            "Draw the strongest plane, circle, or cylinder candidates from a discovery result as differently colored "
+            "temporary wireframe overlays. By default existing MCP overlays are cleared first. "
+            "The user can inspect candidates directly in CloudCompare without sending a screenshot back."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_cloud_id": {"type": "integer"},
+                "feature_type": {"type": "string", "enum": ["plane", "circle", "cylinder"]},
+                "discovery_result": {"type": "object"},
+                "max_candidates": {"type": "integer", "minimum": 1, "maximum": 8, "default": 5},
+                "clear_existing": {"type": "boolean", "default": True},
+                "line_width": {"type": "number", "minimum": 0, "maximum": 20, "default": 3},
+                "segments": {"type": "integer", "minimum": 8, "maximum": 720, "default": 96},
+                "padding": {"type": "number", "exclusiveMinimum": 0, "default": 1.05}
+            },
+            "required": ["source_cloud_id", "feature_type", "discovery_result"]
+        },
+    ),
+    Tool(
         name="clear_live_fit_overlays",
         description=(
             "Remove only the qMCPBridge-tagged temporary fit overlay group. "
@@ -2943,6 +2965,105 @@ def handle_show_live_fit_overlay(args: dict) -> list[TextContent] | CallToolResu
         return _err(str(exc))
 
 
+def handle_show_live_discovery_overlays(args: dict) -> list[TextContent] | CallToolResult:
+    from .feature_fit import FeatureFitError
+
+    palette = [
+        [0, 255, 0],
+        [0, 255, 255],
+        [255, 0, 255],
+        [255, 128, 0],
+        [255, 255, 0],
+        [0, 128, 255],
+        [255, 64, 64],
+        [160, 255, 160],
+    ]
+
+    try:
+        discovery = args["discovery_result"]
+        if not isinstance(discovery, dict):
+            raise FeatureFitError("discovery_result must be an object")
+        candidates = discovery.get("candidates")
+        if not isinstance(candidates, list):
+            raise FeatureFitError("discovery_result has no candidates array")
+
+        feature_type = args["feature_type"]
+        fit_key = feature_type
+        max_candidates = int(args.get("max_candidates", 5))
+        selected = candidates[:max_candidates]
+
+        if args.get("clear_existing", True):
+            live_request("overlay.clear", {}, timeout=300.0)
+
+        created = []
+        try:
+            for ordinal, candidate in enumerate(selected, start=1):
+                if not isinstance(candidate, dict):
+                    raise FeatureFitError(f"candidate {ordinal} is malformed")
+                fit = candidate.get(fit_key)
+                if not isinstance(fit, dict):
+                    raise FeatureFitError(
+                        f"candidate {ordinal} has no {fit_key} fit"
+                    )
+                support_fraction = candidate.get("support_fraction_of_sample")
+                support_text = (
+                    f" {100.0 * float(support_fraction):.1f}% support"
+                    if isinstance(support_fraction, (int, float))
+                    else ""
+                )
+                overlay_args = {
+                    "source_cloud_id": int(args["source_cloud_id"]),
+                    "fit_type": feature_type,
+                    "fit": fit,
+                    "name": f"MCP {feature_type} candidate {ordinal}{support_text}",
+                    "color": palette[(ordinal - 1) % len(palette)],
+                    "line_width": float(args.get("line_width", 3.0)),
+                    "segments": int(args.get("segments", 96)),
+                    "padding": float(args.get("padding", 1.05)),
+                }
+                native_request = _overlay_request_from_fit(overlay_args)
+                native = live_request("overlay.create", native_request, timeout=300.0)
+                created.append(
+                    {
+                        "candidate_ordinal": ordinal,
+                        "candidate_index": candidate.get("candidate_index"),
+                        "support_count": candidate.get("support_count"),
+                        "support_fraction_of_sample": support_fraction,
+                        "color": overlay_args["color"],
+                        "fit_group_id": (
+                            native.get("fit_group_id")
+                            if isinstance(native, dict)
+                            else None
+                        ),
+                        "entity_ids": (
+                            native.get("entity_ids", [])
+                            if isinstance(native, dict)
+                            else []
+                        ),
+                    }
+                )
+        except Exception:
+            if args.get("clear_existing", True):
+                try:
+                    live_request("overlay.clear", {}, timeout=300.0)
+                except Exception:
+                    pass
+            raise
+
+        return _ok_compact(
+            {
+                "feature_type": feature_type,
+                "requested_candidate_count": len(selected),
+                "created_candidate_count": len(created),
+                "candidates": created,
+                "source_geometry_preserved": True,
+                "image_required": False,
+            }
+        )
+    except (FeatureFitError, LiveBridgeError, KeyError, TypeError, ValueError) as exc:
+        return _err(str(exc))
+
+
 def handle_clear_live_fit_overlays(_args: dict) -> list[TextContent] | CallToolResult:
     try:
         return _ok_compact(live_request("overlay.clear", {}, timeout=300.0))
@@ -3858,6 +3979,7 @@ async def call_tool(
         "discover_live_circles": handle_discover_live_circles,
         "discover_live_cylinders": handle_discover_live_cylinders,
         "show_live_fit_overlay": handle_show_live_fit_overlay,
+        "show_live_discovery_overlays": handle_show_live_discovery_overlays,
         "clear_live_fit_overlays": handle_clear_live_fit_overlays,
         "describe_live_section_grid": handle_describe_live_section_grid,
         "create_live_group": handle_create_live_group,
