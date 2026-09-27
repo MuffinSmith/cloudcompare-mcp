@@ -127,6 +127,7 @@ Environment variables:
 | `load_cloud_info` | Inspect file stats via CloudCompare |
 | `subsample` | Reduce density — random / spatial / octree |
 | `compute_cloud_to_cloud_distances` | C2C nearest-neighbour distances |
+| `compute_cloud_to_mesh_distances` | C2M signed distances |
 | `icp_registration` | Align two clouds with ICP |
 | `compute_normals` | Estimate surface normals |
 | `filter_by_scalar_field` | Threshold points by scalar value |
