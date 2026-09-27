@@ -216,6 +216,63 @@ class AutoFeatureOverlayContractTests(unittest.TestCase):
         self.assertEqual(params2["kind"], "axis")
         self.assertAlmostEqual(params2["geometry"]["length"], 8.4)
 
+    def test_batch_discovery_overlays_use_distinct_colors_and_names(self) -> None:
+        discovery = {
+            "candidates": [
+                {
+                    "candidate_index": 0,
+                    "support_count": 100,
+                    "support_fraction_of_sample": 0.5,
+                    "circle": {
+                        "center": [0, 0, 0],
+                        "normal": [0, 0, 1],
+                        "radius": 5,
+                    },
+                },
+                {
+                    "candidate_index": 1,
+                    "support_count": 60,
+                    "support_fraction_of_sample": 0.3,
+                    "circle": {
+                        "center": [10, 0, 0],
+                        "normal": [0, 0, 1],
+                        "radius": 3,
+                    },
+                },
+            ]
+        }
+
+        calls: list[tuple[str, dict]] = []
+
+        def fake_request(method, params, timeout=None):
+            calls.append((method, params))
+            if method == "overlay.clear":
+                return {"cleared": True}
+            ordinal = len([item for item in calls if item[0] == "overlay.create"])
+            return {
+                "fit_group_id": 100 + ordinal,
+                "entity_ids": [200 + ordinal],
+            }
+
+        with patch.object(server, "live_request", side_effect=fake_request):
+            result = server.handle_show_live_discovery_overlays(
+                {
+                    "source_cloud_id": 21,
+                    "feature_type": "circle",
+                    "discovery_result": discovery,
+                }
+            )
+
+        self.assertEqual(calls[0][0], "overlay.clear")
+        creates = [params for method, params in calls if method == "overlay.create"]
+        self.assertEqual(len(creates), 2)
+        self.assertNotEqual(creates[0]["color"], creates[1]["color"])
+        self.assertIn("candidate 1", creates[0]["name"])
+        self.assertIn("50.0% support", creates[0]["name"])
+        body = _body(result)
+        self.assertEqual(body["created_candidate_count"], 2)
+        self.assertFalse(body["image_required"])
+
     def test_clear_overlay_calls_native_safe_clear(self) -> None:
         with patch.object(
             server,
@@ -226,6 +283,17 @@ class AutoFeatureOverlayContractTests(unittest.TestCase):
 
         request.assert_called_once_with("overlay.clear", {}, timeout=300.0)
         self.assertTrue(_body(result)["cleared"])
+
+    def test_auto_feature_tools_are_discoverable(self) -> None:
+        names = {tool.name for tool in server.TOOLS}
+        for name in (
+            "discover_live_circles",
+            "discover_live_cylinders",
+            "show_live_fit_overlay",
+            "show_live_discovery_overlays",
+            "clear_live_fit_overlays",
+        ):
+            self.assertIn(name, names)
 
     def test_overlay_capabilities_become_visible(self) -> None:
         native = {
