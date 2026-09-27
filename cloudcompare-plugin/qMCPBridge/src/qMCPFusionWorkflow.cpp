@@ -3576,15 +3576,24 @@ bool createFitOverlay(
         return true;
     }
 
-    QString groupError;
-    ccHObject* group = fitOverlayGroup( app, true, groupError );
-    if ( !group )
+    ccHObject* group = nullptr;
+    auto ensureGroup = [&]() -> bool
     {
-        error = groupError.isEmpty()
-            ? "Could not create MCP fit overlay group"
-            : groupError;
+        if ( group )
+        {
+            return true;
+        }
+        QString groupError;
+        group = fitOverlayGroup( app, true, groupError );
+        if ( !group )
+        {
+            error = groupError.isEmpty()
+                ? "Could not create MCP fit overlay group"
+                : groupError;
+            return false;
+        }
         return true;
-    }
+    };
 
     const QString requestedName = params.value( "name" ).toString().trimmed();
     const QString baseName = requestedName.isEmpty()
@@ -3632,6 +3641,10 @@ bool createFitOverlay(
         plane->showWired( true );
         finalizeOverlayEntity( plane.get(), source, "plane" );
 
+        if ( !ensureGroup() )
+        {
+            return true;
+        }
         ccPlane* livePlane = plane.release();
         attachToDestination( app, livePlane, group );
         created.append( entityDescription( livePlane, false ) );
@@ -3679,6 +3692,10 @@ bool createFitOverlay(
         circle->applyGLTransformation_recursive( &transform );
         finalizeOverlayEntity( circle.get(), source, "circle" );
 
+        if ( !ensureGroup() )
+        {
+            return true;
+        }
         ccPolyline* liveCircle = circle.release();
         attachToDestination( app, liveCircle, group );
         created.append( entityDescription( liveCircle, false ) );
@@ -3712,6 +3729,10 @@ bool createFitOverlay(
             if ( !axis )
             {
                 error = "CloudCompare could not allocate the axis overlay";
+                return true;
+            }
+            if ( !ensureGroup() )
+            {
                 return true;
             }
             ccPolyline* liveAxis = axis.release();
@@ -3757,6 +3778,10 @@ bool createFitOverlay(
             cylinder->showWired( true );
             finalizeOverlayEntity( cylinder.get(), source, "cylinder" );
 
+            if ( !ensureGroup() )
+            {
+                return true;
+            }
             ccCylinder* liveCylinder = cylinder.release();
             attachToDestination( app, liveCylinder, group );
             created.append( entityDescription( liveCylinder, false ) );
