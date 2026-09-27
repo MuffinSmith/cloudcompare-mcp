@@ -7,13 +7,20 @@ Accepted-main parent: `0201cdd46381e0c79c05b33ee9de48851a18b877`.
 Initial recovery commit: `4b456f38affa8fdb250893ba5e1c148d8015ea26` (remote verified).
 No merge is authorized. Preserve every retained branch and unexpected work.
 
-Milestone: numerical core and independent snapshot/live target workflow implemented.
-Core runtime checkpoint: `b910000fe435a0589e1e2e64df9bbc084d5edff0` (remote verified).
+Milestone: numerical core, snapshot/live workflow and four MCP tools integrated.
+Workflow checkpoint: `34e0606882a881f860661f742e5f77aecdf0b271` (remote verified).
 Core CI `36355473588` passed. Local numerical + workflow/replayed native tests:
-91 passed (48 core + 43 workflow). This is NOT real CloudCompare validation.
-MCP registration and generated fixture files remain NEXT. Python package remains
-0.15.3 until integration. qMCPBridge remains unchanged at 0.12.0 / workflow revision 8.
-No DLL rebuild. Do not request Windows yet.
+91 passed (48 core + 43 workflow); compileall and diff check passed. This is NOT
+real CloudCompare validation. Ten new MCP schema/dispatch/actual-stdio tests are
+committed for installed CI; local MCP dependencies are unavailable, so they were
+not executed locally. Python package is now 0.15.4. No native changes or DLL rebuild.
+
+Registration delegates through the existing layer-tools registry without changing
+server.py or accepted handlers/solvers. Capabilities are exposed under
+`python_section_layers.section_targets` (version 0.15.4); parent layer/profile
+capabilities retain their accepted 0.15.3/0.15.2 versions. Snapshot/live analyze and
+reconstruct tools use target_id + expected_target_fingerprint, then optionally
+layer_id + expected_layer_fingerprint, as separate paired explicit choices.
 
 The core uses explicit UV/depth voxel sizes, six-neighbor connectivity, unique-point
 support, iterative articulation detection, one UV-cell erosion and six fixed
@@ -34,10 +41,10 @@ boundary/topology refusal retains the accepted diagnostics. Native replay covera
 includes unique indices, complete counts, source/global frame, shift/scale and
 no mutation; it is not real-GUI or full-cloud integrity coverage.
 
-Next: four MCP tools/schema/dispatch and actual stdio tests, Python 0.15.4 version,
-exact generated PLY fixtures including arbitrary 3D rotation/large translation,
-final regression/CI review and focused Windows procedure. Preserve the already
-committed core and workflow; do not recreate this lane after interruption.
+Next: exact generated PLY fixtures, arbitrary 3D rotation/large translation,
+file-to-product tests and file-backed stdio tests; review installed CI, finish
+regression/refusal boundaries and focused Windows procedure. Do not request Windows
+yet. Preserve committed core/workflow/tools; never recreate the lane after interruption.
 
 ## Accepted history and boundaries
 
