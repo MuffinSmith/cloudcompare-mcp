@@ -1107,6 +1107,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="get_live_fit_overlays",
+        description=(
+            "Return the currently visible qMCPBridge fit-overlay groups and kinds as structured data, "
+            "without capturing the viewport."
+        ),
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
         name="clear_live_fit_overlays",
         description=(
             "Remove only the qMCPBridge-tagged temporary fit overlay group. "
@@ -3064,6 +3072,13 @@ def handle_show_live_discovery_overlays(args: dict) -> list[TextContent] | CallT
         return _err(str(exc))
 
 
+def handle_get_live_fit_overlays(_args: dict) -> list[TextContent] | CallToolResult:
+    try:
+        return _ok_compact(live_request("overlay.status", {}, timeout=300.0))
+    except LiveBridgeError as exc:
+        return _err(str(exc))
+
+
 def handle_clear_live_fit_overlays(_args: dict) -> list[TextContent] | CallToolResult:
     try:
         return _ok_compact(live_request("overlay.clear", {}, timeout=300.0))
@@ -3980,6 +3995,7 @@ async def call_tool(
         "discover_live_cylinders": handle_discover_live_cylinders,
         "show_live_fit_overlay": handle_show_live_fit_overlay,
         "show_live_discovery_overlays": handle_show_live_discovery_overlays,
+        "get_live_fit_overlays": handle_get_live_fit_overlays,
         "clear_live_fit_overlays": handle_clear_live_fit_overlays,
         "describe_live_section_grid": handle_describe_live_section_grid,
         "create_live_group": handle_create_live_group,
