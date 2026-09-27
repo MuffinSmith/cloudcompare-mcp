@@ -273,6 +273,25 @@ class AutoFeatureOverlayContractTests(unittest.TestCase):
         self.assertEqual(body["created_candidate_count"], 2)
         self.assertFalse(body["image_required"])
 
+    def test_overlay_status_calls_native_structured_query(self) -> None:
+        native = {
+            "active": True,
+            "overlay_root_id": 100,
+            "fit_count": 2,
+            "fits": [
+                {"id": 101, "overlay_kind": "circle", "source_cloud_id": 21},
+                {"id": 102, "overlay_kind": "cylinder", "source_cloud_id": 21},
+            ],
+        }
+        with patch.object(server, "live_request", return_value=native) as request:
+            result = server.handle_get_live_fit_overlays({})
+
+        request.assert_called_once_with("overlay.status", {}, timeout=300.0)
+        body = _body(result)
+        self.assertTrue(body["active"])
+        self.assertEqual(body["fit_count"], 2)
+        self.assertEqual(body["fits"][0]["overlay_kind"], "circle")
+
     def test_clear_overlay_calls_native_safe_clear(self) -> None:
         with patch.object(
             server,
@@ -291,6 +310,7 @@ class AutoFeatureOverlayContractTests(unittest.TestCase):
             "discover_live_cylinders",
             "show_live_fit_overlay",
             "show_live_discovery_overlays",
+            "get_live_fit_overlays",
             "clear_live_fit_overlays",
         ):
             self.assertIn(name, names)
