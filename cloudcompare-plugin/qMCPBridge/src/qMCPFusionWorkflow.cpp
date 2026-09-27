@@ -2478,7 +2478,7 @@ bool createFitOverlay(
         for ( int i = 0; i < segments; ++i )
         {
             const double angle =
-                2.0 * M_PI * static_cast<double>( i )
+                2.0 * 3.14159265358979323846 * static_cast<double>( i )
                 / static_cast<double>( segments );
             points.push_back(
                 center
@@ -2626,7 +2626,7 @@ bool createFitOverlay(
         for ( int quarter = 0; quarter < 4; ++quarter )
         {
             const double angle =
-                0.5 * M_PI * static_cast<double>( quarter );
+                0.5 * 3.14159265358979323846 * static_cast<double>( quarter );
             const CCVector3d radial =
                 u * ( radius * std::cos( angle ) )
                 + v * ( radius * std::sin( angle ) );
