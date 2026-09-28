@@ -383,17 +383,21 @@ def test_bounded_inspection_suspends_host_auto_pivot_and_restores_original_mode(
     assert h.auto_pivot is True and not h.tokens
 
 
-def test_post_release_auto_pivot_drift_reports_irreversible_token_release():
+def test_post_release_auto_pivot_drift_is_reported_after_exact_owned_restore():
     h = AutoPivotHost()
     original_apply = h.apply_auto_pivot
     def shifted(candidate=None):
         candidate = np.array(h.auto_pivot_candidate if candidate is None else candidate, dtype=float)
         original_apply(candidate + np.array([0., 0., 1.]))
     h.apply_auto_pivot = shifted
-    with pytest.raises(camera.InspectionError) as e:
-        live_inspection.InspectionStore().inspect(ARGS, h)
-    recovery = e.value.recovery
+    packet, images = live_inspection.InspectionStore().inspect(ARGS, h)
+    recovery = packet['camera_recovery']
+    assert images and recovery['status'] == 'restored'
+    assert recovery['restored_while_owned'] is True
+    assert recovery['restored_guard_equal'] is True
     assert recovery['token_released'] is True
     assert recovery['release']['released'] is True
-    assert recovery['error'].startswith('Camera changed while restoring CloudCompare automatic pivot mode')
+    assert recovery['post_release_navigation_changed'] is True
+    assert recovery['post_release_change_scope'] == 'host_or_human_after_release'
+    assert not recovery['release_camera_difference']['guard_equal']
     assert not h.tokens and h.auto_pivot is True

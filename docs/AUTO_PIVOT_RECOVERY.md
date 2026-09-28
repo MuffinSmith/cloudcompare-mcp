@@ -37,7 +37,7 @@ part of restoration evidence.
 Relevant upstream file at tag v2.13.2:
 `libs/qCC_glWindow/src/ccGLWindowInterface.cpp`.
 
-## Contract in 0.16.2 / native 0.13.2
+## Contract in 0.16.3 / native 0.13.2
 
 The existing camera guard is not relaxed. Instead the host behavior is owned
 explicitly and narrowly:
@@ -81,3 +81,21 @@ This fix does not authorize reconstruction, threshold changes, ROI search, targe
 layer budget increases, clutter removal or semantic inference. The prior 0.15 global
 native-unit threshold remains fixed only if the fan source frame is independently
 verified unchanged.
+
+## Post-release ownership boundary in 0.16.3
+
+Windows 0.16.2 proved that the guarded restore can match the saved baseline exactly
+while automatic pivot is still suspended, yet restoring CloudCompare's original
+auto-pivot mode during release can immediately move the host camera. This is not a
+reason to weaken the navigation guard or add a tolerance.
+
+The authoritative safety gate is now the exact restore **before release**. Once that
+restore succeeds, release relinquishes agent camera ownership while restoring the
+original host control mode. Any returned post-release camera difference is retained
+under `release_camera_difference`; `post_release_navigation_changed` states whether
+the guard changed, and `post_release_change_scope` is
+`host_or_human_after_release` when it did. The agent does not retry, restore again,
+or claim final-pose equality.
+
+A failed/stale guarded restore before release remains a hard refusal. Missing release
+evidence, transport ambiguity, or source/context failures remain errors.

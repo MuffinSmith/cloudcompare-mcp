@@ -14,7 +14,7 @@ from .inspection_camera import (
     integer, navigate, number, only, text, vector,
 )
 
-VERSION = "0.16.2"
+VERSION = "0.16.3"
 VIEWS = {
     "top": ([0, 0, -1], [0, 1, 0]), "bottom": ([0, 0, 1], [0, 1, 0]),
     "front": ([0, 1, 0], [0, 0, 1]), "back": ([0, -1, 0], [0, 0, 1]),
@@ -278,15 +278,19 @@ class InspectionStore:
                     if final_camera is None:
                         raise InspectionError("Camera token release did not report the post-auto-pivot camera state", {"release": released})
                     final_difference = camera_difference(baseline, final_camera)
-                    if not final_difference["guard_equal"]:
-                        raise InspectionError("Camera changed while restoring CloudCompare automatic pivot mode", {
-                            "stage": "inspection.release_auto_pivot", "release": released,
-                            "camera_difference": final_difference, "expected": baseline, "current": final_camera})
+                    # Safety ownership ends at successful exact restore. Release then
+                    # returns CloudCompare's original host control (notably automatic
+                    # center pivot), which may immediately move the camera. Never
+                    # overwrite or tolerance-filter that post-release motion; retain it
+                    # as evidence while keeping the exact owned restore as the gate.
                     recovery = {"status": "restored", "camera_fingerprint": restored["camera_fingerprint"],
                                 "restored_guard_equal": restored.get("restored_guard_equal", restored.get("restored_equal")),
                                 "restored_full_equal": restored.get("restored_equal"),
+                                "restored_while_owned": True,
                                 "camera_difference": camera_difference(baseline, restored), "token_released": True,
                                 "release_camera_difference": final_difference,
+                                "post_release_navigation_changed": not final_difference["guard_equal"],
+                                "post_release_change_scope": "host_or_human_after_release" if not final_difference["guard_equal"] else "unchanged",
                                 "auto_pivot_restored_to_original": released.get("auto_pivot_restored_to_original"),
                                 "auto_pivot_external_override_preserved": released.get("auto_pivot_external_override_preserved"),
                                 "final_camera_fingerprint": final_camera["camera_fingerprint"]}

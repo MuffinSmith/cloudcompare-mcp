@@ -255,3 +255,27 @@ def test_proposal_budget_and_restart_unknown(monkeypatch):
     h,s,p,_=inspected();monkeypatch.setitem(mod.LIMITS,'proposals_per_inspection',len(p['proposals']))
     with pytest.raises(InspectionError):reviewed(s,p,h)
     with pytest.raises(InspectionError):mod.InspectionStore()._record(p['inspection_id'])
+
+
+def test_release_host_motion_is_reported_after_exact_owned_restore():
+    class ReleaseDriftHost(Host):
+        def __call__(self, method, args, **kwargs):
+            result = super().__call__(method, args, **kwargs)
+            if method == 'view.camera' and args.get('action') == 'release' and result.get('camera_state'):
+                self.pivot[2] += 0.000185967
+                self.center[2] += 0.000185967
+                result['camera_state'] = self.state()
+            return result
+
+    h = ReleaseDriftHost()
+    packet, images = mod.InspectionStore().inspect(ARGS, h)
+    recovery = packet['camera_recovery']
+    assert len(images) == len(ARGS['views'])
+    assert recovery['status'] == 'restored'
+    assert recovery['restored_while_owned'] is True
+    assert recovery['restored_guard_equal'] is True
+    assert recovery['token_released'] is True
+    assert recovery['post_release_navigation_changed'] is True
+    assert recovery['post_release_change_scope'] == 'host_or_human_after_release'
+    assert not recovery['release_camera_difference']['guard_equal']
+    assert not h.tokens

@@ -38,7 +38,7 @@ The bridge does not provide an undo layer.
 
 ## Camera inspection in 0.13.2 / workflow revision 9
 
-Python 0.16.2 provides bounded visual inspection and semantic confirmation using the
+Python 0.16.3 provides bounded visual inspection and semantic confirmation using the
 `view.camera` contract. **Rebuild the native plugin**; the earlier 0.12.0 DLL
 does not implement these operations. Existing standard-view operations remain.
 See [the camera/inspection contract](../../docs/LIVE_AGENT_VISUAL_INSPECTION.md)
