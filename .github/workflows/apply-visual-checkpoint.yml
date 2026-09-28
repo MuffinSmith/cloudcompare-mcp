@@ -1,0 +1,30 @@
+name: apply visual checkpoint
+on:
+  push:
+    branches: [feature/live-agent-visual-inspection]
+    paths: [.github/checkpoints/apply.py]
+permissions:
+  contents: write
+  actions: write
+jobs:
+  apply:
+    if: github.repository == 'MuffinSmith/cloudcompare-mcp'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Apply exact narrow source integration and remove transport helper
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          branch=feature/live-agent-visual-inspection
+          test "$(git ls-remote origin refs/heads/$branch | cut -f1)" = "$GITHUB_SHA"
+          python .github/checkpoints/apply.py
+          git diff --check
+          git add cloudcompare-plugin/qMCPBridge .github/workflows/tests.yml AGENTS.md
+          git rm .github/checkpoints/apply.py .github/workflows/apply-visual-checkpoint.yml
+          git -c user.name='CloudCompare checkpoint' -c user.email='checkpoint@users.noreply.github.com' commit -m 'Integrate recoverable native camera contract and real host build CI'
+          git push origin HEAD:refs/heads/$branch
+          gh api --method POST repos/$GITHUB_REPOSITORY/actions/workflows/tests.yml/dispatches -f ref=$branch
