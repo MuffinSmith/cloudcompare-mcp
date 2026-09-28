@@ -4,12 +4,12 @@
 
 Resume `feature/live-cad-section-target-roi`; do not recreate it.
 Accepted-main parent: `809c522550274316fa0a14d2e86d90a4921bfc03`.
-Workflow checkpoint `f252e753ea4633594ec15d0f61f9fb17427a7479` is persisted.
-Core checkpoint `7bf0fadc4c8b047f85a9dd24aededbd98e9d0f1e` passed CI36362582288.
-This checkpoint exposes all four read-only MCP ROI tools and additive capabilities,
-and bumps the Python package to0.15.6. Native and accepted solvers remain unchanged.
-Local numerical/workflow tests:116 passed; new schema/dispatch tests:11 passed.
-Installed full regression is being checked separately; do not infer completion here.
+MCP/runtime checkpoint `ce103bfc5d6817e46626213a60c3abf46af85a59` is persisted.
+This checkpoint adds22 exact externally generated PLY fixtures,46 file tests,2 actual
+installed MCP stdio tests (snapshot and TCP replay, NOT GUI), and5 safety adversaries.
+Earlier new tests:62 numerical ROI +49 workflow +5 acquisition +11 schema/dispatch.
+All these focused modules passed individually (180 added tests total). Python0.15.6
+is installed in the sandbox. Full installed regression/CI must still be verified.
 
 Source, whole slab (including outside geometry), index mapping, exact ROI bounds,
 frame/acquisition/bookkeeping and target parameters bind the selection context.
@@ -17,12 +17,13 @@ ROI report fingerprints are NOT candidate authorization. Every selected candidat
 must independently clear the inclusive one-cell truncation guard. No bounds search,
 no depth crop and no solver or accepted-limit weakening.
 
-NEXT: generated exact external fixtures A-N; transformed/large-coordinate, overlap
-and actual stdio/TCP replay tests; full installed regression, compileall/diff review
-and CI; draft PR and focused Windows instructions. Do not merge or request Windows
-acceptance yet. Disable unrelated sandbox pytest plugin autoload during local tests
-and use bounded file logging rather than a long blocking tool call. Reinstall the
-local wheel after every runtime change; source PYTHONPATH tests are a separate claim.
+NEXT: run complete installed regression, compileall, full accepted-main diff/native
+immutability review and CI; finish contract/Windows documents, open a draft PR and
+return a focused Windows prompt. Do not merge. Do not repeat accepted0.15.5 Windows.
+Earlier sandbox full-suite attempts hit blocking-call/process time budgets without
+completion; focused tests are green, not a substitute for the remaining full gate.
+Disable unrelated sandbox pytest plugins and use bounded file logging/polling rather
+than long blocking tool calls. Reinstall the wheel after any runtime change.
 Accepted boundary input-order index hashes can legitimately change on permutation;
 ROI/candidate/layer fingerprints and geometric summaries must stay invariant.
 
