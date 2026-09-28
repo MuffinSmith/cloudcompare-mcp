@@ -21,6 +21,7 @@ on:
       - feature/live-cad-section-layer-isolation
       - feature/live-cad-section-target-isolation
       - feature/live-cad-section-target-diagnostics
+      - feature/live-cad-section-target-roi
       - main
   pull_request:
 
