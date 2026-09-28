@@ -14,7 +14,7 @@ from .inspection_camera import (
     integer, navigate, number, only, text, vector,
 )
 
-VERSION = "0.16.1"
+VERSION = "0.16.2"
 VIEWS = {
     "top": ([0, 0, -1], [0, 1, 0]), "bottom": ([0, 0, 1], [0, 1, 0]),
     "front": ([0, 1, 0], [0, 0, 1]), "back": ([0, -1, 0], [0, 0, 1]),
@@ -221,7 +221,10 @@ class InspectionStore:
         native, positions = read_sample(req, query, source)
         context = context_hash(scene, overlays, native, query, initial_camera, configured)
         raw_candidates, diagnostics = discover(positions, threshold, kinds)
-        baseline = navigate(req, {"action": "save"})
+        # CloudCompare's default center-screen auto-pivot can move pivot + camera
+        # after a redraw. Own a bounded suspension for the saved-camera token so
+        # inspection movement remains deterministic without weakening pose guards.
+        baseline = navigate(req, {"action": "save", "suspend_auto_pivot": True})
         last = baseline
         images, captures, total_png = [], [], 0
         failure: Exception | None = None
@@ -266,11 +269,27 @@ class InspectionStore:
                     restored = navigate(req, {"action": "restore", "restore_token": baseline["restore_token"], **guard(current)})
                     if not camera_difference(baseline, restored)["guard_equal"]:
                         raise InspectionError("Native camera restoration did not compare equal")
-                    navigate(req, {"action": "release", "restore_token": baseline["restore_token"], "native_session": baseline["native_session"]})
+                    released = navigate(req, {"action": "release", "restore_token": baseline["restore_token"], "native_session": baseline["native_session"]})
+                    # Release is irreversible even if restoring the host auto-pivot mode
+                    # subsequently moves the camera. Preserve that fact in recovery.
+                    recovery["token_released"] = True
+                    recovery["release"] = released
+                    final_camera = released.get("camera_state")
+                    if final_camera is None:
+                        raise InspectionError("Camera token release did not report the post-auto-pivot camera state", {"release": released})
+                    final_difference = camera_difference(baseline, final_camera)
+                    if not final_difference["guard_equal"]:
+                        raise InspectionError("Camera changed while restoring CloudCompare automatic pivot mode", {
+                            "stage": "inspection.release_auto_pivot", "release": released,
+                            "camera_difference": final_difference, "expected": baseline, "current": final_camera})
                     recovery = {"status": "restored", "camera_fingerprint": restored["camera_fingerprint"],
                                 "restored_guard_equal": restored.get("restored_guard_equal", restored.get("restored_equal")),
                                 "restored_full_equal": restored.get("restored_equal"),
-                                "camera_difference": camera_difference(baseline, restored), "token_released": True}
+                                "camera_difference": camera_difference(baseline, restored), "token_released": True,
+                                "release_camera_difference": final_difference,
+                                "auto_pivot_restored_to_original": released.get("auto_pivot_restored_to_original"),
+                                "auto_pivot_external_override_preserved": released.get("auto_pivot_external_override_preserved"),
+                                "final_camera_fingerprint": final_camera["camera_fingerprint"]}
                 else:
                     recovery = {"status": "retained_by_request", "baseline": baseline, "current": current}
             except Exception as exc:

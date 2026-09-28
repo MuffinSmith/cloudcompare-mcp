@@ -4,6 +4,7 @@ import base64
 from copy import deepcopy
 import hashlib
 import json
+import numpy as np
 import threading
 from unittest.mock import patch
 
@@ -269,3 +270,130 @@ def test_native_diagnostic_evidence_is_frozen_not_a_mutable_alias():
     details['difference']['parameter_fields'].clear()
     assert exc.details['difference']['parameter_fields'] == ['camera_center_host']
     assert 'capture.after_redraw' in str(exc)
+
+
+class AutoPivotHost(GuardHost):
+    """Replay CloudCompare's center-screen auto-pivot translation after redraw."""
+    def __init__(self):
+        super().__init__()
+        self.auto_pivot_candidate = np.array([1.25, -2.5, 3.75])
+
+    def suspension_active(self):
+        return any(data[5] for data in self.tokens.values())
+
+    def apply_auto_pivot(self, candidate=None):
+        if not self.auto_pivot:
+            return
+        candidate = np.array(self.auto_pivot_candidate if candidate is None else candidate, dtype=float)
+        delta = candidate - self.pivot
+        self.pivot = candidate.copy()
+        self.center = self.center + delta  # CloudCompare setPivotPoint(..., autoUpdateCameraPos=true)
+
+    def __call__(self, method, args, **kwargs):
+        if method == 'view.capture' and self.suspension_active() and self.auto_pivot:
+            current = self.state()
+            self.refusal('capture.auto_pivot_ownership', current | {'auto_pick_pivot_at_center': False}, current)
+        if method == 'view.camera' and args.get('action') not in ('get', 'save', 'release'):
+            if self.suspension_active() and self.auto_pivot:
+                current = self.state()
+                self.refusal('movement.auto_pivot_ownership', current | {'auto_pick_pivot_at_center': False}, current)
+            result = super().__call__(method, args, **kwargs)
+            # Native 0.13.2 completes one redraw/event turn before returning moves.
+            if args['action'] != 'restore' and self.auto_pivot:
+                applied = deepcopy(result)
+                self.apply_auto_pivot()
+                current = self.state()
+                if applied['camera_guard_fingerprint'] != current['camera_guard_fingerprint']:
+                    self.refusal('movement.after_redraw', applied, current)
+                result = current
+            return result
+        if method == 'view.camera' and args.get('action') == 'release':
+            data = self.tokens.get(args['restore_token'])
+            baseline_pivot = None if data is None else np.array(data[0]['parameters']['pivot_host'], dtype=float)
+            suspended = bool(data and data[5]); original = bool(data and data[6])
+            external = self.auto_pivot if suspended else False
+            result = super().__call__(method, args, **kwargs)
+            if suspended and original and not external:
+                # Re-enabling the host feature schedules one redraw. At the restored
+                # baseline view its center candidate should reproduce the saved pivot.
+                self.apply_auto_pivot(baseline_pivot)
+                result['camera_state'] = self.state()
+                result['auto_pivot_current_enabled'] = self.auto_pivot
+                result['auto_pivot_restored_to_original'] = True
+            return result
+        return super().__call__(method, args, **kwargs)
+
+
+def test_unsuspended_focus_reproduces_fan_auto_pivot_failure_shape():
+    h = AutoPivotHost()
+    saved = camera.navigate(h, {'action': 'save'})
+    before = deepcopy(saved)
+    with pytest.raises(camera.InspectionError) as e:
+        camera.navigate(h, {'action': 'focus', 'entity_id': 10, **camera.guard(saved)})
+    d = e.value.recovery['camera_diagnostics']
+    assert d['stage'] == 'movement.after_redraw'
+    current = d['current']
+    # Rotation and focal distance are unchanged while pivot and camera translate together.
+    assert current['parameters']['view_rotation_column_major'] == before['parameters']['view_rotation_column_major']
+    assert current['parameters']['focal_distance'] == pytest.approx(current['parameters']['camera_center_host'][2] - current['parameters']['pivot_host'][2])
+    assert set(camera.camera_difference(d['reference'], current)['parameter_fields']) == {'pivot_host', 'camera_center_host'}
+    camera.navigate(h, {'action': 'release', 'restore_token': saved['restore_token'], 'native_session': saved['native_session']})
+
+
+def test_auto_pivot_suspension_allows_focus_look_capture_restore_release():
+    h = AutoPivotHost(); initial = h.state()
+    saved = camera.navigate(h, {'action': 'save', 'suspend_auto_pivot': True})
+    assert saved['auto_pivot_suspended_by_token'] and saved['saved_auto_pick_pivot_at_center']
+    assert saved['auto_pick_pivot_at_center'] is False and h.auto_pivot is False
+    focused = camera.navigate(h, {'action': 'focus', 'entity_id': 10, **camera.guard(saved)})
+    looked = camera.navigate(h, {'action': 'look', 'direction': [-1,-1,-1], 'up': [0,0,1], **camera.guard(focused)})
+    evidence, _, _ = camera.capture(h, looked)
+    assert evidence['camera']['auto_pick_pivot_at_center'] is False
+    restored = camera.navigate(h, {'action': 'restore', 'restore_token': saved['restore_token'], **camera.guard(looked)})
+    assert restored['restored_guard_equal'] and h.auto_pivot is False
+    released = camera.navigate(h, {'action': 'release', 'restore_token': saved['restore_token'], 'native_session': saved['native_session']})
+    assert released['auto_pivot_restored_to_original'] and released['camera_state']['auto_pick_pivot_at_center'] is True
+    assert camera.camera_difference(initial, released['camera_state'])['guard_equal']
+    assert released['camera_state']['parameters']['pivot_host'] == initial['parameters']['pivot_host']
+    assert not h.tokens and h.auto_pivot is True
+
+
+def test_auto_pivot_human_reenable_during_owned_suspension_refuses_without_move():
+    h = AutoPivotHost()
+    saved = camera.navigate(h, {'action': 'save', 'suspend_auto_pivot': True})
+    h.auto_pivot = True  # model an external UI toggle while the token owns FALSE
+    pose = deepcopy(h.center)
+    with pytest.raises(camera.InspectionError) as e:
+        camera.navigate(h, {'action': 'look', 'direction': [0,1,0], 'up': [0,0,1], **camera.guard(saved)})
+    assert e.value.recovery['camera_diagnostics']['stage'] == 'movement.auto_pivot_ownership'
+    assert np.array_equal(h.center, pose)
+    released = camera.navigate(h, {'action': 'release', 'restore_token': saved['restore_token'], 'native_session': saved['native_session']})
+    assert released['auto_pivot_external_override_preserved']
+    assert not h.tokens
+
+
+def test_bounded_inspection_suspends_host_auto_pivot_and_restores_original_mode():
+    h = AutoPivotHost(); initial = h.state()
+    packet, images = live_inspection.InspectionStore().inspect(ARGS, h)
+    assert len(images) == len(ARGS['views'])
+    assert packet['camera_recovery']['status'] == 'restored'
+    assert packet['camera_recovery']['auto_pivot_restored_to_original'] is True
+    assert packet['camera_recovery']['release_camera_difference']['control_fields'] == ['auto_pick_pivot_at_center']
+    assert camera.camera_difference(initial, h.state())['guard_equal']
+    assert h.auto_pivot is True and not h.tokens
+
+
+def test_post_release_auto_pivot_drift_reports_irreversible_token_release():
+    h = AutoPivotHost()
+    original_apply = h.apply_auto_pivot
+    def shifted(candidate=None):
+        candidate = np.array(h.auto_pivot_candidate if candidate is None else candidate, dtype=float)
+        original_apply(candidate + np.array([0., 0., 1.]))
+    h.apply_auto_pivot = shifted
+    with pytest.raises(camera.InspectionError) as e:
+        live_inspection.InspectionStore().inspect(ARGS, h)
+    recovery = e.value.recovery
+    assert recovery['token_released'] is True
+    assert recovery['release']['released'] is True
+    assert recovery['error'].startswith('Camera changed while restoring CloudCompare automatic pivot mode')
+    assert not h.tokens and h.auto_pivot is True

@@ -60,7 +60,8 @@ for legacy_choice in list(CAMERA_CHOICES):
 CAMERA_CHOICES.append(obj({"action": {"const": "release"}, "native_session": string(), "restore_token": string()},
                           ["action", "native_session", "restore_token"]))
 SCHEMAS = {
-    "get_live_camera": obj({"save": {"type": "boolean", "default": False}}),
+    "get_live_camera": obj({"save": {"type": "boolean", "default": False},
+                            "suspend_auto_pivot": {"type": "boolean", "default": False}}),
     "set_live_camera": {"type": "object", "oneOf": CAMERA_CHOICES},
     "inspect_live_part": obj({
         "cloud_id": bounded_int(1, 2**32-1), "distance_threshold": bounded_number(1e-12, 1e12),
@@ -82,7 +83,7 @@ SCHEMAS = {
         ["inspection_id", "inspection_fingerprint"]),
 }
 DESCRIPTIONS = {
-    "get_live_camera": "Get native CloudCompare camera state; save=true creates a same-session/window restoration token (max eight, explicit release). qMCPBridge 0.13.1/revision 9 adds cc-camera-guard-v1 and field diagnostics; legacy full guards remain supported. Host-render camera center is not a global world-eye coordinate.",
+    "get_live_camera": "Get native CloudCompare camera state; save=true creates a same-session/window restoration token (max eight, explicit release). With save=true, suspend_auto_pivot=true owns a temporary suspension of CloudCompare's center-screen automatic pivot until that token is released. qMCPBridge 0.13.2/revision 9 provides camera guards, diagnostics and cc-camera-auto-pivot-v1. Host-render camera center is not a global world-eye coordinate.",
     "set_live_camera": "Deterministic source-safe camera look/orbit/pan/zoom/focus/restore/release. Moves require current native session/window and exactly one expected_camera_guard_fingerprint (navigation) or expected_camera_fingerprint (legacy strict full state). Orbit uses camera-space axes, pan uses view-span fractions, zoom>1 zooms in. Focus requires a visible source cloud frame for global coordinates. No GUI mouse simulation.",
     "inspect_live_part": "Bounded agent inspection: explicit dimensional threshold, deterministic geometry sample, up to four declared views with real PNGs, geometric candidates and draft semantic questions. Restores camera by default. Does not interpret images or confirm semantics; next inspect the returned PNGs and propose a reviewed feature. No source/selection/overlay editing or reconstruction.",
     "propose_live_semantic_feature": "Bind the calling agent's explicit visual observations and concise semantic question to issued geometric candidate IDs and captured-view indexes. Rechecks observed source freshness. This is a hypothesis, not human confirmation or dimensional authority.",
@@ -100,7 +101,7 @@ def tools() -> list[Tool]:
 
 
 def capabilities(available: bool) -> dict:
-    return {"version": VERSION, "native_camera_required": "0.13.1 / workflow revision 9 for navigation guards; legacy 0.13.0 full guards supported",
+    return {"version": VERSION, "native_camera_required": "0.13.2 / workflow revision 9 for bounded auto-pivot ownership; legacy guards remain supported outside inspection",
             "available": available, "bounded": True, "limits": LIMITS,
             "automatic_image_interpretation": False, "precise_human_picking_required": False,
             "semantic_fingerprint_authorizes_reconstruction": False,
@@ -116,7 +117,12 @@ def handlers(request, store: InspectionStore | None = None) -> dict:
             jsonschema.Draft202012Validator(SCHEMAS[name]).validate(args)
             images = []
             if name == "get_live_camera":
-                result = navigate(request, {"action": "save" if args.get("save", False) else "get"})
+                if args.get("suspend_auto_pivot", False) and not args.get("save", False):
+                    raise InspectionError("suspend_auto_pivot requires save=true")
+                camera_args = {"action": "save" if args.get("save", False) else "get"}
+                if args.get("save", False) and args.get("suspend_auto_pivot", False):
+                    camera_args["suspend_auto_pivot"] = True
+                result = navigate(request, camera_args)
             elif name == "set_live_camera":
                 result = navigate(request, args)
             elif name == "inspect_live_part":

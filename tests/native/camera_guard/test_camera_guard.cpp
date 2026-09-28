@@ -15,7 +15,8 @@ QJsonObject state()
         {"point_size",1.0},{"line_width",1.0},{"clipping_enabled",false},
         {"display_scale",QJsonArray{1,1}},{"bubble_view",false},{"stereo",false}};
     return {{"contract","cc-camera-v1"},{"native_session","session"},{"window_id",3},
-        {"viewport_width",640},{"viewport_height",480},{"parameters",p}};
+        {"viewport_width",640},{"viewport_height",480},{"parameters",p},
+        {"auto_pivot_contract","cc-camera-auto-pivot-v1"},{"auto_pick_pivot_at_center",true}};
 }
 void stamp(QJsonObject& s)
 {
@@ -62,7 +63,7 @@ int main(int argc,char** argv)
         b["derived_z_near"]=123;b["computed_view_matrix_column_major"]=QJsonArray{42};stamp(b);
         ok=difference(a,b).value("guard_equal").toBool() && difference(a,b).value("full_equal").toBool();
     }
-    else
+    else if(id<35)
     {
         QJsonObject args{{"expected_camera_guard_fingerprint",a.value("camera_guard_fingerprint")},
             {"native_session",a.value("native_session")},{"window_id",a.value("window_id")}};
@@ -77,6 +78,21 @@ int main(int argc,char** argv)
         if(id==33) ok=!matches(QJsonObject(),a) && matches(QJsonObject(),a,false);
         if(id==34) ok=!matches(QJsonObject{{"native_session","wrong"}},a,false)
             && !matches(QJsonObject{{"window_id",3}},a,false);
+    }
+    else if(id==35)
+    {
+        b["auto_pick_pivot_at_center"]=false;stamp(b);
+        ok=difference(a,b).value("guard_equal").toBool()
+            && difference(a,b).value("full_equal").toBool()
+            && difference(a,b).value("control_fields").toArray().contains("auto_pick_pivot_at_center")
+            && a.value("camera_guard_fingerprint")==b.value("camera_guard_fingerprint");
+    }
+    else if(id==36)
+    {
+        QJsonObject args{{"expected_camera_guard_fingerprint",a.value("camera_guard_fingerprint")},
+            {"native_session",a.value("native_session")},{"window_id",a.value("window_id")}};
+        b["auto_pick_pivot_at_center"]=false;stamp(b);
+        ok=matches(args,b); // control ownership is enforced separately by the saved-token lease.
     }
     if (!ok) std::cerr<<"camera guard case "<<id<<" failed\n";
     return ok ? 0 : 1;

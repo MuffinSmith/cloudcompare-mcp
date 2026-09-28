@@ -36,10 +36,10 @@ The Fusion-oriented workflow and its optional PyMeshLab backend are documented i
 Destructive operations such as delete and transform are applied directly to the open scene.
 The bridge does not provide an undo layer.
 
-## Camera inspection in 0.13.0 / workflow revision 9
+## Camera inspection in 0.13.2 / workflow revision 9
 
-Python 0.16.0 adds bounded visual inspection and semantic confirmation using the
-new `view.camera` contract. **Rebuild the native plugin**; the earlier 0.12.0 DLL
+Python 0.16.2 provides bounded visual inspection and semantic confirmation using the
+`view.camera` contract. **Rebuild the native plugin**; the earlier 0.12.0 DLL
 does not implement these operations. Existing standard-view operations remain.
 See [the camera/inspection contract](../../docs/LIVE_AGENT_VISUAL_INSPECTION.md)
 and [focused Windows acceptance](../../docs/WINDOWS_VISUAL_INSPECTION_ACCEPTANCE.md).
@@ -51,6 +51,14 @@ viewport dimensions. Object-centered orthographic/perspective modes are supporte
 stereo, bubble view, viewer-centered mode and nonunit display scale refuse. Source
 cloud global scale is a different parameter and may be nonunit. Global focus uses
 a declared visible cloud in the active display and refuses pending transforms.
+
+qMCPBridge 0.13.2 also exposes `cc-camera-auto-pivot-v1`. A saved camera may
+explicitly suspend CloudCompare's automatic center-screen pivot for the lifetime
+of that restoration token. This prevents host redraws from translating pivot and
+camera between guarded inspection requests. Release restores the original host
+auto-pivot mode and reports the post-release camera state; external re-enables
+refuse as ownership conflicts instead of weakening the pose guard. See
+[automatic-pivot recovery](../../docs/AUTO_PIVOT_RECOVERY.md).
 
 Camera-center values are host-render parameters, not global world-eye positions.
 Camera fingerprint equality is not framebuffer or full-GUI equality. Native PNG

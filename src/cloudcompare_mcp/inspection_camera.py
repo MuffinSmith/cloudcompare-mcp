@@ -102,6 +102,10 @@ def camera_state(result: Any) -> dict:
         if result.get("camera_guard_contract") != "cc-camera-guard-v1":
             raise InspectionError("Unsupported or incomplete navigation guard contract")
         digest(result.get("camera_guard_fingerprint"), "camera_guard_fingerprint")
+    if "auto_pivot_contract" in result or "auto_pick_pivot_at_center" in result:
+        if result.get("auto_pivot_contract") != "cc-camera-auto-pivot-v1" \
+                or type(result.get("auto_pick_pivot_at_center")) is not bool:
+            raise InspectionError("Unsupported or incomplete automatic-pivot control contract")
     if type(result.get("navigation_supported")) is not bool or not isinstance(result.get("parameters"), dict):
         raise InspectionError("Malformed native camera state")
     if result["navigation_supported"]:
@@ -147,12 +151,13 @@ def camera_difference(before: dict, after: dict) -> dict:
     fields = sorted(k for k in a.keys() | b.keys() if a.get(k) != b.get(k))
     identity = [k for k in ("native_session", "window_id", "viewport_width", "viewport_height")
                 if before.get(k) != after.get(k)]
+    controls = [k for k in ("auto_pick_pivot_at_center",) if before.get(k) != after.get(k)]
     excluded = {"point_size", "line_width", "view_direction_host", "up_direction_host"}
     modern = "camera_guard_contract" in before and "camera_guard_contract" in after
     equal = guard(before) == guard(after)
     if modern:
         equal = equal and not identity and not (set(fields) - excluded)
-    return {"identity_fields": identity, "parameter_fields": fields,
+    return {"identity_fields": identity, "parameter_fields": fields, "control_fields": controls,
             "guard_equal": equal, "full_equal": before["camera_fingerprint"] == after["camera_fingerprint"]}
 
 
@@ -167,7 +172,7 @@ def camera_request(request: Request, method: str, args: dict) -> Any:
 def navigate(request: Request, args: dict) -> dict:
     action = args.get("action") if isinstance(args, dict) else None
     fields = {
-        "get": set(), "save": set(), "release": {"native_session", "restore_token"},
+        "get": set(), "save": {"suspend_auto_pivot"}, "release": {"native_session", "restore_token"},
         "look": {"direction", "up"}, "orbit": {"axis_camera", "degrees"},
         "pan": {"right_fraction", "up_fraction"}, "zoom": {"factor"},
         "focus": {"entity_id", "center_global", "width_global", "min_global", "max_global"},
@@ -181,7 +186,12 @@ def navigate(request: Request, args: dict) -> dict:
         if len(keys) != 1:
             raise InspectionError("Provide exactly one full or navigation camera guard")
         common = {"native_session", "window_id"} | keys
-    required = fields[action] if action != "focus" else {"entity_id"}
+    if action == "focus":
+        required = {"entity_id"}
+    elif action == "save":
+        required = set()
+    else:
+        required = fields[action]
     only(args, {"action"} | common | fields[action], {"action"} | common | required)
     if "native_session" in args:
         text(args["native_session"], "native_session")
@@ -190,6 +200,8 @@ def navigate(request: Request, args: dict) -> dict:
         digest(args[next(k for k in common if k.startswith("expected_"))])
     if "restore_token" in args:
         text(args["restore_token"], "restore_token")
+    if "suspend_auto_pivot" in args and type(args["suspend_auto_pivot"]) is not bool:
+        raise InspectionError("suspend_auto_pivot must be a boolean")
     if action == "look":
         f, u = unit(args["direction"], "direction"), unit(args["up"], "up")
         cross = [f[1]*u[2]-f[2]*u[1], f[2]*u[0]-f[0]*u[2], f[0]*u[1]-f[1]*u[0]]
@@ -220,12 +232,29 @@ def navigate(request: Request, args: dict) -> dict:
     if action == "release":
         if not isinstance(result, dict) or result.get("released") is not True:
             raise InspectionError("Native camera token release was not confirmed")
+        if "camera_state" in result:
+            result["camera_state"] = camera_state(result["camera_state"])
+        if "auto_pivot_contract" in result:
+            if result.get("auto_pivot_contract") != "cc-camera-auto-pivot-v1":
+                raise InspectionError("Unknown automatic-pivot release contract")
+            for field in ("auto_pivot_original_enabled", "auto_pivot_external_override_preserved",
+                          "auto_pivot_restored_to_original"):
+                if type(result.get(field)) is not bool:
+                    raise InspectionError("Malformed automatic-pivot release status")
+            if "auto_pivot_current_enabled" in result and type(result["auto_pivot_current_enabled"]) is not bool:
+                raise InspectionError("Malformed automatic-pivot current state")
         return result
     result = camera_state(result)
     if common and (result["native_session"] != args["native_session"] or result["window_id"] != args["window_id"]):
         raise InspectionError("Camera response changed session or active window")
     if action == "save":
         text(result.get("restore_token"), "restore_token")
+        if args.get("suspend_auto_pivot") is True:
+            if (result.get("auto_pivot_contract") != "cc-camera-auto-pivot-v1"
+                    or result.get("auto_pick_pivot_at_center") is not False
+                    or result.get("auto_pivot_suspended_by_token") is not True
+                    or type(result.get("saved_auto_pick_pivot_at_center")) is not bool):
+                raise InspectionError("Native host did not establish the requested automatic-pivot suspension")
     if "expected_camera_guard_fingerprint" in args and "camera_guard_contract" not in result:
         raise InspectionError("Navigation guard response was downgraded", {"current": result})
     equality = "restored_guard_equal" if "expected_camera_guard_fingerprint" in args else "restored_equal"

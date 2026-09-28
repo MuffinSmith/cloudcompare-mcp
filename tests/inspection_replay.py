@@ -23,6 +23,7 @@ class Host:
         self.calls=[]; self.tokens={}; self.sequence=0; self.session='native-test-session'; self.window=3
         self.rotation=np.eye(3);self.pivot=np.zeros(3);self.center=np.array([0.,0.,10.]);self.focal=10.
         self.width,self.height=64,48;self.selected=[];self.extra=[];self.pending=False
+        self.auto_pivot=True
         self.overlay={'group_id':900,'entities':[{'id':901,'name':'unrelated axis'}]}
         self.fault=None;self.capture_count=0;self.query_count=0
 
@@ -36,6 +37,8 @@ class Host:
         s={'contract':'cc-camera-v1','native_session':self.session,'window_id':self.window,
            'viewport_width':self.width,'viewport_height':self.height,'navigation_supported':True,'parameters':p}
         s['camera_fingerprint']=hashlib.sha256(json.dumps(s,sort_keys=True).encode()).hexdigest()
+        s['auto_pivot_contract']='cc-camera-auto-pivot-v1'
+        s['auto_pick_pivot_at_center']=self.auto_pivot
         return deepcopy(s)
 
     def scene(self):
@@ -75,14 +78,28 @@ class Host:
         if action=='save':
             assert len(self.tokens)<8
             self.sequence+=1;token='saved-'+str(self.sequence)
-            self.tokens[token]=(self.state(),self.rotation.copy(),self.pivot.copy(),self.center.copy(),self.focal)
-            return self.state()|{'restore_token':token}
+            before=self.state();suspend=args.get('suspend_auto_pivot',False);original=self.auto_pivot
+            self.tokens[token]=(before,self.rotation.copy(),self.pivot.copy(),self.center.copy(),self.focal,suspend,original)
+            if suspend:self.auto_pivot=False
+            return self.state()|{'restore_token':token,'auto_pivot_suspended_by_token':suspend,
+                                 'saved_auto_pick_pivot_at_center':original}
         assert args['native_session']==self.session
         if action=='release':
-            del self.tokens[args['restore_token']];return {'released':True}
+            before,rotation,pivot,center,focal,suspend,original=self.tokens[args['restore_token']]
+            result={'released':True}
+            if suspend:
+                external=self.auto_pivot
+                if not external:self.auto_pivot=original
+                result|={'auto_pivot_contract':'cc-camera-auto-pivot-v1',
+                         'auto_pivot_original_enabled':original,
+                         'auto_pivot_external_override_preserved':external,
+                         'auto_pivot_restored_to_original':self.auto_pivot==original,
+                         'auto_pivot_current_enabled':self.auto_pivot,
+                         'camera_state':self.state()}
+            del self.tokens[args['restore_token']];return result
         assert args['window_id']==self.window and args['expected_camera_fingerprint']==self.state()['camera_fingerprint']
         if action=='restore':
-            before,rotation,pivot,center,focal=self.tokens[args['restore_token']]
+            before,rotation,pivot,center,focal,suspend,original=self.tokens[args['restore_token']]
             assert before['window_id']==self.window and before['viewport_width']==self.width and before['viewport_height']==self.height
             self.rotation,self.pivot,self.center,self.focal=rotation.copy(),pivot.copy(),center.copy(),focal
             return self.state()|{'restored_equal':self.state()['camera_fingerprint']==before['camera_fingerprint']}

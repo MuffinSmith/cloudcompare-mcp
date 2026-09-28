@@ -7,6 +7,7 @@
 #include <ccViewportParameters.h>
 #include <ccPointCloud.h>
 #include <QCryptographicHash>
+#include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QUuid>
@@ -61,11 +62,13 @@ struct Saved
     ccViewportParameters params;
     int window, width, height;
     bool clipping;
+    bool autoPivotSuspended, autoPivotOriginal;
     CCVector2d displayScale;
     QString fingerprint, guardFingerprint;
-    explicit Saved(ccGLWindowInterface* w, const QString& fp)
+    explicit Saved(ccGLWindowInterface* w, const QString& fp, bool suspendAutoPivot)
         : params(w->getViewportParameters()), window(w->getUniqueID()), width(w->glWidth()),
           height(w->glHeight()), clipping(w->clippingPlanesEnabled()),
+          autoPivotSuspended(suspendAutoPivot), autoPivotOriginal(w->autoPickPivotAtCenter()),
           displayScale(w->getDisplayScale()), fingerprint(fp), guardFingerprint() {}
 };
 // Bounded diagnostic history, never an authorization cache. Token storage is separate.
@@ -77,6 +80,9 @@ void remember(const QJsonObject& s)
     history.push_back(s);
 }
 std::map<QString,Saved>& saved() { static std::map<QString,Saved> s; return s; }
+// At most one suspended automatic-pivot owner per window. Ordinary save tokens do
+// not participate. This makes the host behavior explicit without weakening pose guards.
+std::map<int,QString>& autoPivotOwners() { static std::map<int,QString> s; return s; }
 ccHObject* find(ccHObject* root, unsigned id)
 {
     if (!root) return nullptr;
@@ -161,6 +167,10 @@ QJsonObject snapshot(ccGLWindowInterface* w)
     result["camera_guard_contract"]="cc-camera-guard-v1";
     result["camera_guard_fingerprint"]=qMCPCameraGuard::fingerprint(result);
     result["camera_guard_scope"]="exact_navigation_projection_clipping_window_size; excludes_point_line_size_and_redundant_directions";
+    // Host interaction control, deliberately OUTSIDE the legacy full camera hash and
+    // navigation guard. A suspended save token owns this control separately.
+    result["auto_pivot_contract"]="cc-camera-auto-pivot-v1";
+    result["auto_pick_pivot_at_center"]=w->autoPickPivotAtCenter();
     result["computed_view_matrix_column_major"]=matrix(p.computeViewMatrix());
     result["derived_z_near"]=nullable(p.zNear); result["derived_z_far"]=nullable(p.zFar);
     result["navigation_supported"]=supported(w);
@@ -189,11 +199,30 @@ QJsonObject refusal(const QString& stage, const QJsonObject& expected, const QJs
         if (expected.contains(QLatin1String(key))) detail.insert(QLatin1String(key),expected.value(QLatin1String(key)));
     return {{"camera_diagnostics",detail}};
 }
+QJsonObject autoPivotRefusal(const QString& stage, const QJsonObject& current)
+{
+    QJsonObject expected=current;
+    expected["auto_pick_pivot_at_center"]=false;
+    QJsonObject result=refusal(stage,expected,current);
+    QJsonObject detail=result.value("camera_diagnostics").toObject();
+    detail["auto_pivot_contract"]="cc-camera-auto-pivot-v1";
+    detail["expected_auto_pick_pivot_at_center"]=false;
+    detail["current_auto_pick_pivot_at_center"]=current.value("auto_pick_pivot_at_center");
+    result["camera_diagnostics"]=detail;
+    return result;
+}
+bool autoPivotOwnershipViolated(ccGLWindowInterface* w)
+{
+    if (!w) return false;
+    return autoPivotOwners().find(w->getUniqueID())!=autoPivotOwners().end()
+        && w->autoPickPivotAtCenter();
+}
 QJsonObject dispatch(ccMainAppInterface* app, const QJsonObject& a, QString& error)
 {
     const QString action=a.value("action").toString();
     QSet<QString> allowed{"action"};
     if (action=="release") allowed.unite(QSet<QString>{"native_session","restore_token"});
+    else if (action=="save") allowed.insert("suspend_auto_pivot");
     else if (action!="get" && action!="save")
     {
         allowed.unite(QSet<QString>{"native_session","window_id","expected_camera_fingerprint","expected_camera_guard_fingerprint"});
@@ -210,9 +239,48 @@ QJsonObject dispatch(ccMainAppInterface* app, const QJsonObject& a, QString& err
     const QString token=a.value("restore_token").toString();
     if (action=="release")
     {
-        if (a.value("native_session").toString()!=session() || token.isEmpty() || saved().erase(token)!=1)
+        auto it=saved().find(token);
+        if (a.value("native_session").toString()!=session() || token.isEmpty() || it==saved().end())
             { error="Unknown camera token or native session"; return {}; }
-        return {{"released",true}};
+        QJsonObject result{{"released",true}};
+        const Saved s=it->second;
+        if (s.autoPivotSuspended)
+        {
+            auto owner=autoPivotOwners().find(s.window);
+            if (owner==autoPivotOwners().end() || owner->second!=token)
+                { error="Automatic pivot ownership record is inconsistent; release refused"; return {}; }
+            auto* active=app ? app->getActiveGLWindow() : nullptr;
+            if (!active || active->getUniqueID()!=s.window)
+                { error="Saved camera window is not active; automatic pivot release refused"; return {}; }
+            const bool current=active->autoPickPivotAtCenter();
+            const bool humanOverride=current; // suspension owns FALSE; TRUE was external.
+            if (!humanOverride && s.autoPivotOriginal)
+            {
+                // Enabling CloudCompare's default auto-pivot deliberately schedules a
+                // redraw. Let that one host-owned event turn finish, then report the
+                // resulting camera state instead of hiding a post-release mutation.
+                active->setAutoPickPivotAtCenter(true);
+                QCoreApplication::processEvents();
+            }
+            result["auto_pivot_contract"]="cc-camera-auto-pivot-v1";
+            result["auto_pivot_original_enabled"]=s.autoPivotOriginal;
+            result["auto_pivot_external_override_preserved"]=humanOverride;
+            active=app ? app->getActiveGLWindow() : nullptr;
+            if (active && active->getUniqueID()==s.window)
+            {
+                result["auto_pivot_current_enabled"]=active->autoPickPivotAtCenter();
+                result["auto_pivot_restored_to_original"]=(active->autoPickPivotAtCenter()==s.autoPivotOriginal);
+                result["camera_state"]=snapshot(active);
+            }
+            else
+            {
+                result["auto_pivot_restored_to_original"]=false;
+                result["window_changed_during_release"]=true;
+            }
+            autoPivotOwners().erase(owner);
+        }
+        saved().erase(it);
+        return result;
     }
     auto* w=app ? app->getActiveGLWindow() : nullptr;
     if (!w) { error="No active 3D window"; return {}; }
@@ -220,15 +288,28 @@ QJsonObject dispatch(ccMainAppInterface* app, const QJsonObject& a, QString& err
     if (action=="get") return before;
     if (action=="save")
     {
+        if (a.contains("suspend_auto_pivot") && !a.value("suspend_auto_pivot").isBool())
+            { error="suspend_auto_pivot must be a boolean"; return {}; }
+        const bool suspendAutoPivot=a.value("suspend_auto_pivot").toBool(false);
         if (!supported(w) || w->glWidth()<=0 || w->glHeight()<=0)
             { error="Camera mode/state cannot be safely saved for inspection"; return {}; }
         if (saved().size()>=qMCPCameraPolicy::MaxSavedStates)
             { error="Camera save capacity reached; explicitly release unused tokens"; return {}; }
+        if (suspendAutoPivot && autoPivotOwners().find(w->getUniqueID())!=autoPivotOwners().end())
+            { error="Automatic center-pivot suspension is already owned by another camera token"; return {}; }
         const QString key=QUuid::createUuid().toString(QUuid::WithoutBraces);
-        saved().emplace(key,Saved(w,before.value("camera_fingerprint").toString()));
+        saved().emplace(key,Saved(w,before.value("camera_fingerprint").toString(),suspendAutoPivot));
         saved().at(key).guardFingerprint=before.value("camera_guard_fingerprint").toString();
-        before["restore_token"]=key;
-        return before;
+        if (suspendAutoPivot)
+        {
+            autoPivotOwners()[w->getUniqueID()]=key;
+            w->setAutoPickPivotAtCenter(false); // disabling does NOT schedule a redraw
+        }
+        QJsonObject result=snapshot(w);
+        result["restore_token"]=key;
+        result["auto_pivot_suspended_by_token"]=suspendAutoPivot;
+        result["saved_auto_pick_pivot_at_center"]=saved().at(key).autoPivotOriginal;
+        return result;
     }
     double windowId;
     if (!number(a,"window_id",windowId,0.0,2147483647.0) || windowId!=w->getUniqueID()
@@ -237,6 +318,9 @@ QJsonObject dispatch(ccMainAppInterface* app, const QJsonObject& a, QString& err
         { error="Camera session/window/fingerprint changed; movement refused"; return refusal("movement.precondition",a,before); }
     if (!supported(w) || w->glWidth()<=0 || w->glHeight()<=0)
         { error="Unsupported camera mode/state (requires object-centered, no stereo/bubble/display scale)"; return {}; }
+    if (autoPivotOwnershipViolated(w))
+        { error="Automatic center pivot changed during saved camera ownership; movement refused";
+          return autoPivotRefusal("movement.auto_pivot_ownership",before); }
     if (action=="restore")
     {
         const auto it=saved().find(token);
@@ -254,12 +338,22 @@ QJsonObject dispatch(ccMainAppInterface* app, const QJsonObject& a, QString& err
         }
         w->setViewportParameters(restored);
         w->setClippingPlanesEnabled(s.clipping); w->setDisplayScale(s.displayScale);
+        QJsonObject applied=snapshot(w);
         w->redraw();
-        auto result=snapshot(w);
+        if (s.autoPivotSuspended) QCoreApplication::processEvents();
+        auto* settled=app ? app->getActiveGLWindow() : nullptr;
+        auto result=snapshot(settled);
+        if (!settled || settled->getUniqueID()!=s.window
+            || (s.autoPivotSuspended && result.value("camera_guard_fingerprint")!=applied.value("camera_guard_fingerprint")))
+        {
+            error="Camera/window changed while restoring saved camera";
+            return refusal("restore.after_redraw",applied,result);
+        }
         result["restored_equal"]=result.value("camera_fingerprint").toString()==s.fingerprint;
         result["restored_guard_equal"]=result.value("camera_guard_fingerprint").toString()==s.guardFingerprint;
         result["restoration_scope"]=navigationOnly ? "navigation_preserving_current_point_line_size" : "legacy_full_viewport";
         result["restored_full_reference_fingerprint"]=s.fingerprint;
+        result["auto_pivot_suspended_by_token"]=s.autoPivotSuspended;
         return result;
     }
     // Build a candidate copy; validation happens before the single host mutation.
@@ -299,7 +393,27 @@ QJsonObject dispatch(ccMainAppInterface* app, const QJsonObject& a, QString& err
     }
     else if (action=="focus") ok=focus(app,a,p,w->glWidth(),w->glHeight());
     if (!ok || !valid(p)) { error="Invalid or excessive camera movement; source/pending transform/mode may be unsupported"; return {}; }
-    w->setViewportParameters(p); w->redraw();
-    return snapshot(w);
+    const int targetWindow=w->getUniqueID();
+    w->setViewportParameters(p);
+    QJsonObject applied=snapshot(w);
+    w->redraw();
+    // Complete one event turn before returning. This converts delayed host camera
+    // changes into an immediate, attributable refusal. When inspection owns an
+    // auto-pivot suspension, this should remain stable without any retry.
+    QCoreApplication::processEvents();
+    auto* settled=app ? app->getActiveGLWindow() : nullptr;
+    QJsonObject result=snapshot(settled);
+    if (!settled || settled->getUniqueID()!=targetWindow
+        || result.value("camera_guard_fingerprint")!=applied.value("camera_guard_fingerprint"))
+    {
+        error="Camera/window changed after camera movement redraw";
+        return refusal("movement.after_redraw",applied,result);
+    }
+    if (autoPivotOwnershipViolated(settled))
+    {
+        error="Automatic center pivot changed during saved camera ownership";
+        return autoPivotRefusal("movement.auto_pivot_ownership",result);
+    }
+    return result;
 }
 }

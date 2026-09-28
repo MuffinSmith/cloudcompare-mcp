@@ -67,8 +67,11 @@ inline QJsonObject difference(const QJsonObject& before, const QJsonObject& afte
         topBefore.insert(QLatin1String(key), before.value(QLatin1String(key)));
         topAfter.insert(QLatin1String(key), after.value(QLatin1String(key)));
     }
+    QJsonObject controlBefore{{"auto_pick_pivot_at_center", before.value("auto_pick_pivot_at_center")}};
+    QJsonObject controlAfter{{"auto_pick_pivot_at_center", after.value("auto_pick_pivot_at_center")}};
     return {{"identity_fields", changedFields(topBefore, topAfter)},
         {"parameter_fields", changedFields(before.value("parameters").toObject(), after.value("parameters").toObject())},
+        {"control_fields", changedFields(controlBefore, controlAfter)},
         {"guard_equal", !before.isEmpty() && !after.isEmpty() && payload(before) == payload(after)},
         {"full_equal", !before.isEmpty() && !after.isEmpty()
             && before.value("camera_fingerprint") == after.value("camera_fingerprint")}};

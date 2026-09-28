@@ -396,7 +396,7 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         QJsonObject result;
         result[ "protocol_version" ] = 1;
         result[ "plugin" ] = "qMCPBridge";
-        result[ "plugin_version" ] = "0.13.1";
+        result[ "plugin_version" ] = "0.13.2";
         result[ "process_id" ] = QCoreApplication::applicationPid();
         addApplicationVersion( result );
         result[ "port" ] = static_cast<int>( m_port );
@@ -841,6 +841,9 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         if (!qMCPCameraGuard::matches(params,cameraBefore,false))
         { error="Camera changed before viewport capture";
           return qMCPCamera::refusal("capture.precondition",params,cameraBefore); }
+        if (qMCPCamera::autoPivotOwnershipViolated(window))
+        { error="Automatic center pivot changed during saved camera ownership";
+          return qMCPCamera::autoPivotRefusal("capture.auto_pivot_ownership",cameraBefore); }
         m_app->redrawAll();
         QCoreApplication::processEvents();
         // Reacquire: event processing may close/switch the window or execute a request.
@@ -890,10 +893,12 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         if (method == "capabilities.get" && workflowResult.isObject())
         {
             QJsonObject caps=workflowResult.toObject();
-            caps["plugin_version"]="0.13.1";
+            caps["plugin_version"]="0.13.2";
             QJsonObject camera=caps.value("camera").toObject();
             camera["guard_contract"]="cc-camera-guard-v1";
             camera["diagnostics_contract"]="cc-camera-diagnostics-v1";
+            camera["auto_pivot_contract"]="cc-camera-auto-pivot-v1";
+            camera["save_can_suspend_auto_pivot"]=true;
             caps["camera"]=camera;
             return caps;
         }
