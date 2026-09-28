@@ -37,6 +37,24 @@ Image-free spatial grids, plane discovery, and section occupancy are documented 
 Automatic circle/cylinder candidate discovery and temporary visible fit overlays
 are documented in [docs/LIVE_FEATURE_CANDIDATES.md](docs/LIVE_FEATURE_CANDIDATES.md).
 
+## Explicit section-target ROI isolation (Python 0.15.6)
+
+Four read-only tools add a caller-declared, half-open UV rectangle **before** the
+accepted target/layer/boundary/topology/profile chain: `analyze_section_target_roi`,
+`analyze_live_section_target_roi`, `reconstruct_section_target_roi_profile`, and
+`reconstruct_live_section_target_roi_profile`. Every complete slab point is accounted
+for inside or outside; all signed depths remain. A one-cell ROI-edge guard blocks
+possibly clipped targets even with explicit selection. There is no automatic ROI
+or scale search, largest-target choice, or native DLL change.
+
+See [the numerical ROI contract](docs/LIVE_CAD_SECTION_TARGET_ROI.md), the
+[focused Windows procedure](docs/WINDOWS_SECTION_TARGET_ROI_ACCEPTANCE.md), and the
+[accepted 0.15.6 Windows result](docs/WINDOWS_0_15_6_ACCEPTED.md). Focused real
+Windows/CloudCompare acceptance passed all declared synthetic/fixture gates; the
+optional fan exercise remained correctly BLOCKED because no prior spatial intent
+and section frame were declared. Snapshot tools work without CloudCompare; live
+tools require complete acquisition.
+
 ## Features
 
 ### Native tools (no CloudCompare required)
