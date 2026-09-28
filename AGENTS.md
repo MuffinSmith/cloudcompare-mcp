@@ -5,12 +5,15 @@
 Branch: `feature/live-cad-section-target-roi`. Do not recreate it on interruption.
 Accepted-main parent: `809c522550274316fa0a14d2e86d90a4921bfc03`.
 Recovery inspection confirmed no open issues/PRs and no newer deliberate lane.
-Main CI36361354294 and initial-lane CI36361951918 succeeded. Acquisition is now
-separated from target solving with unchanged old public outputs. Local targeted
-regression:158 passed (numerical/workflow tests, not installed MCP/GUI acceptance).
-ROI runtime is NOT implemented or Windows-ready yet. Do not merge this increment.
-Temporary wheel-bootstrap run36361951093 had a YAML command quoting error; its
-block-scalar fix is included here. No product test failure was involved.
+Acquisition refactor checkpoint `de49ee7e1dc04c8d598697e21dd74f70d86773d1`
+is persisted and CI36362213639 passed. Its local targeted regression:158 passed.
+This checkpoint adds the independently tested numerical ROI classifier and inclusive
+one-cell edge guard:62 new tests pass. Workflow/MCP integration is NEXT; this is
+not yet a release-ready0.15.6. Do not merge or request Windows acceptance yet.
+Temporary public-wheel bootstrap CI36362213680 passed; artifact10945423819 was
+retrieved. Its temporary workflow is removed. Local offline wheel installation
+works in an isolated venv with system scientific dependencies; reinstall after code
+changes (editable install requires an unavailable editables wheel).
 
 Read `docs/WINDOWS_0_15_5_ACCEPTED.md`, accepted target/layer/boundary/topology/profile
 contracts, and the user's ROI handoff. Historical pending wording in old feature
@@ -36,9 +39,8 @@ Direct network cloning/installing is unavailable in this sandbox. Source was obt
 from main CI's `tested-source-809c522...` artifact10945467790. Its Git tree is exactly
 `77e6588ba7a5e4f306129c1be3c8f8e4dcaf0740`. The API-described main commit was also
 reconstituted byte-identically as a shallow local baseline. GitHub writes use the
-connector, with expected parent/tree/remote checks. Temporary offline dependency
-bootstrap workflow obtains public wheels for local installed tests; remove that
-workflow after obtaining its artifact. Never archive credentials or private fan data.
+connector, with expected parent/tree/remote checks. Public dependency wheels came from the now-removed temporary bootstrap workflow.
+Never archive credentials or private fan data.
 
 ## Accepted baseline; do not repeat completed gates
 
