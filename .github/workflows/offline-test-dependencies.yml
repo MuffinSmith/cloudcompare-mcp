@@ -13,7 +13,8 @@ jobs:
         with:
           python-version: "3.13"
       - name: Download public dependency wheels only
-        run: python -m pip download --only-binary=:all: --dest wheelhouse 'mcp[cli]>=1.30.0,<2' hatchling 'laspy[lazrs]>=2.5' 'plyfile>=0.9'
+        run: |
+          python -m pip download --only-binary=:all: --dest wheelhouse 'mcp[cli]>=1.30.0,<2' hatchling 'laspy[lazrs]>=2.5' 'plyfile>=0.9'
       - uses: actions/upload-artifact@v4
         with:
           name: offline-python313-public-wheels

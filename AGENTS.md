@@ -5,8 +5,12 @@
 Branch: `feature/live-cad-section-target-roi`. Do not recreate it on interruption.
 Accepted-main parent: `809c522550274316fa0a14d2e86d90a4921bfc03`.
 Recovery inspection confirmed no open issues/PRs and no newer deliberate lane.
-Main CI36361354294 succeeded. This first checkpoint starts the lane; ROI runtime
-is NOT implemented or Windows-ready yet. Do not merge this increment.
+Main CI36361354294 and initial-lane CI36361951918 succeeded. Acquisition is now
+separated from target solving with unchanged old public outputs. Local targeted
+regression:158 passed (numerical/workflow tests, not installed MCP/GUI acceptance).
+ROI runtime is NOT implemented or Windows-ready yet. Do not merge this increment.
+Temporary wheel-bootstrap run36361951093 had a YAML command quoting error; its
+block-scalar fix is included here. No product test failure was involved.
 
 Read `docs/WINDOWS_0_15_5_ACCEPTED.md`, accepted target/layer/boundary/topology/profile
 contracts, and the user's ROI handoff. Historical pending wording in old feature

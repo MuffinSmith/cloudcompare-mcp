@@ -7,6 +7,7 @@ imported, not forked. No cache, source mutation or filtered acquisition is used.
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass
 import hashlib
 import math
 from numbers import Real
@@ -28,6 +29,16 @@ from .section_targets import (
     analyze_section_targets_uvd, refresh_candidate_fingerprints,
     select_section_target, validate_options,
 )
+
+
+@dataclass
+class SectionTargetInput:
+    """Verified complete input; arrays stay private until an explicit workflow scopes them."""
+
+    samples_uvd: np.ndarray
+    context: dict
+    source_indices: np.ndarray | None = None
+    points_global: np.ndarray | None = None
 
 
 def target_options(value: Any) -> dict:
@@ -62,7 +73,7 @@ def bind_target_context(analysis: SectionTargetAnalysis, context: dict) -> Secti
     return analysis
 
 
-def snapshot_target_analysis(args: dict, options: dict) -> SectionTargetAnalysis:
+def snapshot_target_input(args: dict, options: dict) -> SectionTargetInput:
     section = object_fields(args['section'], 'section',
                             ('coordinate_space', 'units', 'acquisition_complete', 'samples_uvd',
                              'frame', 'source', 'provenance'),
@@ -72,11 +83,10 @@ def snapshot_target_analysis(args: dict, options: dict) -> SectionTargetAnalysis
     if section['acquisition_complete'] is not True:
         raise SectionTargetError('Target analysis requires acquisition_complete=true; no sampled topology proof')
     context = snapshot_context(section)
-    analysis = analyze_section_targets_uvd(section['samples_uvd'], **options)
-    return bind_target_context(analysis, context)
+    return SectionTargetInput(samples_array(section['samples_uvd'], options['max_points']), context)
 
 
-def live_target_analysis(args: dict, options: dict, request: Callable[..., Any] | None) -> SectionTargetAnalysis:
+def live_target_input(args: dict, options: dict, request: Callable[..., Any] | None) -> SectionTargetInput:
     cloud_id = integer(args['cloud_id'], 'cloud_id', 1, 2**32 - 1)
     origin = vector3(args['origin'], 'origin')
     normal = np.asarray(vector3(args['normal'], 'normal'))
@@ -153,13 +163,28 @@ def live_target_analysis(args: dict, options: dict, request: Callable[..., Any] 
                         'sample_strategy': compact_copy(native.get('sample_strategy'), 'sample_strategy', 128),
                         'source_integrity_coverage': 'not_independently_measured_by_this_tool'},
     }
-    analysis = analyze_section_targets_uvd(uvd, **options)
-    for layer in analysis.public['candidate_targets']:
-        subset = analysis.target_source_indices[layer['target_id']]
-        layer['source_point_indices_sha256'] = hashlib.sha256(
-            np.sort(indices[subset]).astype('<u8').tobytes()).hexdigest()
-        layer['source_global_geometry_sha256'] = canonical_sha256(xyz[subset])
-    return bind_target_context(analysis, context)
+    return SectionTargetInput(uvd, context, indices, xyz)
+
+
+def target_analysis_from_input(data: SectionTargetInput, options: dict) -> SectionTargetAnalysis:
+    """Run the unchanged accepted solver after acquisition (or explicit ROI scoping)."""
+    analysis = analyze_section_targets_uvd(data.samples_uvd, **options)
+    if data.source_indices is not None:
+        for candidate in analysis.public['candidate_targets']:
+            subset = analysis.target_source_indices[candidate['target_id']]
+            candidate['source_point_indices_sha256'] = hashlib.sha256(
+                np.sort(data.source_indices[subset]).astype('<u8').tobytes()).hexdigest()
+            if data.points_global is not None:
+                candidate['source_global_geometry_sha256'] = canonical_sha256(data.points_global[subset])
+    return bind_target_context(analysis, data.context)
+
+
+def snapshot_target_analysis(args: dict, options: dict) -> SectionTargetAnalysis:
+    return target_analysis_from_input(snapshot_target_input(args, options), options)
+
+
+def live_target_analysis(args: dict, options: dict, request: Callable[..., Any] | None) -> SectionTargetAnalysis:
+    return target_analysis_from_input(live_target_input(args, options, request), options)
 
 
 
