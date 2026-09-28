@@ -67,13 +67,21 @@ jobs:
         with:
           clean: false
       - uses: actions/checkout@v4
+        timeout-minutes: 3
         with:
           repository: CloudCompare/CloudCompare
           ref: v2.13.2
           path: host-source
-          submodules: recursive
+          # Optional plugins include external GitLab hosts unrelated to this target.
+          submodules: false
           persist-credentials: false
           clean: false
+      - name: Fetch only the required pinned CCCoreLib submodule
+        timeout-minutes: 3
+        working-directory: host-source
+        run: |
+          git submodule update --init --depth=1 -- libs/qCC_db/extern/CCCoreLib
+          test "$(git rev-parse HEAD:libs/qCC_db/extern/CCCoreLib)" = "$(git -C libs/qCC_db/extern/CCCoreLib rev-parse HEAD)"
       - name: Install host build dependencies
         run: |
           sudo apt-get update -qq
