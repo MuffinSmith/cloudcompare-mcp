@@ -49,6 +49,13 @@ through the product as the new tests do. Run the five focused modules:
 Actual installed stdio must advertise all six new tools; snapshot calls must work
 without a bridge. Counted TCP replay remains replay, not visible-host acceptance.
 
+The first Windows attempt at HEAD `8438ba311c6d31de5a775d3ec3f17a5bca214ce6`
+proved the two-anchor `safe` interaction but exposed a fixture-capture usability
+problem: qMCPBridge auto-stopped a three-anchor session after repeated events on one
+vertex consumed the event count. See `WINDOWS_0_15_7_PARTIAL_ACCEPTANCE.md`.
+The procedure below deliberately overprovisions the event budget and uses explicit
+distinct source-point indexes; it does not change ROI mathematics or provenance.
+
 ## 2. Attach safely to the existing visible host
 
 Rediscover the current CloudCompare process/bridge; do not assume the retained
@@ -80,21 +87,40 @@ For EACH chosen fixture, before calling any picked ROI analysis/reconstruction:
    anchor point indices and explicit margin 0. They were declared independently of
    reconstruction quality. Rediscover the imported standalone source ID.
 2. Explain the declared frame and canonical U/V basis. Start existing
-   `start_live_picking` with that source allowlist and `max_picks` equal to the
-   declared anchor count. Have the human actually click the deliberate anchor
-   vertices. They are actual vertices in the same PLY but outside the slab in depth;
-   they must not be deleted, moved or fabricated through point-info JSON.
-3. Use `get_live_picks` and `stop_live_picking` as needed. Verify stopped state,
-   actual source point IDs, global/native coordinates and shift/scale. If the wrong
-   anchors were captured, mark that declared attempt BLOCKED; do not inspect a fit
-   and then reposition anchors to improve the result.
-4. Save the raw captured state plus declared frame/provenance, chosen indexes,
+   `start_live_picking` with that source allowlist and a fixed **event budget** of
+   `min(100, max(8, 4 * declared_anchor_count))`, chosen before clicking. Native
+   qMCPBridge 0.12.0 counts pick events, not unique source vertices, so do **not**
+   set `max_picks` equal to the logical anchor count. Repeated clicks on one vertex
+   are capture noise and must not exhaust a three-anchor session prematurely.
+   Have the human click the predeclared anchor vertices. They are actual vertices in
+   the same PLY but outside the slab in depth; they must not be deleted, moved or
+   fabricated through point-info JSON. For disposable fixtures only, increasing the
+   rendered point size or zooming the view is allowed because it changes display only,
+   not geometry; record and restore any display change.
+3. Use `get_live_picks` while acquisition is active. Identify the captured indexes
+   whose `(entity_id, point_index)` match the **predeclared** logical anchors and
+   pass only those distinct indexes to the 0.15.7 intent tools. Extra repeated pick
+   records remain in the captured-state provenance but are not logical anchors.
+   Once every predeclared anchor has at least one captured source vertex, call
+   `stop_live_picking` and freeze the explicit distinct `pick_indices`. Selecting
+   which duplicate event represents the same predeclared source point may use the
+   earliest matching event; it must never depend on ROI/reconstruction quality.
+   If the fixed event budget is exhausted without every predeclared anchor, that
+   capture attempt is BLOCKED.
+4. A fixture capture may be restarted before **any** ROI/target/reconstruction
+   quality is inspected when the reason is plainly acquisition error (for example,
+   a missed predeclared dot or repeated event). The restarted attempt must keep the
+   same source, declared frame, logical anchor point IDs, parameters and margin.
+   This is acquisition retry, not permission to reposition the intended ROI after
+   seeing a fit. Verify stopped state, selected source point IDs, global/native
+   coordinates and shift/scale.
+5. Save the full raw captured state plus declared frame/provenance, chosen distinct indexes,
    fixed acquisition/target parameters and explicit margin BEFORE quality inspection.
-5. Call `derive_live_section_roi_from_picks`. This only forms intent and acquires
+6. Call `derive_live_section_roi_from_picks`. This only forms intent and acquires
    source evidence; it must not run target analysis. Save its full compact response
    and `intent_fingerprint`. Independently check UV min/max from those exact host
    picks in the returned frame. Do not substitute ideal manifest coordinates.
-6. Freeze that intent. Call `analyze_live_picked_section_target_roi` with unchanged
+7. Freeze that intent. Call `analyze_live_picked_section_target_roi` with unchanged
    declaration plus `expected_intent_fingerprint`. Only then inspect target evidence.
    A reconstruction attempt uses `reconstruct_live_picked_section_target_roi_profile`
    with those same fields and the predeclared layer/profile parameters.

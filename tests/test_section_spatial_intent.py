@@ -133,3 +133,25 @@ def test_current_point_revalidation_is_geometry_not_local_global_conversion():
     for key, value in [('position_global', [0, 0, 0]), ('global_scale', 2), ('entity_id', 2), ('point_index', True)]:
         with pytest.raises(SectionLayerError):
             verify_current_pick(p, p | {key: value})
+
+
+def test_unselected_duplicate_click_events_are_bound_but_do_not_consume_logical_anchors():
+    args = snapshot(anchors=[[-3, -3, 4], [-3, -3, 4], [11, 9, -4], [2, -3, 1]])
+    # The native picker may emit the same source vertex more than once.  Keep the
+    # raw event in provenance, but deliberately select distinct predeclared anchors.
+    args['pick_state']['picks'][1].update(point_index=100000, item_index=100000)
+    args['pick_indices'] = [0, 2, 3]
+    first = run(args)
+    assert first['anchor_count'] == 3
+    assert first['pick_indices'] == [0, 2, 3]
+    assert first['roi'] == dict(u_min=-3, u_max=11, v_min=-3, v_max=9)
+
+    reordered = deepcopy(args)
+    reordered['pick_indices'] = [3, 0, 2]
+    assert run(reordered) == first
+
+    # Even unselected duplicate events remain part of the frozen captured session,
+    # so changing one invalidates the old intent rather than silently discarding it.
+    changed = deepcopy(args)
+    changed['pick_state']['picks'][1]['click']['x'] += 1
+    assert run(changed)['intent_fingerprint'] != first['intent_fingerprint']

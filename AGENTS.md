@@ -1,19 +1,30 @@
 # Repository work and interruption recovery
 
-## Python 0.15.7: internally validated; Windows interaction gate next
+## Python 0.15.7: first Windows interaction partially passed; capture continuation pending
 
 Branch: `feature/live-section-roi-from-picks`. Draft PR: **#21, do not merge**.
 Accepted-main parent: `2b385820ecfcb84d79aaf59ad5965e748f961466`.
-Runtime/test checkpoint: `604cc5d21c38a138aea0dff367cd2af888565830`.
-Its exact-head push CI **36369463630 succeeded**. Later changes in the current
-checkpoint are documentation only; resolve actual branch HEAD and exact-head CI
-before testing. Do not recreate this branch after a stream failure.
+Previously tested Windows HEAD: `8438ba311c6d31de5a775d3ec3f17a5bca214ce6`;
+its exact-head CI **36370032133 succeeded**. The first Windows gate is preserved in
+`docs/WINDOWS_0_15_7_PARTIAL_ACCEPTANCE.md`: internal checks passed and the real
+human two-anchor `safe` interaction passed, but the gate remained BLOCKED when
+repeated events on one `three_anchors` vertex exhausted `max_picks=3`. No fan ROI
+call occurred. Do not rewrite the unrun GUI cases as passes.
 
-Read `docs/LIVE_SECTION_SPATIAL_INTENT.md` for the contract and
-`docs/WINDOWS_SECTION_SPATIAL_INTENT_ACCEPTANCE.md` for the next focused gate.
-Internal work is coherent. No visible CloudCompare / Windows 0.15.7 acceptance or
-real fan call has run here. Do not repeat completed 0.15.6 Windows acceptance,
-start the CAD-model IR, or ask to merge merely because development CI is green.
+The continuation procedure in `docs/WINDOWS_SECTION_SPATIAL_INTENT_ACCEPTANCE.md`
+now overprovisions a fixed native event budget and explicitly selects distinct
+predeclared source-point indexes. Extra duplicate click records remain bound in raw
+pick-state provenance. A capture can be retried before any ROI/reconstruction-quality
+inspection while its declared source/frame/anchor IDs/parameters/margin stay fixed.
+This is acquisition recovery, not ROI tuning, and requires **no qMCPBridge change**.
+
+One additional regression test proves an unselected duplicate event cannot consume
+a logical anchor while still affecting the frozen session fingerprint. Previous
+runtime checkpoint `604cc5d21c38a138aea0dff367cd2af888565830` passed 1210 tests;
+the new expected total is 1211 / focused 141, but do not claim those new totals until
+the new exact HEAD has green CI. Resolve actual branch HEAD before resuming. Do not
+repeat completed 0.15.6 Windows acceptance, start the CAD-model IR, or merge merely
+because CI is green.
 
 ## Exact internal evidence
 
