@@ -3,117 +3,96 @@
 ## Active lane: Python 0.15.7 picked section ROI intent
 
 Branch `feature/live-section-roi-from-picks`, draft PR #21, accepted-main parent
-`2b385820ecfcb84d79aaf59ad5965e748f961466`. Do not recreate this branch or merge it.
-Recovery found main at that SHA, no newer lane and no open PR/issue. Main CI
-`36366822554` succeeded. Core checkpoint `eba1d516dad6299f9691c37bcb7b95a19ff687ef`;
-MCP/workflow checkpoint `20fe3a6ba32870f8cacd6a80747c20638014b7ed`;
-exact fixture checkpoint `00c52e133854ae86ac2fabf653e174734775216f`.
+`2b385820ecfcb84d79aaf59ad5965e748f961466`. Do not recreate this lane or merge it.
+No newer lane or open PR/issue existed at initial recovery. Accepted main CI
+`36366822554` succeeded. No accepted-main or native modifications have been made.
 
-Implemented six tools: snapshot/live `derive[_live]_section_roi_from_picks`,
-`analyze[_live]_picked_section_target_roi`, and
-`reconstruct[_live]_picked_section_target_roi_profile` (consult actual KINDS for
-literal names). Package is now 0.15.7. Old ROI contract remains 0.15.6; only the
-installed-package version assertion in its stdio test changes. Native and accepted
-numerical solvers remain unchanged.
+Runtime/test checkpoint `8b8e37f65d84b419004b95d4cf60ac6a691fc6ff` passed complete
+installed Linux regression: **1204 passed, zero skips**, Python3.13.5; all31 installed
+modules matched checkout bytes. Exact-head push CI `36368858950` succeeded. Its
+source artifact was recovered and the complete Git tree verified as
+`1ad3d032ea4e8af4bd41c121e015807093778835`. Accepted native and numerical solver diffs
+are empty. This is not Windows/visible CloudCompare acceptance.
 
-Explicit frame + 2..32 distinct boundary anchors + explicit nonnegative margin.
-No frame solver, inferred manufacturing datum, ROI discovery, hidden padding or
-quality-driven adjustment. Live origin/normal uses the accepted canonical section
-basis; snapshot requires full explicit right-handed orthonormal frame. Degenerate
-raw spans cannot be repaired using margin. Anchor depth is reported, not used to
-crop ROI depth evidence.
+**Current increment after that checkpoint:** bind configured bridge host/port into
+live intent, and refuse endpoint changes during acquisition. Secrets are not echoed
+or hashed into provenance. This closes identical-data/different-endpoint ambiguity;
+it does NOT supply a native process/scene epoch. Six new context tests were added;
+130 focused numerical/workflow/exact-file/context tests pass after this change.
+The prior 10 MCP/schema/installed-stdio tests passed before this endpoint addition.
+Next run complete installed regression again (expected total1210), verify exact-head
+CI and source bytes, then finish documentation/Windows handoff. Do not label the
+post-endpoint full regression complete until it has actually run.
 
-Every live call requires stopped picks, reads current point-info for each selected
-source anchor, and brackets ONE complete slab query with pick-status reads. A valid
-N-anchor call requests N+3 native reads, no mutation. Malformed inputs can stop
-before I/O; stale anchors stop before acquisition. Whole captured status is hashed,
-with selected anchor identities preserved and selection-array ordering ignored.
+## Contract and evidence
 
-The wrapper recomputes intent before analysis/reconstruction, rejects stale expected
-intent, and binds the fingerprint into unchanged accepted ROI context. Target and
-layer evidence inherit it. Intent, report, preview or foreign numerical ROI tokens
-cannot override target/layer selection or edge-guard refusal.
+Six tools in `section_spatial_intent_tools.KINDS` separate snapshot/live derivation,
+analysis and reconstruction. Full names are authoritative in that map. Package0.15.7;
+accepted ROI remains0.15.6, target0.15.4, layer0.15.3, profile0.15.2. No solver forks.
+Explicit declared frame, 2..32 distinct captured boundary anchors, explicit finite
+nonnegative margin. No frame-from-picks solver, automatic ROI search, hidden padding,
+quality-driven adjustment, manufacturing acceptance, preview or CAD model graph.
+Live origin/normal uses accepted canonical section basis; snapshot requires explicit
+right-handed orthonormal basis. Raw U/V spans must be positive above numerical
+precision before margin. All anchor depths are reported, never used to crop ROI.
 
-## Testing checkpoint and remaining work
+Live: stopped picks; N current anchor point-info reads; ONE complete slab query;
+pick-status reads before/after, and configured-endpoint bookends. A valid N-anchor
+call requests N+3 read-only native calls. No source mutation is requested. Derivation
+runs no target analysis. Every downstream call recomputes intent, rejects stale
+expected intent, and adds its fingerprint to accepted ROI context so target/layer
+fingerprints inherit it. Intent/report/foreign tokens cannot bypass selection or
+ROI truncation guards. Multiple targets and unsafe layers remain explicit/refused.
 
-Local results in separate focused runs: 49 core numerical + 36 workflow/freshness
-+ 39 exact-file/transformed/quantization + 10 MCP schema/dispatch/installed stdio =
-134 passing new tests. Installed stdio snapshot used an unavailable bridge; live
-stdio used a counted TCP replay over exact generated files. This is NOT visible
-CloudCompare validation. Eighteen deterministic PLY files include actual anchor
-vertices, generated outside Git. Two/three anchors, clutter, two targets, all crossed
-edges, near edge, narrow bridge, layers, sparse/overlap/thick evidence and arbitrary
-rotation/large coordinates are covered. Host float32 behavior is a numerical proxy.
+Freshness covers observed complete slab and selected anchors, not whole-cloud
+geometry/attributes. Native has no picking/scene epoch or atomic multi-call snapshot;
+identical unobserved ABA changes remain undetectable. Keep the host quiescent during
+calls. Configured endpoint is not authenticated host/process identity. Snapshot/frame
+provenance is caller asserted. Snapshot/live contexts are fingerprint-separated.
+Keep numerical, mocked-native/TCP replay, installed MCP stdio, CI and real GUI claims
+separate. Never promote proxy quantization or requested query counts to host proof.
 
-Next: verify complete installed regression, compileall, diff checks, full accepted-main
-diff and exact-head CI. Audit source bytes against installed modules and persisted
-GitHub source artifact. Then write contract/README/focused Windows acceptance docs,
-update this checkpoint and PR summary. No Windows/fan gate or merge has occurred.
+Eighteen deterministic exact PLY fixtures (including actual source anchor vertices)
+are generated OUTSIDE Git by `scripts/make_section_spatial_intent_fixtures.py`.
+Four focused modules originally supplied134 tests; context module adds6. Read the
+actual tests for exact-file/replay/stdio scope. The accepted0.15.6 stdio test changes
+only its root installed-package version assertion; its ROI expectations remain intact.
 
-The sandbox cannot resolve GitHub/PyPI. Accepted source came from main's successful
-CI artifact, Git tree `06105cff75a49ad196257c1247f9034d2f86a6bb`, with exact main
-commit SHA reconstructed and verified locally. Temporary dependency bootstrap
-`36367435852` succeeded; public wheels recovered; bootstrap workflow removed. The
-regular CI workflow now includes this branch and uses a noneditable installation.
-Local package installation is noneditable; some preinstalled third-party dependencies
-are reused through the environment. Do not call that pristine dependency isolation.
-Use workflow source artifacts for exact recovery when direct cloning is unavailable.
-
-## Honest boundaries
-
-Native qMCPBridge 0.12.0/revision8 has no scene/picking generation counter or atomic
-multi-call snapshot. Freshness binds observed complete slab and selected anchors,
-not unobserved whole-cloud geometry/attributes. Identical unobserved ABA changes
-cannot be detected. Snapshot evidence and frame provenance are caller asserted,
-not authenticated live datum evidence. Snapshot/live fingerprints are separated.
-Do not silently promote any of these claims. No native change/rebuild is needed.
-
-## Accepted 0.15.6 baseline (do not repeat its Windows gate)
+## Accepted 0.15.6 and fan boundaries
 
 Read `docs/WINDOWS_0_15_6_ACCEPTED.md` and `docs/LIVE_CAD_SECTION_TARGET_ROI.md`.
-PR #20 merged `04a21fc32261fe7a071fd9ab46ee353afd33016c`; main checkpoint
-`2b385820ecfcb84d79aaf59ad5965e748f961466`. Windows feature HEAD
-`3a1d49550e3e1a90d4915fb197ad51688a3e836d`; runtime/test checkpoint
-`5d618c0de30c90a4573d4c8be52174a3aed58eee`; final acceptance docs
-`f2ec9970feb8a2ff43d04a4939a34f2fdb01fd45`; pre-0.15.6 accepted main
-`809c522550274316fa0a14d2e86d90a4921bfc03`.
+PR20 merge `04a21fc32261fe7a071fd9ab46ee353afd33016c`; accepted-main checkpoint above.
+Windows feature `3a1d49550e3e1a90d4915fb197ad51688a3e836d`; runtime
+`5d618c0de30c90a4573d4c8be52174a3aed58eee`; final pre-merge docs
+`f2ec9970feb8a2ff43d04a4939a34f2fdb01fd45`; pre-0.15.6main
+`809c522550274316fa0a14d2e86d90a4921bfc03`. Accepted1054+16MSVC=1070;
+28 module hashes,22 PLY hashes,180 focused tests,20 visible fixtures passed.
+qMCPBridge **unchanged0.12.0/revision8**. Do not rebuild or repeat that Windows gate.
+Retain no real-host nonunit scale, independent host query count or whole-cloud equality
+proof; host quantization can alter hashes. See accepted report for exact host evidence.
 
-Accepted Windows: 1054 ordinary installed passes plus 16 MSVC passes = 1070;
-28 installed module hashes; 22 generated PLY hashes; seven focused modules 180/180;
-actual MCP stdio, counted TCP replay and 20 visible CloudCompare fixtures passed.
-CloudCompare 2.13.2/PID14312/port8765, qMCPBridge0.12.0 revision8. All-depth complete
-inside+outside accounting, zero ROI-unclassified, all four crossed guards refused,
-multiple targets explicit and layers required fresh matching selection evidence.
-37 scene roots and empty selection restored. Native did not change.
-
-Retained limits: no real-host nonunit scale, independent real-host native query count,
-or whole-cloud geometry/attribute equality proof. Transformed host shift was
-[-100000000,199999000,-299999000], scale1; maximum file/host bound difference about
-2.73e-5. Host quantization can legitimately alter exact cross-context hashes.
-
-## Fan and next architecture
-
-Authorized fan/working-copy SHA256:
+Authorized fan SHA256:
 `79ca5f9be2b80446d984bf7300fa9b9a5cda3466b2b3ab98f40fc4b61233fcc0`.
-Rediscovered source 406276 points. No 0.15.6 fan ROI call occurred: no defensible
-picked intent/frame was declared. Retained 0.15.5 diagnostic remains BLOCKED.
+Rediscovered406276-point source. No0.15.6 fan ROI call occurred; no prior deliberate
+frame/intent. Retained0.15.5 fan diagnostic remains BLOCKED. Future gate: verify hash,
+rediscover source, deliberately declare frame, obtain human boundary anchors, freeze
+picks/frame/bounds, THEN analyze. No diagnostic-derived ROI, resizing/search, padding
+optimization, higher target/layer budgets, chosen depth sign or convenient clutter
+removal. Trustworthy intent with refused geometry is useful. Do not tune fixtures to
+this fan. After acceptance, the next architecture is a CAD feature/model IR, not broad
+Fusion automation bundled here.
 
-Future fan gate: verify file hash, rediscover source, explicitly declare frame, have
-the human deliberately choose boundary-anchor picks, freeze intent, THEN inspect
-ROI/reconstruction evidence. Never derive bounds from convenient diagnostic panels,
-search ROI sizes, raise target/layer budgets, choose depth signs, discard clutter or
-select whichever reconstruction looks best. Trustworthy intent with refused geometry
-is a useful success. Do not tune fixtures to the real fan.
+## Recoverability
 
-After this bridge is accepted, the next architecture is a CAD feature/model IR for
-datums, sketches, features, dimensions, dependencies, evidence and unresolved/refused
-regions. Do not bundle that model graph or broad Fusion automation into 0.15.7.
+Inspect actual main/branches/commits/PRs/issues/CI and this file before resuming.
+Preserve unexpected work. Commit coherent increments, verify returned SHA AND remote
+ref, update this file at milestones, then continue. Save before long tests. Never
+reset, clean, force-push, delete retained branches or add retry/recovery/numbered lanes.
+A failed ChatGPT stream does not imply lost Git work. Do not merge0.15.7.
 
-## Recovery discipline
-
-Before resumed work inspect actual main/branches/recent commits/open PRs/issues/CI
-and this file. Preserve unexpected work. Commit coherent increments, verify returned
-SHA AND remote ref, update this file at milestones, then proceed. Save before long
-tests. Stream timeout does not imply Git work was lost. Never reset, clean, force-push,
-delete retained branches, recreate this lane or add retry/recovery/numbered branches.
-Keep numerical, mocked-native/replay, installed stdio, CI and visible-GUI claims separate.
+Sandbox DNS cannot resolve GitHub/PyPI. Use connector workflow source artifacts for
+exact recovery. Public dependency wheels were recovered through temporary bootstrap
+CI36367435852; that bootstrap workflow is removed. Local project is noneditable,
+with some preinstalled third-party dependencies reused (not pristine dependency
+isolation). Local exact shallow commits/trees were SHA-verified without resetting or
+cleaning. Regular tests workflow includes this branch and noneditable installation.

@@ -4,6 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Callable
 
+from .live import _config as bridge_config
 from .section_layer_workflow import compact_copy, object_fields, text_field, vector3
 from .section_layers import SectionLayerError, integer, positive
 from .section_spatial_intent import (
@@ -68,6 +69,8 @@ def run_picked_roi_workflow(args: dict, *, live: bool = False, action: str = 'de
     if live:
         if request is None:
             from .live import request
+        host, port, _, _ = bridge_config()
+        endpoint = {'host': host, 'port': port}
         timeout = base.get('query_timeout_seconds', 30)
         status = request('metrology.pick.status', {}, timeout=timeout)
         picks, before_hash = selected_picks(status, indexes, base['cloud_id'])
@@ -81,6 +84,10 @@ def run_picked_roi_workflow(args: dict, *, live: bool = False, action: str = 'de
         _, after_hash = selected_picks(after, indexes, base['cloud_id'])
         if before_hash != after_hash:
             raise SectionLayerError('Captured pick state changed during acquisition; freeze and derive fresh intent')
+        host_after, port_after, _, _ = bridge_config()
+        if endpoint != {'host': host_after, 'port': port_after}:
+            raise SectionLayerError('Configured live bridge endpoint changed during acquisition')
+        data.context['configured_bridge_endpoint'] = endpoint
         data.context['section_frame']['frame_id'] = args['frame_id']
         data.context['current_anchor_point_info_sha256'] = current
         data.context['pick_freshness_verification'] = 'stopped_status_bookends_and_current_anchor_point_info_not_atomic_scene'
@@ -92,6 +99,7 @@ def run_picked_roi_workflow(args: dict, *, live: bool = False, action: str = 'de
                            frame_provenance=args['frame_provenance'], target_parameters=options)
     intent['numerical_roi_request_fields'] = {'roi': deepcopy(intent['roi']), 'target_parameters': deepcopy(options)}
     if live:
+        intent['configured_bridge_endpoint'] = deepcopy(data.context['configured_bridge_endpoint'])
         intent['numerical_roi_request_fields'].update({k: deepcopy(base[k]) for k in
                                                       ('cloud_id', 'origin', 'normal', 'half_thickness')})
     else:
