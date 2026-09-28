@@ -24,6 +24,7 @@ if ( PLUGIN_STANDARD_QMCP_BRIDGE )
             ${CMAKE_CURRENT_LIST_DIR}/src/qMCPCamera.cpp
             ${CMAKE_CURRENT_LIST_DIR}/include/qMCPCamera.h
             ${CMAKE_CURRENT_LIST_DIR}/include/qMCPCameraPolicy.h
+            ${CMAKE_CURRENT_LIST_DIR}/include/qMCPCameraGuard.h
             ${CMAKE_CURRENT_LIST_DIR}/src/qMCPBridge.cpp
             ${CMAKE_CURRENT_LIST_DIR}/src/qMCPFusionWorkflow.cpp
     )

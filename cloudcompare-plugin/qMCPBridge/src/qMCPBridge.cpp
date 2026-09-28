@@ -2,6 +2,7 @@
 
 #include "qMCPBridge.h"
 #include "qMCPCamera.h"
+#include "qMCPCameraGuard.h"
 #include <QCryptographicHash>
 
 #include <QAction>
@@ -369,6 +370,9 @@ QJsonObject qMCPBridge::handleRequest( const QJsonObject& request )
     {
         response[ "ok" ] = false;
         response[ "error" ] = error;
+        if ((method == "view.camera" || method == "view.capture") && result.isObject()
+            && result.toObject().value("camera_diagnostics").isObject())
+            response["error_details"]=result.toObject().value("camera_diagnostics");
     }
     else
     {
@@ -392,7 +396,7 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         QJsonObject result;
         result[ "protocol_version" ] = 1;
         result[ "plugin" ] = "qMCPBridge";
-        result[ "plugin_version" ] = "0.13.0";
+        result[ "plugin_version" ] = "0.13.1";
         result[ "process_id" ] = QCoreApplication::applicationPid();
         addApplicationVersion( result );
         result[ "port" ] = static_cast<int>( m_port );
@@ -830,16 +834,24 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         }
 
         const QJsonObject cameraBefore = qMCPCamera::snapshot(window);
-        if (params.contains("expected_camera_fingerprint")
-            && params.value("expected_camera_fingerprint") != cameraBefore.value("camera_fingerprint"))
-        { error = "Camera changed before viewport capture"; return {}; }
+        for (auto it=params.begin();it!=params.end();++it)
+            if (it.key()!="expected_camera_fingerprint" && it.key()!="expected_camera_guard_fingerprint"
+                && it.key()!="native_session" && it.key()!="window_id")
+            { error="Unexpected viewport capture parameter"; return {}; }
+        if (!qMCPCameraGuard::matches(params,cameraBefore,false))
+        { error="Camera changed before viewport capture";
+          return qMCPCamera::refusal("capture.precondition",params,cameraBefore); }
         m_app->redrawAll();
         QCoreApplication::processEvents();
-        // processEvents can close/switch windows or execute another camera request.
-        // Reacquire before dereferencing; do not use a potentially dangling pointer.
+        // Reacquire: event processing may close/switch the window or execute a request.
         window = m_app->getActiveGLWindow();
-        if (!window || qMCPCamera::snapshot(window).value("camera_fingerprint") != cameraBefore.value("camera_fingerprint"))
-        { error = "Camera/window changed during viewport capture"; return {}; }
+        const QJsonObject captureStart=qMCPCamera::snapshot(window);
+        const QString equalityKey=params.contains("expected_camera_fingerprint")
+            ? "camera_fingerprint" : "camera_guard_fingerprint";
+        if (!window || captureStart.value(equalityKey)!=cameraBefore.value(equalityKey))
+        { error="Camera/window changed during viewport capture";
+          return qMCPCamera::refusal("capture.after_redraw",cameraBefore,captureStart); }
+        // Styling may settle during redraw, but MUST remain stable across the grab.
         const QImage image = window->doGrabFramebuffer();
         if ( image.isNull() )
         {
@@ -857,10 +869,13 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
 
         window = m_app->getActiveGLWindow();
         const QJsonObject cameraAfter = qMCPCamera::snapshot(window);
-        if (cameraAfter.value("camera_fingerprint") != cameraBefore.value("camera_fingerprint"))
-        { error = "Camera/window changed while grabbing framebuffer"; return {}; }
+        if (cameraAfter.value("camera_fingerprint") != captureStart.value("camera_fingerprint"))
+        { error = "Camera/window changed while grabbing framebuffer";
+          return qMCPCamera::refusal("capture.after_grab",captureStart,cameraAfter); }
         QJsonObject result;
         result["camera_state"] = cameraAfter;
+        result["camera_before_redraw"]=cameraBefore;
+        result["redraw_difference"]=qMCPCameraGuard::difference(cameraBefore,captureStart);
         result["png_sha256"] = QString::fromLatin1(QCryptographicHash::hash(png, QCryptographicHash::Sha256).toHex());
         result["capture_contract"] = "cc-viewport-capture-v1";
         result[ "width" ] = image.width();
@@ -872,6 +887,16 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
     QJsonValue workflowResult;
     if ( qMCPFusionWorkflow::dispatch( m_app, method, params, workflowResult, error ) )
     {
+        if (method == "capabilities.get" && workflowResult.isObject())
+        {
+            QJsonObject caps=workflowResult.toObject();
+            caps["plugin_version"]="0.13.1";
+            QJsonObject camera=caps.value("camera").toObject();
+            camera["guard_contract"]="cc-camera-guard-v1";
+            camera["diagnostics_contract"]="cc-camera-diagnostics-v1";
+            caps["camera"]=camera;
+            return caps;
+        }
         return workflowResult;
     }
 

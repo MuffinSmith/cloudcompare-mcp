@@ -88,6 +88,11 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ninja-build qtbase5-dev libqt5opengl5-dev qttools5-dev libqt5svg5-dev libeigen3-dev libglew-dev
+      - name: Test production Qt camera guard contract
+        run: |
+          cmake -S tests/native/camera_guard -B guard-build -G Ninja
+          cmake --build guard-build
+          ctest --test-dir guard-build --output-on-failure
       - name: Integrate exact bridge sources into declared host
         run: |
           cp -a cloudcompare-plugin/qMCPBridge host-source/plugins/core/Standard/

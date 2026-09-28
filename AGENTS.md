@@ -1,112 +1,65 @@
-# Agent visual inspection: recovered implementation and CI checkpoint
+# Camera guard recovery checkpoint
 
-Branch: `feature/live-agent-visual-inspection`; existing stacked draft PR #22.
-Base: `feature/live-section-roi-from-picks`, draft PR #21,
-`c35916d4badf5bdac815417d88cdffba56b537b7`.
-Accepted main: `2b385820ecfcb84d79aaf59ad5965e748f961466`.
-Both PRs MUST remain draft/unmerged without separate explicit merge authorization.
+Resume `feature/live-agent-visual-inspection`, existing stacked draft PR #22.
+Base is draft PR #21 at c35916d4badf5bdac815417d88cdffba56b537b7.
+Accepted main is 2b385820ecfcb84d79aaf59ad5965e748f961466.
+Neither PR is authorized to merge. Recover actual refs/CI before writing.
 
-## Current state and exact evidence
+## Preserved Windows evidence
 
-Python 0.16.0; native qMCPBridge 0.13.0 / workflow revision 9. Windows needs a native
-DLL rebuild. Runtime/tests persisted at `bef9f0135e7a7c1b15cdba0d140624fb975c8418`
-before the failed chat. Recovery resumed that existing branch/PR, repeated tests,
-reviewed the full parent/native diff and completed the documentation.
+Read docs/WINDOWS_0_16_0_PARTIAL_ACCEPTANCE.md. At 5559f099670b0e1d86de6df793fca12ffa4ac53e
+Python 0.16.0 / native 0.13.0 passed the reported Windows installed and synthetic
+camera/semantic gates: 1393 tests, 182 focused, 34 module hashes, nine fixtures,
+36 reviewed PNGs. The fan camera gate refused on two hosts. No actual fan semantic
+confirmation exists. Raw Windows files were NOT read by the development container.
+The previous explanation about viewport drift is a hypothesis, not proven root cause.
+Derived zNear/zFar were already outside the full fingerprint. Do not hide this limit.
 
-Recovery installed regression: 1393 passed, zero skips in 101.13 s. Focused new
-suite: 182 passed in 8.31 s (31 compiled C++ camera policy, 59 Python camera/PNG,
-65 workflow/semantic/freshness, 17 actual MCP schema/dispatch/installed stdio,
-10 fixture checks). All 34 installed Python module hashes match. Nine generated
-PLY hashes and vertex counts were independently verified. Actual installed MCP
-stdio uses counted TCP replay: 44 native requests, six region reads, two replay
-PNGs. This is not real-host query-count or viewport-image acceptance.
+## Current native checkpoint
 
-Runtime push 36378023620 and PR 36378197862 passed. Documentation head
-`77879285f7fd6b62521a2358d51afb30656d0c7b` passed exact-head push 36379584524,
-including full Python checks and actual Linux CloudCompare v2.13.2 plugin build.
-Its source artifact reconstructs exact tree 2d1d3d8c193fb24729f6e09127e5b8f39ab0ee9d;
-complete-parent whitespace checks passed; product/runtime/tests were unchanged.
+Native qMCPBridge 0.13.1 / workflow revision 9 adds cc-camera-guard-v1 and
+cc-camera-diagnostics-v1. Full cc-camera-v1 fingerprints and legacy strict guards
+remain available. New guards exclude only point/line style and redundant view/up
+directions; exact pose, projection, explicit clipping, mode, display scale, session,
+window, viewport size and unknown future parameter fields remain guarded.
+Modern restore preserves CURRENT point/line sizes; restored_guard_equal is separate
+from restored_equal (full equality). Capture checks the guard around event processing,
+then full state across the framebuffer grab. No retries or tolerance widening.
+A 32-state diagnostic history does not authorize movement and cannot evict save tokens.
+Native refusal details include phase, available reference/current snapshots and field
+differences. qMCPBridge enriches outgoing capability metadata; the legacy numerical
+qMCPFusionWorkflow.cpp implementation is unchanged.
 
-IMPORTANT: companion PR run 36379587715 failed before native compilation fetching
-an unrelated optional plugin from external GitLab; Python passed. The first
-narrower CI checkout, df1311eba718a9432664064a4e808187325fa654, then failed CMake
-because it omitted CCCoreLib's nested nanoflann dependency. That was an introduced
-CI acquisition error, not a product defect or a passing build. The current correction
-explicitly fetches both required pinned gitlinks, verifies both HEADs, and bounds
-checkout timeouts. It does NOT skip the real native build or suppress errors.
-See docs/VISUAL_INSPECTION_CI_CHECKOUT.md for both failed checkpoints and evidence.
-Product code, numerical solvers, generator and tests remain unchanged. Verify NEW
-exact-head push AND PR CI after this correction; do not infer success from an older
-green run. PR #22 records the final SHA/results after they are checked. No visible
-Windows, actual image interpretation or real human semantic acceptance is claimed.
+This coherent commit is native-first. The retained Python package is still 0.16.0
+and exercises legacy guards. Python 0.16.1 integration and new event-aware replay
+regressions are the NEXT checkpoint; do not mistake this for final acceptance.
+CI now runs 35 standalone Qt CTests against the production guard helper, then the
+actual CloudCompare v2.13.2 native plugin build. Check their observed result; no local
+Qt execution or visible Windows acceptance of the patch has been claimed.
 
-## Contracts and documentation
+## Boundaries / continuation
 
-Read docs/LIVE_AGENT_VISUAL_INSPECTION.md for the complete camera, inspection,
-provenance, semantic confirmation/staleness and refusal contracts;
-docs/VISUAL_INSPECTION_REVIEW.md for internal source/test evidence;
-docs/WINDOWS_VISUAL_INSPECTION_ACCEPTANCE.md for the next visible-host gate;
-cloudcompare-plugin/qMCPBridge/README.md for the required native build.
+Finish Python guard selection, strict legacy schemas, capture provenance and refusal
+diagnostic propagation; add regressions for style drift versus real navigation,
+framebuffer instability, dual/malformed guards, restore preservation and actual
+installed MCP stdio. Run full installed regression and exact-head push/PR CI, update
+contract documentation, then provide a focused Windows guard/fan prompt.
 
-Seven tools: get_live_camera, set_live_camera, inspect_live_part,
-propose_live_semantic_feature, confirm_live_semantic_feature,
-validate_live_semantic_confirmation, release_live_inspection.
-Existing set_live_view remains; capture_live_view gains camera/content provenance.
-Native camera snapshots store actual ccViewportParameters copies, eight tokens,
-no eviction. Look/orbit/pan/zoom and source-frame focus require current session,
-window and camera-fingerprint guards. Restore requires same viewport dimensions
-and checks camera equality, not framebuffer/full-GUI equality. Camera-center values
-are host-render parameters, not a global eye pose. Current object-centered
-ortho/perspective mode is preserved. Global source scale may be nonunit; unsupported
-camera display modes/scales, pending source transforms or another display refuse.
-Never overwrite concurrent human navigation during automatic recovery.
+Preserve prior successful synthetic coverage. No precise-click repeats, fan ROI or
+reconstruction, threshold/ROI/target/layer success search, source/selection/overlay
+mutation, broad CAD IR or Fusion. Authorized fan SHA256:
+79ca5f9be2b80446d984bf7300fa9b9a5cda3466b2b3ab98f40fc4b61233fcc0.
+Retained count 406276; previous threshold 0.15 global native units; rediscover IDs.
+Actual human yes/no/unsure and exact text are still required for reviewed proposals.
 
-Inspection fixes the threshold before fitting, uses 24..2048 sampled points from
-<=5 million source points, at most four captures, five navigation moves plus restore,
-two acquisitions, three existing discovery calls and six initial candidates. No
-largest-source guess, fit-quality retry, or whole-part autonomous unbounded loop.
-Twelve proposals/inspection, sixteen cached inspections, 128 KiB metadata, 8 MiB
-per PNG and 16 MiB total. Release only owned tokens/evidence; no automatic eviction.
+Read docs/LIVE_AGENT_VISUAL_INSPECTION.md, docs/VISUAL_INSPECTION_REVIEW.md,
+docs/VISUAL_INSPECTION_CI_CHECKOUT.md and docs/RETAINED_0_15_7_CHECKPOINT.md.
+Freshness remains observed samples/query summaries plus metadata, not full-cloud
+coordinate/attribute equality. Never overwrite genuine concurrent human navigation.
 
-The calling agent must review actual returned PNGs before issuing reviewed semantic
-proposals. Automatic drafts cannot be confirmed. Require issued proposal fingerprint,
-explicit human yes/no/unsure and exact reported answer text; never infer yes.
-Detected acquisition/scene/selection/overlay/session/endpoint changes permanently
-stale evidence; latest answers supersede prior ones. Different affirmative roles
-sharing candidate IDs require review, not a general spatial-overlap check. Camera
-movement alone does not stale frozen captures. Restart/release invalidates
-process-local IDs; inspection release does not release camera tokens or overlays.
-Keep issued packets before release. No PNG blobs remain in semantic objects.
-
-## Limits, preserved work and next gate
-
-Vision is context, geometry dimensional evidence, human response semantic intent.
-None authorizes CAD reconstruction or overrides numerical refusal. No ROI/padding/
-scale/target/layer/threshold success search, clutter removal, fan reconstruction,
-CAD IR or Fusion work. Freshness is sample + native query summary + metadata, NOT
-whole-cloud coordinates/attributes equality. Reads are non-atomic; unobserved
-change-and-change-back may be undetectable. Session/endpoint and reported human
-answers are not authenticated identities. Python does not interpret images.
-No new inspection overlays/onscreen A/B/C labels; labels are packet metadata.
-Existing unrelated overlays are preserved. Role names are not full bolt-pattern or
-through-feature detectors; existing hole-pattern/datum/section tools remain separate.
-
-Preserve docs/RETAINED_0_15_7_CHECKPOINT.md and prior spatial-intent/Windows reports.
-Do not repeat passed safe picks or pretend unfinished manual cases passed. Authorized
-fan SHA256: 79ca5f9be2b80446d984bf7300fa9b9a5cda3466b2b3ab98f40fc4b61233fcc0;
-retained count 406276; rediscover source IDs. No fan ROI/reconstruction call. After
-new exact-head CI, run the focused Windows DLL/synthetic camera/safety gate, then
-bounded fan inspection and understandable questions with actual human answers.
-Fewer supported questions or geometric refusal are valid; no full CAD model required.
-
-## Recovery discipline
-
-Recover actual refs, commits, PRs/issues, CI and AGENTS first. Preserve unexpected
-work. Never reset, clean, force-push, delete/recreate retained branches or invent
-retry/recovery/numbered branches. Commit coherent work and verify returned SHA AND
-actual remote ref before continuing. Removed transport/dependency helper workflows
-must not be recreated merely because chat restarted. Distinguish unit/compiled
-policy, replay, actual MCP stdio, native compilation and visible Windows evidence.
-Local noneditable Python 3.13.5 used some preinstalled third-party dependencies, not
-pristine isolation. Existing CI archives supplied exact source because container
-GitHub/PyPI DNS was unavailable. CI installs fresh Python 3.12 dependencies.
+No reset, clean, force-push, branch recreation or new retry/recovery branch. Commit
+coherent work, verify returned SHA AND actual remote ref. Do not recreate temporary
+transport workflows. The container reuses existing source/dependency archives because
+GitHub/PyPI DNS is unavailable. Local project is noneditable but third-party packages
+may be reused; CI uses fresh dependencies. Distinguish replay, installed MCP, Qt tests,
+actual native compilation and visible-host evidence.

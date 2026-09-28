@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "qMCPCamera.h"
 #include "qMCPCameraPolicy.h"
+#include "qMCPCameraGuard.h"
 #include <ccMainAppInterface.h>
 #include <ccGLWindowInterface.h>
 #include <ccViewportParameters.h>
@@ -11,6 +12,7 @@
 #include <QUuid>
 #include <QSet>
 #include <map>
+#include <deque>
 
 namespace qMCPCamera
 {
@@ -60,12 +62,20 @@ struct Saved
     int window, width, height;
     bool clipping;
     CCVector2d displayScale;
-    QString fingerprint;
+    QString fingerprint, guardFingerprint;
     explicit Saved(ccGLWindowInterface* w, const QString& fp)
         : params(w->getViewportParameters()), window(w->getUniqueID()), width(w->glWidth()),
           height(w->glHeight()), clipping(w->clippingPlanesEnabled()),
-          displayScale(w->getDisplayScale()), fingerprint(fp) {}
+          displayScale(w->getDisplayScale()), fingerprint(fp), guardFingerprint() {}
 };
+// Bounded diagnostic history, never an authorization cache. Token storage is separate.
+std::deque<QJsonObject>& observedStates() { static std::deque<QJsonObject> s; return s; }
+void remember(const QJsonObject& s)
+{
+    auto& history = observedStates();
+    if (history.size() >= 32) history.pop_front();
+    history.push_back(s);
+}
 std::map<QString,Saved>& saved() { static std::map<QString,Saved> s; return s; }
 ccHObject* find(ccHObject* root, unsigned id)
 {
@@ -148,12 +158,36 @@ QJsonObject snapshot(ccGLWindowInterface* w)
         {"parameters",parameters}};
     const QByteArray canonical=QJsonDocument(result).toJson(QJsonDocument::Compact);
     result["camera_fingerprint"]=QString::fromLatin1(QCryptographicHash::hash(canonical,QCryptographicHash::Sha256).toHex());
+    result["camera_guard_contract"]="cc-camera-guard-v1";
+    result["camera_guard_fingerprint"]=qMCPCameraGuard::fingerprint(result);
+    result["camera_guard_scope"]="exact_navigation_projection_clipping_window_size; excludes_point_line_size_and_redundant_directions";
     result["computed_view_matrix_column_major"]=matrix(p.computeViewMatrix());
     result["derived_z_near"]=nullable(p.zNear); result["derived_z_far"]=nullable(p.zFar);
     result["navigation_supported"]=supported(w);
     result["coordinate_policy"]="host_render_frame_not_global; camera_center_host_is_CloudCompare_parameter_not_world_eye";
     result["restore_scope"]="ccViewportParameters_and_display_scale_clipping; same_session_window_size; excludes_scene_GUI_stereo_bubble_LOD_framebuffer";
+    remember(result);
     return result;
+}
+QJsonObject refusal(const QString& stage, const QJsonObject& expected, const QJsonObject& current)
+{
+    QJsonObject reference;
+    if (expected.contains("parameters")) reference=expected;
+    else
+    {
+        const bool modern=expected.contains("expected_camera_guard_fingerprint");
+        const QString key=modern ? "camera_guard_fingerprint" : "camera_fingerprint";
+        const QJsonValue fp=expected.value(modern ? "expected_camera_guard_fingerprint" : "expected_camera_fingerprint");
+        if (qMCPCameraGuard::isDigest(fp))
+            for (auto it=observedStates().rbegin();it!=observedStates().rend();++it)
+                if (it->value(key)==fp) { reference=*it; break; }
+    }
+    QJsonObject detail{{"contract","cc-camera-diagnostics-v1"},{"stage",stage},
+        {"reference_available",!reference.isEmpty()}, {"reference",reference}, {"current",current},
+        {"difference",qMCPCameraGuard::difference(reference,current)}, {"authorizes_retry",false}};
+    for (const char* key : {"expected_camera_fingerprint","expected_camera_guard_fingerprint","native_session","window_id"})
+        if (expected.contains(QLatin1String(key))) detail.insert(QLatin1String(key),expected.value(QLatin1String(key)));
+    return {{"camera_diagnostics",detail}};
 }
 QJsonObject dispatch(ccMainAppInterface* app, const QJsonObject& a, QString& error)
 {
@@ -162,7 +196,7 @@ QJsonObject dispatch(ccMainAppInterface* app, const QJsonObject& a, QString& err
     if (action=="release") allowed.unite(QSet<QString>{"native_session","restore_token"});
     else if (action!="get" && action!="save")
     {
-        allowed.unite(QSet<QString>{"native_session","window_id","expected_camera_fingerprint"});
+        allowed.unite(QSet<QString>{"native_session","window_id","expected_camera_fingerprint","expected_camera_guard_fingerprint"});
         if (action=="restore") allowed.insert("restore_token");
         else if (action=="look") allowed.unite(QSet<QString>{"direction","up"});
         else if (action=="orbit") allowed.unite(QSet<QString>{"axis_camera","degrees"});
@@ -192,14 +226,15 @@ QJsonObject dispatch(ccMainAppInterface* app, const QJsonObject& a, QString& err
             { error="Camera save capacity reached; explicitly release unused tokens"; return {}; }
         const QString key=QUuid::createUuid().toString(QUuid::WithoutBraces);
         saved().emplace(key,Saved(w,before.value("camera_fingerprint").toString()));
+        saved().at(key).guardFingerprint=before.value("camera_guard_fingerprint").toString();
         before["restore_token"]=key;
         return before;
     }
     double windowId;
     if (!number(a,"window_id",windowId,0.0,2147483647.0) || windowId!=w->getUniqueID()
         || a.value("native_session").toString()!=session()
-        || a.value("expected_camera_fingerprint").toString()!=before.value("camera_fingerprint").toString())
-        { error="Camera session/window/fingerprint changed; movement refused"; return {}; }
+        || !qMCPCameraGuard::matches(a,before))
+        { error="Camera session/window/fingerprint changed; movement refused"; return refusal("movement.precondition",a,before); }
     if (!supported(w) || w->glWidth()<=0 || w->glHeight()<=0)
         { error="Unsupported camera mode/state (requires object-centered, no stereo/bubble/display scale)"; return {}; }
     if (action=="restore")
@@ -209,11 +244,22 @@ QJsonObject dispatch(ccMainAppInterface* app, const QJsonObject& a, QString& err
             || it->second.width!=w->glWidth() || it->second.height!=w->glHeight())
             { error="Unknown camera token, different window or resized viewport; restore refused"; return {}; }
         const auto& s=it->second;
-        w->setViewportParameters(s.params);
+        ccViewportParameters restored=s.params;
+        const bool navigationOnly=a.contains("expected_camera_guard_fingerprint");
+        if (navigationOnly)
+        {
+            // A navigation guard never grants ownership of someone else's display style.
+            restored.defaultPointSize=w->getViewportParameters().defaultPointSize;
+            restored.defaultLineWidth=w->getViewportParameters().defaultLineWidth;
+        }
+        w->setViewportParameters(restored);
         w->setClippingPlanesEnabled(s.clipping); w->setDisplayScale(s.displayScale);
         w->redraw();
         auto result=snapshot(w);
         result["restored_equal"]=result.value("camera_fingerprint").toString()==s.fingerprint;
+        result["restored_guard_equal"]=result.value("camera_guard_fingerprint").toString()==s.guardFingerprint;
+        result["restoration_scope"]=navigationOnly ? "navigation_preserving_current_point_line_size" : "legacy_full_viewport";
+        result["restored_full_reference_fingerprint"]=s.fingerprint;
         return result;
     }
     // Build a candidate copy; validation happens before the single host mutation.
