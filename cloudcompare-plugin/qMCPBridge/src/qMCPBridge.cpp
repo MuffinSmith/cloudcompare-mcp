@@ -854,6 +854,9 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         if (!window || captureStart.value(equalityKey)!=cameraBefore.value(equalityKey))
         { error="Camera/window changed during viewport capture";
           return qMCPCamera::refusal("capture.after_redraw",cameraBefore,captureStart); }
+        if (qMCPCamera::autoPivotOwnershipViolated(window))
+        { error="Automatic center pivot changed during viewport capture";
+          return qMCPCamera::autoPivotRefusal("capture.after_redraw_auto_pivot",captureStart); }
         // Styling may settle during redraw, but MUST remain stable across the grab.
         const QImage image = window->doGrabFramebuffer();
         if ( image.isNull() )
@@ -875,6 +878,9 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         if (cameraAfter.value("camera_fingerprint") != captureStart.value("camera_fingerprint"))
         { error = "Camera/window changed while grabbing framebuffer";
           return qMCPCamera::refusal("capture.after_grab",captureStart,cameraAfter); }
+        if (qMCPCamera::autoPivotOwnershipViolated(window))
+        { error="Automatic center pivot changed while grabbing framebuffer";
+          return qMCPCamera::autoPivotRefusal("capture.after_grab_auto_pivot",cameraAfter); }
         QJsonObject result;
         result["camera_state"] = cameraAfter;
         result["camera_before_redraw"]=cameraBefore;

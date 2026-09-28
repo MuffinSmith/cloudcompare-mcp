@@ -70,10 +70,10 @@ release succeeds while restoring the original host mode. It also verifies an ext
 re-enable refuses without moving the requested camera and is preserved at release.
 
 Focused local results so far:
-- camera/inspection core modules: 192 passed;
+- camera/inspection core modules: 194 passed;
 - native camera-policy + picked-intent modules: 41 passed;
 - installed stdio target ROI module: 2 passed separately;
-- complete seven-module focused set contains 235 tests; run it in a dependency-complete
+- complete seven-module focused set contains 237 tests; run it in a dependency-complete
   isolated install or CI (the development container has no network and its ad-hoc
   venv required offline wheel bootstrapping);
 - 34/34 installed Python source hashes matched the candidate source;

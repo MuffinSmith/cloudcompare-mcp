@@ -51,7 +51,9 @@ explicitly and narrowly:
    auto-pivot boolean. Those additive fields do not rewrite the legacy full camera
    fingerprint or weaken `cc-camera-guard-v1`.
 6. If the setting becomes TRUE while a suspension token owns FALSE, movement/capture
-   refuses as an ownership conflict.
+   refuses as an ownership conflict. Capture checks that ownership before redraw, after
+   the redraw/event turn, and after framebuffer grab so a control-only override cannot
+   slip through merely because the pose has not moved yet.
 7. Every camera movement completes one event turn before success is returned. A
    delayed protected pose change becomes `movement.after_redraw` immediately rather
    than poisoning the next unrelated request.

@@ -55,6 +55,20 @@ def test_actual_dispatch_invalid_schema_zero_native_io(name):
         assert result.isError and parsed(result)['status']=='blocked'
 
 
+def test_get_live_camera_can_own_auto_pivot_suspension_only_with_save():
+    h=Host()
+    with patch.object(server,'live_request',side_effect=h):
+        invalid=asyncio.run(server.call_tool('get_live_camera',{'save':False,'suspend_auto_pivot':True}))
+        assert invalid.isError and not h.tokens and h.auto_pivot is True
+        saved=parsed(asyncio.run(server.call_tool('get_live_camera',{'save':True,'suspend_auto_pivot':True})))
+        assert saved['auto_pivot_suspended_by_token'] is True
+        assert saved['saved_auto_pick_pivot_at_center'] is True
+        assert saved['auto_pick_pivot_at_center'] is False and h.auto_pivot is False
+        released=parsed(asyncio.run(server.call_tool('set_live_camera',{
+            'action':'release','restore_token':saved['restore_token'],'native_session':saved['native_session']})))
+        assert released['released'] and released['auto_pivot_restored_to_original'] and h.auto_pivot is True
+
+
 def test_additive_capabilities_and_capture_metadata():
     h=Host()
     with patch.object(server,'live_request',side_effect=h):
