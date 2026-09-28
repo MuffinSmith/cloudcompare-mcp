@@ -60,29 +60,35 @@ Python package is 0.16.2. Public native ping/capabilities are qMCPBridge 0.13.2 
 workflow revision 9 and advertise `cc-camera-auto-pivot-v1`. Both Python and the DLL
 must be replaced for Windows acceptance.
 
-## Local recovery validation before persistence
+## Internal validation and exact implementation checkpoint
 
 The interrupted local patch was recovered from an exact Git tree matching
 0.16.1 head tree `c2e56866ea3ef73ec6c3292832fabc4757467a5e`; it was not recreated from memory.
-The deterministic replay now reproduces the fan failure shape when auto-pivot is not
+The deterministic replay reproduces the fan failure shape when auto-pivot is not
 suspended, and proves save-with-suspension -> focus -> look -> capture -> restore ->
 release succeeds while restoring the original host mode. It also verifies an external
 re-enable refuses without moving the requested camera and is preserved at release.
 
-Focused local results so far:
-- camera/inspection core modules: 194 passed;
-- native camera-policy + picked-intent modules: 41 passed;
-- installed stdio target ROI module: 2 passed separately;
-- complete seven-module focused set contains 237 tests; run it in a dependency-complete
-  isolated install or CI (the development container has no network and its ad-hoc
-  venv required offline wheel bootstrapping);
-- 34/34 installed Python source hashes matched the candidate source;
-- compileall and `git diff --check` passed.
+Exact implementation checkpoint:
+`42dfe3ad922d624e6e4553e98504ca4ed93ce39c`.
+
+Observed validation at that exact SHA:
+- exact-head push CI 36407285042: SUCCESS;
+- PR integration CI 36407289691: SUCCESS;
+- fresh CI Python install: **1447 passed**, zero skips, 94.14 s;
+- production Qt camera-guard helper: **37/37 passed**;
+- actual qMCPBridge build against CloudCompare v2.13.2: PASS;
+- local focused camera/inspection core: 194 passed;
+- local native-camera-policy + picked-intent modules: 41 passed;
+- local installed stdio target ROI module: 2 passed separately;
+- complete focused seven-module set contains 237 tests;
+- 34/34 locally installed Python source hashes matched the candidate source;
+- compileall and whitespace checks passed.
 
 The existing deterministic numerical solvers, CAD section/ROI/target/layer/profile
-math, fixture generator and qMCPFusionWorkflow behavior are not changed by this
-recovery. Native Qt compilation and the expanded 37 production-helper CTests must be
-verified in exact-head CI; do not infer them from Python replay.
+math, fixture generator and qMCPFusionWorkflow behavior are unchanged by this
+recovery. CI is authoritative for fresh dependency installation, the 37 Qt CTests
+and actual native compilation; replay/CI are not visible Windows fan acceptance.
 
 ## Next visible Windows gate
 
