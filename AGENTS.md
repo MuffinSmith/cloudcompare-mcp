@@ -1,65 +1,94 @@
-# Recovery checkpoint: agent visual inspection
+# Agent visual inspection: recovery checkpoint
 
 Branch: `feature/live-agent-visual-inspection`.
-Stacked parent: `c35916d4badf5bdac815417d88cdffba56b537b7` on
-`feature/live-section-roi-from-picks` (draft PR #21).
+Stacked base: `feature/live-section-roi-from-picks`, draft PR #21,
+SHA `c35916d4badf5bdac815417d88cdffba56b537b7`.
 Accepted main: `2b385820ecfcb84d79aaf59ad5965e748f961466`.
 
-## Current state
+## Current milestone
 
-Native integration is applied. qMCPBridge 0.13.0 / revision 9 camera and camera-bound capture are wired in. Actual CloudCompare 2.13.2 native compilation and installed regression CI have been requested; inspect real results. The transport workflow still needs removal through the connector (Actions tokens cannot edit workflows).
-Native camera dispatcher and shared policy are persisted. Policy checkpoint
-c2e04e0fbd5825a2cb574b76fe365c64a6a12c8e passed all 31 compiled local C++ policy tests.
-This is NOT a Qt/plugin build or GUI result. Python remains 0.15.7; the 0.16.0
-inspection/semantic workflow is still being implemented, not yet persisted.
+Python integration pending the one-shot source helper.
 
-Read docs/VISUAL_INSPECTION_PROGRESS.md and actual subsequent commits. The temporary
-branch-specific Actions helper applies exact guarded edits to existing large native
-files, then deletes itself and creates a normal source commit. It uses non-force
-push and refuses a changed remote head. Inspect actual branch state before resuming;
-a failed stream never means the work was lost. Do not recreate this branch.
+Persisted Python modules implement strict camera/PNG evidence, bounded inspection,
+and seven MCP schemas/handlers with explicit semantic proposal and answer binding.
+Local focused tests: 182 passed (31 compiled camera policy, 59 Python camera,
+65 workflow/freshness, 17 actual schema/dispatch/installed stdio, 10 exact-fixture
+checks). The six new test/support files and fixture generator are not yet persisted
+at this checkpoint; persist them next. Full installed regression is running locally;
+no final result claimed yet. Python modules' Git blob hashes matched local bytes.
 
-## Implemented native design, awaiting validation
+Native checkpoint `4b84b3a61a856bef312b73728820c2276c2a11ed` CI run 36376174049
+PASSED both installed Python and actual Linux CloudCompare 2.13.2 qMCPBridge build.
+Native job 108782362426 compiled the real plugin, not only a policy harness.
+That checkpoint's local full regression: 1242 passed, zero skips.
+No Windows native build, actual viewport-image interpretation or visible-host
+acceptance has occurred for this increment. Native is 0.13.0 / workflow revision 9.
 
-view.camera: get/save/look/orbit/pan/zoom/focus/restore/release. Save tokens are
-native-session scoped, capped at eight without eviction. Moves and restore require
-current session, active window and camera fingerprint. Full ccViewportParameters
-copies are restored only to the same window and viewport size. Recompute and compare
-camera fingerprint after restore. Derived clipping distances/framebuffer/LOD and
-unrelated GUI or source state are not exact-restoration claims. Object-centered
-orthographic/perspective supported; stereo, bubble, viewer-centered and nonunit
-display scale refused. Camera center is a CloudCompare host-render parameter, NOT a
-global world-eye coordinate. Focus takes a point-cloud source frame and converts
-explicit global center/region through its shift/scale; pending transforms refused.
-Source geometry, selection and overlays are never edited by this contract.
+## New workflow
 
-## Direction and preserved evidence
+get_live_camera(save=true) stores an exact native ccViewportParameters copy.
+set_live_camera supports look/orbit/pan/zoom/focus/restore/release with session,
+window and expected-camera guards. Eight save tokens, no eviction. Native restore
+requires the same session/window/viewport size; comparison is explicit. Object-
+centered ortho/perspective only, no stereo/bubble/viewer-centered/nonunit display
+scale. Camera center is a host-render parameter, NOT a global world-eye position.
+Focus converts global point/region via the declared cloud's shift/scale; no pending
+transforms, invisible/disabled sources, or another display window. No GUI mouse
+simulation, source/selection changes or overlay writes.
 
-Agent inspects images plus structured geometry and asks simple semantic questions.
-Vision is contextual, geometry dimensional; explicit human answers bind exact issued
-evidence and cannot override numerical refusal. No automatic ROI/scale/fit-quality
-search, fan reconstruction, broad CAD IR or Fusion backend. Existing overlays are
-read-only context initially because clear-all would affect unrelated overlays.
+inspect_live_part uses one explicit whole-source query recipe (24..2048 sampled
+points, source <=5 million), existing plane/circle/cylinder discovery once each,
+up to four declared views, at most five navigation moves plus one restore, two
+geometry acquisitions, six initial geometric/draft semantic candidates. Required
+threshold is fixed before fitting; no quality-driven retries. PNGs have native
+camera provenance, verified SHA256/chunk CRCs and byte/pixel budgets, and are
+returned as images separately from compact retained evidence. Default camera
+restoration is ownership-guarded; a concurrent human move/ambiguous response yields
+an explicit recoverable error rather than overwriting it. Retain-view is explicit.
 
-Read docs/RETAINED_0_15_7_CHECKPOINT.md and the three spatial-intent/Windows docs.
-PR #21 stays draft/unmerged. Do not merge this branch either. Do not repeat the passed
-safe human-pick fixture or claim old blocked/unrun GUI cases passed. No fan ROI call
-has occurred. Authorized fan SHA256 is
-79ca5f9be2b80446d984bf7300fa9b9a5cda3466b2b3ab98f40fc4b61233fcc0;
-retained count 406276, rediscover current source rather than reusing entity IDs.
+The agent must actually review returned PNGs before issuing a semantic proposal;
+Python does not interpret images or invent human answers. Proposals bind issued
+candidate IDs, code/evidence fingerprints, captured views, explicit observations,
+and a concise question. Answers require exact proposal fingerprint and explicit
+yes/no/unsure plus exact reported human text. Freshness rechecks the same source,
+scene/selection/overlay metadata, sampled coordinates/query summary, endpoint and
+native session/window. Changed evidence becomes permanently stale; latest answer
+supersedes previous answers; overlapping different affirmative roles require review.
+Camera pose changes alone do not stale frozen evidence. Cache is process-local,
+16 inspections/12 proposals each; restart/release invalidates IDs. No PNGs in cache.
 
-## Recovery and testing discipline
+## Refusal/provenance limits
 
-Inspect current main, relevant refs/commits/PRs/issues/CI and this file. Preserve
-unexpected work. Never reset, clean, force push, delete retained branches, or invent
-retry/recovery/numbered branches. Commit coherent increments; verify returned SHA and
-actual remote branch persistence before continuing. Update this checkpoint at each
-milestone. Save before long tests. Keep unit/numerical, compiled policy, TCP replay,
-actual installed MCP stdio, GitHub CI, real plugin build and visible Windows claims
-separate. Old numerical reconstruction solvers must remain unchanged.
+Images/semantic intent never authorize CAD construction or bypass accepted numerical
+refusals. No reconstruction/ROI/layer/target scale tuning, broad CAD IR or Fusion.
+Freshness is observed deterministic sample + native full-query summary + metadata,
+NOT whole-cloud geometry/attributes equality. Reads are not atomic; unobserved
+change-and-change-back cannot be ruled out. Session/endpoint are context, not
+cryptographic host/human authentication. No independent real-host native call count.
+Replay PNGs are test transport, not real viewport visual acceptance. Existing
+unrelated overlays are fingerprinted/preserved; this increment creates none.
 
-Sandbox recovered exact parent source from successful Actions run 36373820422,
-artifact 10949957563, verified tracked tree 4521f1df9d4fa6ef389428efbf1600df0faa6529.
-Offline wheels: run 36367435852 artifact 10946969592. Local Python 3.13.5 environment
-uses a noneditable project install and some preinstalled dependencies; not pristine
-isolation. GitHub/PyPI DNS is unavailable locally; use connector/source artifacts.
+## Preserve prior work / next steps
+
+Read docs/RETAINED_0_15_7_CHECKPOINT.md and the spatial-intent/Windows reports.
+PR #21 and this branch must remain draft/unmerged. Do not repeat passed safe picks
+or claim old blocked GUI cases passed. No fan ROI/reconstruction call occurred.
+Authorized fan SHA256: 79ca5f9be2b80446d984bf7300fa9b9a5cda3466b2b3ab98f40fc4b61233fcc0.
+Retained fan source count 406276; rediscover IDs. Fan semantic inspection only AFTER
+internal exact-head CI and synthetic visible camera gates; no full model required.
+
+Next persist new tests/generator, inspect full installed regression, review complete
+parent/native diff, remove transport workflow through connector, write contract and
+focused Windows gate, open stacked draft PR, require final exact-head green CI.
+
+Recover actual remote heads/commits/PRs/issues/CI before resuming. Preserve unexpected
+work; never reset, clean, force-push, delete or recreate retained branches. No retry,
+recovery or numbered branches. Commit coherent increments and verify actual remote
+SHA persistence. Temporary Actions helper is branch-scoped, non-force, guards exact
+remote HEAD, and applies only explicit source edits. GitHub Actions tokens cannot
+edit workflows; use the connector for workflow changes/removal.
+
+Local environment: Python 3.13.5 noneditable project install; some preinstalled third-
+party packages reused, not pristine isolation. Exact source via CI artifact;
+GitHub/PyPI DNS unavailable locally. Keep unit/policy, replay, actual MCP stdio,
+GitHub CI/native build, and visible Windows results separate.

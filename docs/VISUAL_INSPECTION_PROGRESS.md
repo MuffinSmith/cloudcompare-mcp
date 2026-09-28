@@ -1,7 +1,14 @@
-# Visual inspection increment progress
+# Visual inspection progress
 
-Stacked branch `feature/live-agent-visual-inspection`, parent c35916d4badf5bdac815417d88cdffba56b537b7. Do not merge either PR. Read this file alongside AGENTS.md.
+Read AGENTS.md for the current checkpoint and actual remote HEAD before resuming.
 
-First code checkpoint adds shared native camera math and 31 executable C++ policy tests. All 31 passed locally under g++ through Python 3.13.5/pytest 9.0.2. These test directions, proper rotation matrices, positive/negative orbit and inverse, finite bounds, large coordinates, pan and zoom limits. They do not constitute Qt/native plugin compilation or visible-host acceptance.
-
-The dispatcher, existing native source integration, camera-bound capture, Python inspection and confirmation contracts are being implemented; they are NOT yet persisted at this checkpoint. Native/Python versions have not yet changed on this remote head. Resume the same branch; do not recreate it. Preserve the fallback branch and its partial Windows evidence.
+- Stacked parent: c35916d4badf5bdac815417d88cdffba56b537b7; do not merge PR #21.
+- Native camera/capture checkpoint: 4b84b3a61a856bef312b73728820c2276c2a11ed.
+- Exact native-checkpoint CI 36376174049 succeeded, including the actual qMCPBridge
+  build against CloudCompare 2.13.2 on Linux. Local full suite: 1242 passed.
+- New Python camera/inspection/semantic core now persisted. Local focused suite:
+  182 passed. New tests/generator and server registration are being persisted next;
+  do not interpret this as final exact-head validation.
+- No new visible Windows/CloudCompare, actual image interpretation or fan test result.
+- Temporary source helper must be removed along with its workflow before the final
+  checkpoint. Workflow edits require the connector, not the Actions token.
