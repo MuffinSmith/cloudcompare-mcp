@@ -1,11 +1,13 @@
 # Accepted Windows 0.15.6 result
 
 The user supplied this focused acceptance on 2026-09-27 and explicitly authorized
-merging PR #20. Exact Windows-tested feature HEAD:
-`3a1d49550e3e1a90d4915fb197ad51688a3e836d`. Accepted-main parent:
+merging PR #20. PR #20 subsequently merged at
+`04a21fc32261fe7a071fd9ab46ee353afd33016c`. Exact Windows-tested feature HEAD:
+`3a1d49550e3e1a90d4915fb197ad51688a3e836d`. Final pre-merge documentation HEAD:
+`f2ec9970feb8a2ff43d04a4939a34f2fdb01fd45`. Accepted-main parent:
 `809c522550274316fa0a14d2e86d90a4921bfc03`. Runtime/test checkpoint:
-`5d618c0de30c90a4573d4c8be52174a3aed58eee`. The final tested HEAD changed
-documentation only after that runtime checkpoint.
+`5d618c0de30c90a4573d4c8be52174a3aed58eee`. Changes after the Windows-tested
+head were acceptance documentation/recovery notes only.
 
 This document records the supplied Windows/CloudCompare report and merge
 authorization; it does not claim a new independent host rerun. Detailed raw
