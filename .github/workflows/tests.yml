@@ -76,12 +76,14 @@ jobs:
           submodules: false
           persist-credentials: false
           clean: false
-      - name: Fetch only the required pinned CCCoreLib submodule
+      - name: Fetch only the pinned core and nested nanoflann dependencies
         timeout-minutes: 3
         working-directory: host-source
         run: |
           git submodule update --init --depth=1 -- libs/qCC_db/extern/CCCoreLib
           test "$(git rev-parse HEAD:libs/qCC_db/extern/CCCoreLib)" = "$(git -C libs/qCC_db/extern/CCCoreLib rev-parse HEAD)"
+          git -C libs/qCC_db/extern/CCCoreLib submodule update --init --depth=1 -- extern/nanoflann
+          test "$(git -C libs/qCC_db/extern/CCCoreLib rev-parse HEAD:extern/nanoflann)" = "$(git -C libs/qCC_db/extern/CCCoreLib/extern/nanoflann rev-parse HEAD)"
       - name: Install host build dependencies
         run: |
           sudo apt-get update -qq

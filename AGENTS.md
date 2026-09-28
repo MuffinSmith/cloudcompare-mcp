@@ -27,15 +27,18 @@ including full Python checks and actual Linux CloudCompare v2.13.2 plugin build.
 Its source artifact reconstructs exact tree 2d1d3d8c193fb24729f6e09127e5b8f39ab0ee9d;
 complete-parent whitespace checks passed; product/runtime/tests were unchanged.
 
-IMPORTANT: companion PR run 36379587715 then failed before native compilation while
-fetching an unrelated optional plugin from an external GitLab server. Python passed.
-See docs/VISUAL_INSPECTION_CI_CHECKOUT.md. The subsequent narrow CI correction fetches
-only the required CCCoreLib gitlink, verifies its exact commit, and bounds checkout
-timeouts. It does NOT skip the real native build or suppress errors. Product code,
-numerical solvers, generator and tests remain unchanged. Verify NEW exact-head push
-and PR CI after this correction; do not infer success from the previous green run.
-PR #22 records the final SHA/results after they are checked. No visible Windows,
-actual image interpretation or real human semantic acceptance is claimed here.
+IMPORTANT: companion PR run 36379587715 failed before native compilation fetching
+an unrelated optional plugin from external GitLab; Python passed. The first
+narrower CI checkout, df1311eba718a9432664064a4e808187325fa654, then failed CMake
+because it omitted CCCoreLib's nested nanoflann dependency. That was an introduced
+CI acquisition error, not a product defect or a passing build. The current correction
+explicitly fetches both required pinned gitlinks, verifies both HEADs, and bounds
+checkout timeouts. It does NOT skip the real native build or suppress errors.
+See docs/VISUAL_INSPECTION_CI_CHECKOUT.md for both failed checkpoints and evidence.
+Product code, numerical solvers, generator and tests remain unchanged. Verify NEW
+exact-head push AND PR CI after this correction; do not infer success from an older
+green run. PR #22 records the final SHA/results after they are checked. No visible
+Windows, actual image interpretation or real human semantic acceptance is claimed.
 
 ## Contracts and documentation
 
