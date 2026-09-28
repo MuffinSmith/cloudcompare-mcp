@@ -293,6 +293,7 @@ class InspectionStore:
                                 "restored_full_equal": restored.get("restored_equal"),
                                 "restored_while_owned": True,
                                 "camera_difference": camera_difference(baseline, restored), "token_released": True,
+                                "release": released,
                                 "release_camera_difference": final_difference,
                                 "post_release_navigation_changed": not final_difference["guard_equal"],
                                 "post_release_change_scope": "host_or_human_after_release" if not final_difference["guard_equal"] else "unchanged",
