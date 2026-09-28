@@ -19,7 +19,7 @@ def installed_stdio_parameters(port):
 
 
 def test_actual_roi_stdio_installed_snapshot_fixtures_with_bridge_unavailable(roi_files):
-    assert version('cloudcompare-mcp') == '0.15.7'
+    assert version('cloudcompare-mcp') == '0.16.0'
     output, manifest = roi_files
 
     async def run():

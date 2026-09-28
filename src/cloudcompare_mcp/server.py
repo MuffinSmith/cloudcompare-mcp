@@ -37,6 +37,7 @@ from .section_boundary_tools import (
     handle_reconstruct_filled_section_profile,
 )
 
+from .inspection_tools import tools as inspection_tools, handlers as inspection_handlers, capabilities as inspection_capabilities
 from .section_layer_tools import (
     capabilities as section_layer_capabilities,
     tools as section_layer_tools,
@@ -2426,6 +2427,9 @@ def handle_capture_live_view(_args: dict) -> list[ImageContent | TextContent]:
             "height": result.get("height"),
             "source": "open CloudCompare active 3D viewport",
         }
+        for key in ("camera_state", "png_sha256", "capture_contract"):
+            if key in result:
+                metadata[key] = result[key]
         return [
             ImageContent(type="image", data=png_b64, mimeType="image/png"),
             TextContent(type="text", text=json.dumps(metadata, indent=2)),
@@ -2457,6 +2461,8 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
                     "and exact all-match summaries"
                 )
 
+        camera = native.get("camera", {})
+        native["python_visual_inspection"] = inspection_capabilities(available=region_available and isinstance(camera, dict) and camera.get("available") is True and camera.get("contract") == "cc-camera-v1")
         native["python_feature_fitting"] = feature_fitting
         native["python_cad_datums"] = datum_capabilities()
         profile = profile_capabilities()
@@ -4672,6 +4678,7 @@ TOOLS.extend(profile_tools())
 TOOLS.extend(profile_topology_tools())
 TOOLS.extend(section_boundary_tools())
 TOOLS.extend(section_layer_tools())
+TOOLS.extend(inspection_tools())
 
 
 @server.list_tools()
@@ -4773,6 +4780,7 @@ async def call_tool(
         "run_cloudcompare_command": handle_raw_command,
     }
     dispatch.update(section_layer_handlers(live_request))
+    dispatch.update(inspection_handlers(live_request))
     try:
         handler = dispatch.get(name)
         if handler is None:

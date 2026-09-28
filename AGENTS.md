@@ -7,7 +7,7 @@ Accepted main: `2b385820ecfcb84d79aaf59ad5965e748f961466`.
 
 ## Current milestone
 
-Python integration pending the one-shot source helper.
+Python 0.16.0 integration is applied. Seven new tools are registered; existing capture adds optional provenance; native focus now refuses a source displayed in another window. The helper source has been removed; remove its workflow through the connector before the final checkpoint.
 
 Persisted Python modules implement strict camera/PNG evidence, bounded inspection,
 and seven MCP schemas/handlers with explicit semantic proposal and answer binding.

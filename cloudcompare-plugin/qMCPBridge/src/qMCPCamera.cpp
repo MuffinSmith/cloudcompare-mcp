@@ -83,7 +83,7 @@ bool focus(ccMainAppInterface* app, const QJsonObject& a, ccViewportParameters& 
     if (!entity || !entity->isA(CC_TYPES::POINT_CLOUD)) return false;
     for (ccHObject* node=entity;node;node=node->getParent())
         if (node->isGLTransEnabled() || !node->isEnabled()) return false;
-    if (!entity->isVisible()) return false;
+    if (!entity->isVisible() || entity->getDisplay()!=app->getActiveGLWindow()) return false;
     auto* cloud=static_cast<ccPointCloud*>(entity);
     const double scale=cloud->getGlobalScale();
     if (!qMCPCameraPolicy::bounded(scale,1.0e-12,1.0e12)) return false;
