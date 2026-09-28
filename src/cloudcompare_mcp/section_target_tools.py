@@ -25,6 +25,7 @@ KINDS = {
 
 def capabilities(*, live_available: bool = True) -> dict:
     from .section_target_diagnostic_tools import capabilities as diagnostic_capabilities
+    from .section_target_roi_tools import capabilities as roi_capabilities
     return {'version': '0.15.4', 'snapshot_target_analysis': True,
             'live_target_analysis': bool(live_available), 'snapshot_target_profile': True,
             'live_target_profile': bool(live_available), 'requires_complete_acquisition': True,
@@ -32,7 +33,8 @@ def capabilities(*, live_available: bool = True) -> dict:
             'max_points': 20000, 'max_cells': 20000, 'max_targets': 64,
             'native_rebuild_required': False, 'automatic_largest_target_selection': False,
             'manufacturing_intent_confirmed': False,
-            'scale_diagnostics': diagnostic_capabilities(live_available=live_available)}
+            'scale_diagnostics': diagnostic_capabilities(live_available=live_available),
+            'roi_isolation': roi_capabilities(live_available=live_available)}
 
 
 def target_schema() -> dict:
@@ -87,7 +89,8 @@ def tools() -> list[Tool]:
                            annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False,
                                                        idempotentHint=True, openWorldHint=live)))
     from .section_target_diagnostic_tools import tools as diagnostic_tools
-    return result + diagnostic_tools()
+    from .section_target_roi_tools import tools as roi_tools
+    return result + diagnostic_tools() + roi_tools()
 
 
 def handle(args: dict, *, live: bool, reconstruct: bool,
@@ -101,5 +104,6 @@ def handle(args: dict, *, live: bool, reconstruct: bool,
 
 def handlers(request: Callable[..., Any] | None = None) -> dict[str, Callable]:
     from .section_target_diagnostic_tools import handlers as diagnostic_handlers
+    from .section_target_roi_tools import handlers as roi_handlers
     return {name: partial(handle, live=live, reconstruct=reconstruct, request=request)
-            for name, (live, reconstruct) in KINDS.items()} | diagnostic_handlers(request)
+            for name, (live, reconstruct) in KINDS.items()} | diagnostic_handlers(request) | roi_handlers(request)
