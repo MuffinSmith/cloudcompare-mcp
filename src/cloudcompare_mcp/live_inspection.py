@@ -277,6 +277,11 @@ class InspectionStore:
                     final_camera = released.get("camera_state")
                     if final_camera is None:
                         raise InspectionError("Camera token release did not report the post-auto-pivot camera state", {"release": released})
+                    if (released.get("auto_pivot_restored_to_original") is not True
+                            and released.get("auto_pivot_external_override_preserved") is not True):
+                        raise InspectionError("CloudCompare automatic pivot mode was neither restored nor externally superseded",
+                            {"stage": "inspection.release_auto_pivot_control", "release": released,
+                             "expected": baseline, "current": final_camera})
                     final_difference = camera_difference(baseline, final_camera)
                     # Safety ownership ends at successful exact restore. Release then
                     # returns CloudCompare's original host control (notably automatic

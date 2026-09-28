@@ -279,3 +279,22 @@ def test_release_host_motion_is_reported_after_exact_owned_restore():
     assert recovery['post_release_change_scope'] == 'host_or_human_after_release'
     assert not recovery['release_camera_difference']['guard_equal']
     assert not h.tokens
+
+
+def test_release_control_restore_failure_still_blocks_after_exact_camera_restore():
+    class BadReleaseHost(Host):
+        def __call__(self, method, args, **kwargs):
+            result = super().__call__(method, args, **kwargs)
+            if method == 'view.camera' and args.get('action') == 'release' and result.get('camera_state'):
+                result['auto_pivot_restored_to_original'] = False
+                result['auto_pivot_external_override_preserved'] = False
+            return result
+
+    h = BadReleaseHost()
+    with pytest.raises(InspectionError) as e:
+        mod.InspectionStore().inspect(ARGS, h)
+    recovery = e.value.recovery
+    assert recovery['token_released'] is True
+    assert recovery['release']['released'] is True
+    assert recovery['error'].startswith('CloudCompare automatic pivot mode was neither restored nor externally superseded')
+    assert not h.tokens
