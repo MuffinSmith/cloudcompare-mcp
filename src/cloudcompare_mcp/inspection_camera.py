@@ -237,7 +237,10 @@ def navigate(request: Request, args: dict) -> dict:
 def capture(request: Request, state: dict) -> tuple[dict, str, int]:
     """Read a real native PNG; verify its bytes and bind the reported camera state."""
     camera_state(state)
-    result = camera_request(request, "view.capture", guard(state))
+    # Native 0.13.0 accepts only the legacy digest on view.capture.
+    capture_guard = guard(state) if "camera_guard_contract" in state else {
+        "expected_camera_fingerprint": state["camera_fingerprint"]}
+    result = camera_request(request, "view.capture", capture_guard)
     if not isinstance(result, dict) or result.get("capture_contract") != "cc-viewport-capture-v1":
         raise InspectionError("Viewport capture has no recoverable camera provenance")
     observed = camera_state(result.get("camera_state"))

@@ -39,7 +39,9 @@ are invalid; a legacy digest is never silently interpreted as a navigation diges
 Use the returned current state after each deliberate move, not the baseline hash.
 Python selects the new guard only when a valid new contract/digest pair is present.
 Malformed pairs or a downgraded response refuse, rather than falling back silently.
-Legacy 0.13.0 responses still use the old strict full guard.
+Legacy 0.13.0 responses still use the old strict full guard. Legacy capture sends
+ONLY expected_camera_fingerprint: the old native capture allowlist does not accept
+session/window arguments. A dedicated regression checks this exact wire format.
 
 Modern `restore` preserves CURRENT default point/line sizes, restoring only the
 owned navigation state. It reports `restored_guard_equal` independently from
@@ -81,8 +83,8 @@ explicit guarded capture and retains transition metadata in its MCP evidence pac
 
 ## Validation and preserved behavior
 
-Local noneditable installed Python 3.13.5: 1440 passed, zero skips (106.32 s).
-Combined focused suite: 229 passed (10.31 s), including all retained 182 and 47 new
+Local noneditable installed Python 3.13.5: 1441 passed, zero skips (105.18 s).
+Combined focused suite: 230 passed (10.39 s), including all retained 182 and 48 new
 cases. All 34 installed Python source module SHA256 hashes match. Compileall and
 complete local baseline-tree whitespace checks pass. Some third-party dependencies
 are reused; this is not pristine isolation. CI installs fresh dependencies.
@@ -95,7 +97,7 @@ Neither is real-host query accounting, visual interpretation or human acceptance
 
 CI additionally compiles/runs 35 Qt CTests against the exact production guard helper,
 then builds the actual plugin against CloudCompare v2.13.2. These Qt tests are NOT
-included in the 1440 Python count. Local Qt development files are unavailable; no
+included in the 1441 Python count. Local Qt development files are unavailable; no
 local Qt pass is claimed. The native-first checkpoint 156c6952993f7f0cc2be03300288066d12f00b11
 passed push CI 36391019292, including Qt tests and actual native build. Final exact
 Python-integrated HEAD push AND PR runs must be checked separately in PR #22.

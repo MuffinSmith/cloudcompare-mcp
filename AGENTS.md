@@ -1,100 +1,100 @@
-# Camera guard recovery — integrated Python 0.16.1 / native 0.13.1
+# Camera guard recovery — Python 0.16.1 / native 0.13.1
 
-Resume EXISTING feature/live-agent-visual-inspection and stacked draft PR #22.
+Resume existing feature/live-agent-visual-inspection and stacked draft PR #22.
 PR #21 base: c35916d4badf5bdac815417d88cdffba56b537b7.
 Accepted main: 2b385820ecfcb84d79aaf59ad5965e748f961466.
 Neither PR may be merged without separate explicit authorization.
 
-## Read first
+## Current contract and handoff
 
-- docs/CAMERA_GUARD_RECOVERY.md is the current guard/capture/restoration contract.
-- docs/WINDOWS_CAMERA_GUARD_RETEST.md is the focused next gate, not the old full marathon.
-- docs/WINDOWS_0_16_0_PARTIAL_ACCEPTANCE.md preserves actual user-reported Windows status.
-- docs/LIVE_AGENT_VISUAL_INSPECTION.md remains the broader 0.16.0 workflow contract;
-  camera ownership/equality portions are superseded by CAMERA_GUARD_RECOVERY.md.
-- Keep docs/RETAINED_0_15_7_CHECKPOINT.md and all earlier acceptance/review evidence.
+Read docs/CAMERA_GUARD_RECOVERY.md and docs/WINDOWS_CAMERA_GUARD_RETEST.md first.
+They supersede the ownership/restoration parts of docs/LIVE_AGENT_VISUAL_INSPECTION.md
+and the old full Windows procedure. Preserve docs/WINDOWS_0_16_0_PARTIAL_ACCEPTANCE.md,
+docs/RETAINED_0_15_7_CHECKPOINT.md and all earlier reports; no old unrun case is a pass.
 
-## Recovery sequence and observed internal evidence
+Python 0.16.1 / public native ping and capabilities 0.13.1 / workflow revision 9.
+Full cc-camera-v1 parameter fingerprints remain byte/meaning compatible. Additive
+cc-camera-guard-v1 excludes ONLY point/line style and redundant view/up directions;
+all pose, projection, explicit clipping, mode, display scale, session/window/size
+and unknown future parameters remain exactly guarded. No equality tolerance added.
+Modern restore preserves current style, reporting restored_guard_equal separately
+from restored_equal (full parameters). Legacy guards remain strict; dual/malformed
+guards and silent response downgrades refuse. Legacy 0.13.0 capture accepts only the
+old expected_camera_fingerprint; Python preserves that exact allowlist without extra
+identity fields. The final compatibility regression is test_camera_guard_legacy_transport.
 
-Started from 5559f099670b0e1d86de6df793fca12ffa4ac53e. Preserved the Windows report
-at 3b27fc7a940a6d0884f0cf88d12f01904b165480. Native-first commit
-156c6952993f7f0cc2be03300288066d12f00b11 passed push CI 36391019292, including
-35 production-helper Qt CTests and actual CloudCompare v2.13.2 plugin compilation.
-Current integrated source adds Python 0.16.1 guard choice/error propagation/schema
-compatibility and 47 new regressions. It requires a NEW exact-head push AND PR CI
-check, recorded in PR #22 after completion; do not infer final CI from native-first.
+Capture compares ownership around one redraw/event turn, then full state across the
+grab. No refreshed-guard retry or stabilization loop. cc-camera-diagnostics-v1 details
+retain phases, reference/current snapshots and exact field deltas; bounded 32-state
+history is not authorization and cannot evict the separate saved camera tokens.
+The no-argument capture_live_view MCP tool remains unchanged; explicit expected-guard
+captures use the installed Python helper and internally inspect_live_part. Do not
+mislabel direct Python/native bridge probes as actual MCP stdio.
 
-Local noneditable Python 3.13.5 full suite: 1440 passed, zero skips, 106.32 s.
-Combined focused suite: 229 passed, zero skips, 10.31 s (retained 182 plus new 47).
-All 34 installed Python source module hashes match. Compileall and full local
-baseline-tree whitespace checks pass. Actual installed MCP stdio + event-aware
-TCP replay: 40 native requests, five geometry reads, three capture attempts (two
-replay PNGs plus one refused). Scripted unsure answer is not human acceptance.
-Retained legacy stdio cycle still passes 44 requests / six reads / two replay PNGs.
-Qt development headers are unavailable locally; Qt CTests run in CI, not locally.
-Full source/remote-archive verification and final PR summary must be retained before
-handoff. Remote file blob SHAs were checked against local bytes after writing.
+## Observed validation / exact checkpoint discipline
 
-## Preserved Windows result and unresolved diagnosis
+Started at 5559f099670b0e1d86de6df793fca12ffa4ac53e. Preserved Windows report at
+3b27fc7a940a6d0884f0cf88d12f01904b165480. Native-first
+156c6952993f7f0cc2be03300288066d12f00b11 passed push CI 36391019292 including
+35 production-helper Qt CTests and actual CloudCompare v2.13.2 native compilation.
+Python integration b8fa999d2620ebbfb46d58997cc4222acf661a45 had a local 1440-test pass.
+Review then found the old native capture allowlist incompatibility; the current
+correction adds one regression and retains modern identity guards without downgrading.
 
-At 5559f099, reported Windows checks passed: 1393/182 tests, 34 module hashes, nine
-fixtures, 36 reviewed actual viewport PNGs, native rebuild and synthetic semantic
-lifecycle. Fan camera/capture refused on two hosts; actual human confirmation is
-PENDING. Raw report/packet live only in the Windows acceptance directory named in
-WINDOWS_0_16_0_PARTIAL_ACCEPTANCE.md and were not read in this development container.
-Do not relabel old blocked/unrun manual or fan cases as passes.
+CURRENT local noneditable installed Python 3.13.5 suite: 1441 passed, zero skips,
+105.18 s. Focused seven modules: 230 passed, zero skips, 10.39 s (182 retained + 48
+new). All 34 installed source hashes match after reinstall. Compileall passes.
+Verify the complete final tree/diff and final exact-head push AND PR CI separately;
+PR #22 records actual SHA/results after verification. No earlier green run substitutes.
 
-The earlier full-fingerprint explanation is a HYPOTHESIS about the fan, not proven
-root cause. Derived zNear/zFar and computed matrices were already outside the old
-full fingerprint. The new design fixes style-versus-navigation conflation and gives
-field-level diagnostics. Genuine pose/projection/identity drift must still refuse.
-No Windows 0.16.1 DLL/image/fan acceptance has been performed here.
+New actual installed MCP stdio + counted event-aware TCP replay: 40 requests,
+five geometry reads, three capture attempts (two replay PNGs plus one refusal),
+scripted unsure answer and safe release/recovery. Retained legacy stdio: 44 requests,
+six reads, two replay PNGs. Neither is real-host image interpretation/query accounting
+or actual human acceptance. Qt CTests are separate from Python totals and run in CI;
+local Qt development files are unavailable. CI also builds the actual native plugin.
 
-## Current narrow contract
+## Preserved Windows report / still unresolved fan diagnosis
 
-Python 0.16.1; public native ping/capabilities 0.13.1 / workflow revision 9.
-cc-camera-v1 and its full parameter fingerprint remain unchanged. Additive
-cc-camera-guard-v1 removes ONLY point/line size and redundant view/up directions;
-all pose, projection, explicit clipping, mode, display scale, session, window,
-viewport size and future parameter fields remain exactly guarded. Modern restores
-preserve current style and report restored_guard_equal separately from restored_equal.
-Legacy full guards stay strict. Dual/malformed guards and response downgrades refuse.
-Capture compares guard around one redraw/event turn and full state across the grab.
-No refresh/retry loops or tolerance widening. Diagnostics carry phase and snapshots;
-32-state diagnostic history is not authorization and cannot evict saved camera tokens.
+At 5559f099 the user reported PASS for Windows installed runtime, native rebuild,
+1393/182 tests, 34 hashes, nine fixtures, 36 actual reviewed PNGs and synthetic
+semantic lifecycle. Fan camera/capture refused on two hosts; actual human fan
+confirmation remains PENDING. Raw evidence is only in the Windows directory named
+in the partial report; it was NOT read in this development container.
 
-Existing server.py, numerical fitting/discovery/section/ROI/target/layer solvers,
-fixture generator and qMCPFusionWorkflow.cpp remain byte-unchanged. Public capabilities
-are enriched at qMCPBridge dispatch. The public capture_live_view tool stays no-argument;
-explicit expected-guard captures are available through the installed Python helper and
-internally in inspect_live_part. Do not call a direct bridge probe MCP stdio evidence.
+The style-drift explanation is a HYPOTHESIS about the fan, not proven root cause.
+Derived zNear/zFar and computed matrices were already outside the old full hash.
+This design correction plus diagnostics must not be sold as an observed fan fix.
+No Windows 0.16.1 DLL, viewport or actual human semantic acceptance was run here.
 
-## Windows next gate and boundaries
+## Retest / preserved boundaries
 
 Install BOTH Python and a rebuilt compatible isolated Windows DLL. Verify hashes,
-public contracts and process/port identity; preserve normal runtime/unsaved work.
-Run automated regression/Qt CTests and only a small visible disposable-fixture guard
-probe, then a bounded camera-only fan preflight. If it refuses, retain exact field
-values and phases, do not force or tune away protected state. Once it passes, one
-bounded inspection, actual PNG review and understandable questions with actual human
-answers. Keep the same MCP process alive for evidence IDs. Restore/release owned state
-only. Preserve all earlier successful synthetic coverage instead of repeating 36 PNGs.
+public contracts and PID/port identity; preserve normal runtime and unsaved work.
+Run automated regression/Qt tests, one small visible disposable-fixture guard probe,
+then bounded fan camera preflight. On unexpected refusal retain exact phases/fields,
+release only owned tokens, never force or tune protected state. When preflight passes:
+one bounded inspection, actual PNG review, understandable supported questions and
+actual human answers bound to issued proposals. Keep the same MCP process alive.
+Do not repeat the 36-PNG manual exercise or precise clicks as a prerequisite.
 
 Authorized fan SHA256:
 79ca5f9be2b80446d984bf7300fa9b9a5cda3466b2b3ab98f40fc4b61233fcc0.
 Retained count 406276; rediscover IDs/frame. Existing threshold 0.15 GLOBAL native units
-only with same verified frame; physical units are unknown. No success-driven numerical
-search, source mutation, fan ROI/reconstruction, broad CAD IR, Fusion or merge.
+only with the same verified frame; physical units unknown. No success-driven threshold,
+ROI/target/layer/depth search, source mutation, fan reconstruction, CAD IR, Fusion or merge.
+Existing server.py, numerical solvers, fixture generator and qMCPFusionWorkflow.cpp
+remain byte-unchanged; qMCPBridge enriches outgoing public native capability metadata.
 Vision is context, geometry dimensional evidence, human answer semantic intent.
-Sampled/non-atomic freshness is NOT full-cloud coordinates/attributes equality.
+Sampled/non-atomic freshness is NOT whole-cloud coordinates/attributes equality.
 
-## Disconnect discipline
+## Disconnect recovery
 
-Recover actual refs, commits, PRs/issues, CI and this file first. Preserve unexpected
-work. Never reset, clean, force-push, recreate branches or invent retry/recovery names.
-Commit coherent increments and verify returned SHA AND actual remote ref. No temporary
-transport/dependency helper workflow recreation. Local source/dependency archives are
-reused because GitHub/PyPI DNS is unavailable. Local install is noneditable but reuses
-some preinstalled dependencies, not pristine isolation; CI uses fresh dependencies.
-Keep unit/replay, installed MCP stdio, Qt tests, actual native build and visible Windows
-acceptance separate. All final result claims must name the exact tested checkpoint.
+Recover actual refs, commits, PRs/issues, CI and this file before writing. Preserve
+unexpected work. No reset, clean, force-push, branch recreation or retry/recovery names.
+Commit coherent increments and verify returned SHA AND actual remote ref. Do not
+recreate temporary transport/dependency workflows. Local source/dependency archives
+are reused due to unavailable GitHub/PyPI DNS. The project is installed noneditably
+but some third-party dependencies are reused, not pristine isolation; CI installs
+fresh dependencies. Distinguish unit/replay, installed MCP, Qt tests, actual native
+compilation and visible Windows evidence. Name the exact tested checkpoint in claims.

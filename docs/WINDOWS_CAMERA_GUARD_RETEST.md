@@ -34,11 +34,12 @@ ping/capabilities both report native 0.13.1, revision 9, camera guard contract
 cc-camera-guard-v1 and diagnostics contract cc-camera-diagnostics-v1. Verify the
 installed MCP tool schema advertises the new exclusive expected guard field.
 
-Run full installed pytest (baseline 1440, zero skips), compileall and complete-parent
-whitespace/native diff checks. Run the six focused modules (229 total):
-test_camera_guard_recovery, test_inspection_camera, test_inspection_tools,
-test_live_inspection, test_native_camera_policy, test_visual_inspection_fixtures.
-Configure MSVC for compiler-gated tests; skipped is not passed.
+Run full installed pytest (baseline 1441, zero skips), compileall and complete-parent
+whitespace/native diff checks. Run the seven focused modules (230 total):
+test_camera_guard_legacy_transport, test_camera_guard_recovery, test_inspection_camera,
+test_inspection_tools, test_live_inspection, test_native_camera_policy,
+test_visual_inspection_fixtures. Configure MSVC for compiler-gated tests; skipped is
+not passed. The added legacy-transport test checks the old native capture allowlist.
 
 Also run the 35 standalone Qt CTests using the compatible Qt prefix/PATH:
 
