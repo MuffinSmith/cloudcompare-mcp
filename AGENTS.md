@@ -19,12 +19,15 @@ inspection while its declared source/frame/anchor IDs/parameters/margin stay fix
 This is acquisition recovery, not ROI tuning, and requires **no qMCPBridge change**.
 
 One additional regression test proves an unselected duplicate event cannot consume
-a logical anchor while still affecting the frozen session fingerprint. Previous
-runtime checkpoint `604cc5d21c38a138aea0dff367cd2af888565830` passed 1210 tests;
-the new expected total is 1211 / focused 141, but do not claim those new totals until
-the new exact HEAD has green CI. Resolve actual branch HEAD before resuming. Do not
-repeat completed 0.15.6 Windows acceptance, start the CAD-model IR, or merge merely
-because CI is green.
+a logical anchor while still affecting the frozen session fingerprint. Behavioral
+checkpoint `2fd0decf4ade3fe376610978bbe0fff8497238ee` passed exact-head CI
+**36373589617** with **1211 passed, zero skips** on Linux; compileall and diff-check
+steps also passed. This is one test beyond the prior 1210-test runtime checkpoint,
+so the five intent-focused modules now contain 141 tests; no separate combined
+141-test invocation was run after the change. The commit after this paragraph is
+documentation-only. Resolve actual branch HEAD before resuming. Do not repeat
+completed 0.15.6 Windows acceptance, start the CAD-model IR, or merge merely because
+CI is green.
 
 ## Exact internal evidence
 

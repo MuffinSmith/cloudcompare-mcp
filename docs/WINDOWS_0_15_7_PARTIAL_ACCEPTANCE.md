@@ -51,3 +51,14 @@ indexes matching the already-declared logical anchor point IDs. Capture may be
 retried before any reconstruction-quality inspection while the declared source,
 frame, anchor IDs, margin and analysis parameters remain unchanged. This prevents
 accidental repeated clicks from redefining spatial intent and does not search the ROI.
+
+
+## Follow-up capture-recovery checkpoint
+
+Commit `2fd0decf4ade3fe376610978bbe0fff8497238ee` added the duplicate-event
+regression and revised acceptance procedure without changing product runtime or
+qMCPBridge. Exact-head GitHub Actions run `36373589617` succeeded with
+**1211 passed, zero skips** on Linux; compileall and diff-check steps passed. This
+does not turn the first Windows gate into a pass. The next visible-host work should
+resume only the still-unrun interaction coverage, using the revised event-budget
+procedure; the already-passed `safe` fixture does not need to be repeated.
