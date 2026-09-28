@@ -47,12 +47,26 @@ The final post-release pose is not claimed equal to baseline when it is not.
 
 Read `docs/AUTO_PIVOT_RECOVERY.md` and `docs/WINDOWS_AUTO_PIVOT_RETEST.md`.
 
-## Validation to perform before Windows continuation
+## Exact internally green checkpoint
 
-Run affected focused tests locally where dependencies permit, then exact-head CI. CI
-must freshly install Python, run the complete suite, compileall/diff checks and build
-the unchanged native plugin/37 Qt helper tests. Update this file and PR #22 with exact
-SHA/run results. Do not infer Windows acceptance from replay or CI.
+Runtime checkpoint: `ae03248065feea07e80f8f956cfd36ce6f4ac8f6`.
+
+Observed exact-head validation:
+- push CI `36415703006`: SUCCESS;
+- PR integration CI `36415706720`: SUCCESS;
+- fresh Python install/full suite: **1449 passed, zero skips**, 130.06 s;
+- compileall and `git diff --check`: PASS;
+- production Qt camera-guard helper: **37/37 passed**;
+- actual qMCPBridge build against CloudCompare v2.13.2: PASS;
+- qMCPBridge source is unchanged from the Windows-tested 0.13.2 DLL;
+- the seven focused modules now contain **238 tests** by source count (the 0.16.2
+  Windows command had 236; two new 0.16.3 release-boundary regressions were added).
+
+The first 0.16.3 CI attempt at `b987204e...` failed one new assertion because the
+successful recovery summary omitted its raw release object. That evidence object was
+then retained additively at `ae032480...`; no ownership rule was weakened.
+
+CI/replay are not visible Windows fan acceptance.
 
 ## Focused Windows continuation
 
