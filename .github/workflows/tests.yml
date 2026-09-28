@@ -20,6 +20,7 @@ on:
       - feature/live-cad-section-boundary-extraction
       - feature/live-cad-section-layer-isolation
       - feature/live-cad-section-target-isolation
+      - feature/live-cad-section-target-diagnostics
       - main
   pull_request:
 
