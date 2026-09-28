@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "qMCPBridge.h"
+#include "qMCPCamera.h"
+#include <QCryptographicHash>
 
 #include <QAction>
 #include <QBuffer>
@@ -390,7 +392,7 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         QJsonObject result;
         result[ "protocol_version" ] = 1;
         result[ "plugin" ] = "qMCPBridge";
-        result[ "plugin_version" ] = "0.12.0";
+        result[ "plugin_version" ] = "0.13.0";
         result[ "process_id" ] = QCoreApplication::applicationPid();
         addApplicationVersion( result );
         result[ "port" ] = static_cast<int>( m_port );
@@ -782,6 +784,9 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         return entityToJson( entity, false );
     }
 
+    if ( method == "view.camera" )
+        return qMCPCamera::dispatch(m_app, params, error);
+
     if ( method == "view" )
     {
         const QString action = params.value( "action" ).toString().toLower();
@@ -824,9 +829,17 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
             return {};
         }
 
+        const QJsonObject cameraBefore = qMCPCamera::snapshot(window);
+        if (params.contains("expected_camera_fingerprint")
+            && params.value("expected_camera_fingerprint") != cameraBefore.value("camera_fingerprint"))
+        { error = "Camera changed before viewport capture"; return {}; }
         m_app->redrawAll();
         QCoreApplication::processEvents();
-
+        // processEvents can close/switch windows or execute another camera request.
+        // Reacquire before dereferencing; do not use a potentially dangling pointer.
+        window = m_app->getActiveGLWindow();
+        if (!window || qMCPCamera::snapshot(window).value("camera_fingerprint") != cameraBefore.value("camera_fingerprint"))
+        { error = "Camera/window changed during viewport capture"; return {}; }
         const QImage image = window->doGrabFramebuffer();
         if ( image.isNull() )
         {
@@ -842,7 +855,14 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
             return {};
         }
 
+        window = m_app->getActiveGLWindow();
+        const QJsonObject cameraAfter = qMCPCamera::snapshot(window);
+        if (cameraAfter.value("camera_fingerprint") != cameraBefore.value("camera_fingerprint"))
+        { error = "Camera/window changed while grabbing framebuffer"; return {}; }
         QJsonObject result;
+        result["camera_state"] = cameraAfter;
+        result["png_sha256"] = QString::fromLatin1(QCryptographicHash::hash(png, QCryptographicHash::Sha256).toHex());
+        result["capture_contract"] = "cc-viewport-capture-v1";
         result[ "width" ] = image.width();
         result[ "height" ] = image.height();
         result[ "png_base64" ] = QString::fromLatin1( png.toBase64() );

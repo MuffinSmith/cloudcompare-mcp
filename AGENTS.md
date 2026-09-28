@@ -7,7 +7,7 @@ Accepted main: `2b385820ecfcb84d79aaf59ad5965e748f961466`.
 
 ## Current state
 
-Native integration is pending the narrow checkpoint helper.
+Native integration is applied. qMCPBridge 0.13.0 / revision 9 camera and camera-bound capture are wired in. Actual CloudCompare 2.13.2 native compilation and installed regression CI have been requested; inspect real results. The transport workflow still needs removal through the connector (Actions tokens cannot edit workflows).
 Native camera dispatcher and shared policy are persisted. Policy checkpoint
 c2e04e0fbd5825a2cb574b76fe365c64a6a12c8e passed all 31 compiled local C++ policy tests.
 This is NOT a Qt/plugin build or GUI result. Python remains 0.15.7; the 0.16.0
