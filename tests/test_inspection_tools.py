@@ -59,7 +59,7 @@ def test_additive_capabilities_and_capture_metadata():
     h=Host()
     with patch.object(server,'live_request',side_effect=h):
         r=parsed(server.handle_get_live_workflow_capabilities({}))
-        assert r['python_visual_inspection']['version']=='0.16.0' and r['python_visual_inspection']['available']
+        assert r['python_visual_inspection']['version']=='0.16.1' and r['python_visual_inspection']['available']
         assert r['python_section_layers']['version']=='0.15.3'
         capture=server.handle_capture_live_view({})
         assert parsed(capture)['camera_state']['contract']=='cc-camera-v1'
@@ -79,7 +79,7 @@ class Handler(socketserver.StreamRequestHandler):
 
 
 def test_actual_installed_stdio_full_semantic_cycle_counted_tcp():
-    assert version('cloudcompare-mcp')=='0.16.0'
+    assert version('cloudcompare-mcp')=='0.16.1'
     h=Host();baseline=h.state();source=h.points.copy()
     with Peer(('127.0.0.1',0),Handler) as peer:
         peer.host=h;thread=threading.Thread(target=peer.serve_forever,daemon=True);thread.start()

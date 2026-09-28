@@ -1,6 +1,7 @@
 """MCP schemas and dispatch for the bounded camera/semantic workflow."""
 from __future__ import annotations
 
+import copy
 import json
 import jsonschema
 from mcp.types import CallToolResult, ImageContent, TextContent, Tool, ToolAnnotations
@@ -51,6 +52,11 @@ for fields in ({}, {"center_global": vector(1e15), "width_global": bounded_numbe
                {"min_global": vector(1e15), "max_global": vector(1e15)}):
     CAMERA_CHOICES.append(obj({"action": {"const": "focus"}, "entity_id": bounded_int(1, 2**32-1)} | GUARD | fields,
                               ["action", "entity_id", *GUARD, *fields]))
+for legacy_choice in list(CAMERA_CHOICES):
+    choice = copy.deepcopy(legacy_choice)
+    choice["properties"]["expected_camera_guard_fingerprint"] = choice["properties"].pop("expected_camera_fingerprint")
+    choice["required"][choice["required"].index("expected_camera_fingerprint")] = "expected_camera_guard_fingerprint"
+    CAMERA_CHOICES.append(choice)
 CAMERA_CHOICES.append(obj({"action": {"const": "release"}, "native_session": string(), "restore_token": string()},
                           ["action", "native_session", "restore_token"]))
 SCHEMAS = {
@@ -76,8 +82,8 @@ SCHEMAS = {
         ["inspection_id", "inspection_fingerprint"]),
 }
 DESCRIPTIONS = {
-    "get_live_camera": "Get native CloudCompare camera state; save=true creates a same-session/window restoration token (max eight, explicit release). Requires qMCPBridge 0.13.0/revision 9. Host-render camera center is not a global world-eye coordinate.",
-    "set_live_camera": "Deterministic source-safe camera look/orbit/pan/zoom/focus/restore/release. Moves require the current native session/window/fingerprint. Orbit uses camera-space axes, pan uses view-span fractions, zoom>1 zooms in. Focus requires a visible source cloud frame for global coordinates. No GUI mouse simulation.",
+    "get_live_camera": "Get native CloudCompare camera state; save=true creates a same-session/window restoration token (max eight, explicit release). qMCPBridge 0.13.1/revision 9 adds cc-camera-guard-v1 and field diagnostics; legacy full guards remain supported. Host-render camera center is not a global world-eye coordinate.",
+    "set_live_camera": "Deterministic source-safe camera look/orbit/pan/zoom/focus/restore/release. Moves require current native session/window and exactly one expected_camera_guard_fingerprint (navigation) or expected_camera_fingerprint (legacy strict full state). Orbit uses camera-space axes, pan uses view-span fractions, zoom>1 zooms in. Focus requires a visible source cloud frame for global coordinates. No GUI mouse simulation.",
     "inspect_live_part": "Bounded agent inspection: explicit dimensional threshold, deterministic geometry sample, up to four declared views with real PNGs, geometric candidates and draft semantic questions. Restores camera by default. Does not interpret images or confirm semantics; next inspect the returned PNGs and propose a reviewed feature. No source/selection/overlay editing or reconstruction.",
     "propose_live_semantic_feature": "Bind the calling agent's explicit visual observations and concise semantic question to issued geometric candidate IDs and captured-view indexes. Rechecks observed source freshness. This is a hypothesis, not human confirmation or dimensional authority.",
     "confirm_live_semantic_feature": "Record an explicit human yes/no/unsure answer and its exact text for a reviewed proposal fingerprint, after freshness checks. Never infer yes from conversation context. Caller-reported intent, not authenticated identity; cannot override numerical refusal or authorize CAD reconstruction.",
@@ -94,7 +100,7 @@ def tools() -> list[Tool]:
 
 
 def capabilities(available: bool) -> dict:
-    return {"version": VERSION, "native_camera_required": "0.13.0 / workflow revision 9",
+    return {"version": VERSION, "native_camera_required": "0.13.1 / workflow revision 9 for navigation guards; legacy 0.13.0 full guards supported",
             "available": available, "bounded": True, "limits": LIMITS,
             "automatic_image_interpretation": False, "precise_human_picking_required": False,
             "semantic_fingerprint_authorizes_reconstruction": False,

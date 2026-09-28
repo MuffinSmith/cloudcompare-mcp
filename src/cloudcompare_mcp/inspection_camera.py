@@ -14,6 +14,8 @@ import struct
 import zlib
 from typing import Any, Callable
 
+from .live import LiveBridgeError
+
 Request = Callable[..., Any]
 MAX_JSON = 128 * 1024
 MAX_PNG = 8 * 1024 * 1024
@@ -96,6 +98,10 @@ def camera_state(result: Any) -> dict:
     integer(result.get("viewport_width"), "viewport_width", 1, 16384)
     integer(result.get("viewport_height"), "viewport_height", 1, 16384)
     digest(result.get("camera_fingerprint"), "camera_fingerprint")
+    if "camera_guard_contract" in result or "camera_guard_fingerprint" in result:
+        if result.get("camera_guard_contract") != "cc-camera-guard-v1":
+            raise InspectionError("Unsupported or incomplete navigation guard contract")
+        digest(result.get("camera_guard_fingerprint"), "camera_guard_fingerprint")
     if type(result.get("navigation_supported")) is not bool or not isinstance(result.get("parameters"), dict):
         raise InspectionError("Malformed native camera state")
     if result["navigation_supported"]:
@@ -128,8 +134,34 @@ def camera_state(result: Any) -> dict:
 
 def guard(state: dict) -> dict:
     camera_state(state)
+    key = "camera_guard_fingerprint" if "camera_guard_contract" in state else "camera_fingerprint"
     return {"native_session": state["native_session"], "window_id": state["window_id"],
-            "expected_camera_fingerprint": state["camera_fingerprint"]}
+            "expected_" + key: state[key]}
+
+
+def camera_difference(before: dict, after: dict) -> dict:
+    """Exact field comparison; native hashes remain in their own serialization domain."""
+    camera_state(before)
+    camera_state(after)
+    a, b = before["parameters"], after["parameters"]
+    fields = sorted(k for k in a.keys() | b.keys() if a.get(k) != b.get(k))
+    identity = [k for k in ("native_session", "window_id", "viewport_width", "viewport_height")
+                if before.get(k) != after.get(k)]
+    excluded = {"point_size", "line_width", "view_direction_host", "up_direction_host"}
+    modern = "camera_guard_contract" in before and "camera_guard_contract" in after
+    equal = guard(before) == guard(after)
+    if modern:
+        equal = equal and not identity and not (set(fields) - excluded)
+    return {"identity_fields": identity, "parameter_fields": fields,
+            "guard_equal": equal, "full_equal": before["camera_fingerprint"] == after["camera_fingerprint"]}
+
+
+def camera_request(request: Request, method: str, args: dict) -> Any:
+    try:
+        return request(method, args, timeout=15.0)
+    except LiveBridgeError as exc:
+        recovery = {"camera_diagnostics": exc.details} if exc.details is not None else None
+        raise InspectionError(exc.args[0], recovery) from exc
 
 
 def navigate(request: Request, args: dict) -> dict:
@@ -143,15 +175,19 @@ def navigate(request: Request, args: dict) -> dict:
     }
     if action not in fields:
         raise InspectionError("Unknown camera action")
-    common = set() if action in ("get", "save", "release") else {
-        "native_session", "window_id", "expected_camera_fingerprint"}
+    common = set()
+    if action not in ("get", "save", "release"):
+        keys = set(args) & {"expected_camera_fingerprint", "expected_camera_guard_fingerprint"}
+        if len(keys) != 1:
+            raise InspectionError("Provide exactly one full or navigation camera guard")
+        common = {"native_session", "window_id"} | keys
     required = fields[action] if action != "focus" else {"entity_id"}
     only(args, {"action"} | common | fields[action], {"action"} | common | required)
     if "native_session" in args:
         text(args["native_session"], "native_session")
     if common:
         integer(args["window_id"], "window_id", 0, 2**31-1)
-        digest(args["expected_camera_fingerprint"])
+        digest(args[next(k for k in common if k.startswith("expected_"))])
     if "restore_token" in args:
         text(args["restore_token"], "restore_token")
     if action == "look":
@@ -180,7 +216,7 @@ def navigate(request: Request, args: dict) -> dict:
                 raise InspectionError("Focus bounds must have ordered, nonzero extent")
         elif shape:
             raise InspectionError("Choose entity, center plus width, or complete region; not mixed focus inputs")
-    result = request("view.camera", args, timeout=15.0)
+    result = camera_request(request, "view.camera", args)
     if action == "release":
         if not isinstance(result, dict) or result.get("released") is not True:
             raise InspectionError("Native camera token release was not confirmed")
@@ -190,7 +226,10 @@ def navigate(request: Request, args: dict) -> dict:
         raise InspectionError("Camera response changed session or active window")
     if action == "save":
         text(result.get("restore_token"), "restore_token")
-    if action == "restore" and result.get("restored_equal") is not True:
+    if "expected_camera_guard_fingerprint" in args and "camera_guard_contract" not in result:
+        raise InspectionError("Navigation guard response was downgraded", {"current": result})
+    equality = "restored_guard_equal" if "expected_camera_guard_fingerprint" in args else "restored_equal"
+    if action == "restore" and result.get(equality) is not True:
         raise InspectionError("Native camera restoration did not compare equal", {"restore_token": args["restore_token"], "current": result})
     return result
 
@@ -198,12 +237,13 @@ def navigate(request: Request, args: dict) -> dict:
 def capture(request: Request, state: dict) -> tuple[dict, str, int]:
     """Read a real native PNG; verify its bytes and bind the reported camera state."""
     camera_state(state)
-    result = request("view.capture", {"expected_camera_fingerprint": state["camera_fingerprint"]}, timeout=15.0)
+    result = camera_request(request, "view.capture", guard(state))
     if not isinstance(result, dict) or result.get("capture_contract") != "cc-viewport-capture-v1":
         raise InspectionError("Viewport capture has no recoverable camera provenance")
     observed = camera_state(result.get("camera_state"))
-    if guard(observed) != guard(state):
-        raise InspectionError("Camera changed during viewport capture")
+    transition = camera_difference(state, observed)
+    if not transition["guard_equal"]:
+        raise InspectionError("Camera changed during viewport capture", {"camera_difference": transition, "expected": state, "current": observed})
     b64 = result.get("png_base64")
     if not isinstance(b64, str) or len(b64) > (MAX_PNG + 2) // 3 * 4:
         raise InspectionError("PNG exceeds the per-capture byte budget")
@@ -248,5 +288,10 @@ def capture(request: Request, state: dict) -> tuple[dict, str, int]:
         raise InspectionError("Viewport PNG checksum mismatch")
     evidence = {"contract": "viewport-evidence-v1", "width": width, "height": height,
                 "png_sha256": sha, "camera": observed, "image_interpretation": "agent_pending",
-                "dimensional_authority": False}
+                "dimensional_authority": False, "requested_camera_fingerprint": state["camera_fingerprint"],
+                "camera_difference": transition}
+    for key in ("camera_before_redraw", "redraw_difference"):
+        if key in result:
+            encoded(result[key], 16 * 1024)
+            evidence[key] = result[key]
     return evidence, b64, len(png)

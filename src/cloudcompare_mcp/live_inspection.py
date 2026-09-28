@@ -10,11 +10,11 @@ from typing import Any
 
 from . import feature_discovery, feature_fit, live
 from .inspection_camera import (
-    InspectionError, Request, capture, digest, encoded, fingerprint, guard,
+    InspectionError, Request, camera_difference, capture, digest, encoded, fingerprint, guard,
     integer, navigate, number, only, text, vector,
 )
 
-VERSION = "0.16.0"
+VERSION = "0.16.1"
 VIEWS = {
     "top": ([0, 0, -1], [0, 1, 0]), "bottom": ([0, 0, 1], [0, 1, 0]),
     "front": ([0, 1, 0], [0, 0, 1]), "back": ([0, -1, 0], [0, 0, 1]),
@@ -227,8 +227,10 @@ class InspectionStore:
         failure: Exception | None = None
         recovery: dict = {"status": "not_restored", "baseline": baseline}
         try:
-            if guard(baseline) != guard(initial_camera):
-                raise InspectionError("Camera changed while geometry was being discovered; no inspection move made")
+            if not camera_difference(initial_camera, baseline)["guard_equal"]:
+                raise InspectionError("Camera changed while geometry was being discovered; no inspection move made",
+                    {"stage": "inspection.before_move", "camera_difference": camera_difference(initial_camera, baseline),
+                     "expected": initial_camera, "current": baseline})
             last = navigate(req, {"action": "focus", "entity_id": source["id"], **guard(last)})
             for name in views:
                 direction, up = VIEWS[name]
@@ -255,20 +257,28 @@ class InspectionStore:
             # overwrite a concurrent human move or a transport-ambiguous mutation.
             try:
                 current = navigate(req, {"action": "get"})
-                if guard(current) != guard(last):
+                recovery["last_owned"] = last
+                recovery["current"] = current
+                recovery["camera_difference"] = camera_difference(last, current)
+                if not recovery["camera_difference"]["guard_equal"]:
                     raise InspectionError("Camera ownership conflict; automatic restoration refused")
                 if restore or failure is not None:
                     restored = navigate(req, {"action": "restore", "restore_token": baseline["restore_token"], **guard(current)})
-                    if restored.get("restored_equal") is not True or guard(restored) != guard(baseline):
+                    if not camera_difference(baseline, restored)["guard_equal"]:
                         raise InspectionError("Native camera restoration did not compare equal")
                     navigate(req, {"action": "release", "restore_token": baseline["restore_token"], "native_session": baseline["native_session"]})
-                    recovery = {"status": "restored", "camera_fingerprint": baseline["camera_fingerprint"], "token_released": True}
+                    recovery = {"status": "restored", "camera_fingerprint": restored["camera_fingerprint"],
+                                "restored_guard_equal": restored.get("restored_guard_equal", restored.get("restored_equal")),
+                                "restored_full_equal": restored.get("restored_equal"),
+                                "camera_difference": camera_difference(baseline, restored), "token_released": True}
                 else:
                     recovery = {"status": "retained_by_request", "baseline": baseline, "current": current}
             except Exception as exc:
                 recovery["error"] = str(exc)
                 failure = failure or exc
         if failure is not None:
+            if isinstance(failure, InspectionError) and failure.recovery is not None:
+                recovery["failure_diagnostics"] = failure.recovery
             raise InspectionError(str(failure), recovery) from failure
         try:
             inspection_id = "inspection-" + uuid.uuid4().hex

@@ -15,7 +15,22 @@ MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 
 
 class LiveBridgeError(RuntimeError):
-    """Raised when the live CloudCompare bridge cannot be reached or returns an error."""
+    """Raised on transport/refusal; optional bounded native diagnostics are not authority."""
+    def __init__(self, message: str, details: dict | None = None):
+        super().__init__(message)
+        self.details = None
+        try:
+            if isinstance(details, dict) and details.get("contract") == "cc-camera-diagnostics-v1":
+                wire = json.dumps(details, allow_nan=False)
+                if len(wire.encode("utf-8")) <= 16 * 1024:
+                    self.details = json.loads(wire)  # Freeze the bounded diagnostic evidence.
+        except (ValueError, TypeError, RecursionError, OverflowError):
+            pass
+
+    def __str__(self) -> str:
+        message = super().__str__()
+        # Legacy public handlers stringify errors; do not drop the native evidence there.
+        return message if self.details is None else message + "\nCamera diagnostics: " + json.dumps(self.details, allow_nan=False)
 
 
 def _config() -> tuple[str, int, float, str | None]:
@@ -93,6 +108,7 @@ def request(
     if not isinstance(response, dict):
         raise LiveBridgeError("CloudCompare live bridge returned an unexpected response")
     if not response.get("ok", False):
-        raise LiveBridgeError(str(response.get("error", "Unknown live bridge error")))
+        details = response.get("error_details")
+        raise LiveBridgeError(str(response.get("error", "Unknown live bridge error")), details)
 
     return response.get("result")
