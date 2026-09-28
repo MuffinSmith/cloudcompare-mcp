@@ -47,10 +47,13 @@ for inside or outside; all signed depths remain. A one-cell ROI-edge guard block
 possibly clipped targets even with explicit selection. There is no automatic ROI
 or scale search, largest-target choice, or native DLL change.
 
-See [the numerical ROI contract](docs/LIVE_CAD_SECTION_TARGET_ROI.md) and
-[the focused Windows gate](docs/WINDOWS_SECTION_TARGET_ROI_ACCEPTANCE.md).
-Snapshot tools work without CloudCompare; live tools require complete acquisition.
-The accepted 0.15.5 diagnostic/fan result is unchanged; a real fan may remain blocked.
+See [the numerical ROI contract](docs/LIVE_CAD_SECTION_TARGET_ROI.md), the
+[focused Windows procedure](docs/WINDOWS_SECTION_TARGET_ROI_ACCEPTANCE.md), and the
+[accepted 0.15.6 Windows result](docs/WINDOWS_0_15_6_ACCEPTED.md). Focused real
+Windows/CloudCompare acceptance passed all declared synthetic/fixture gates; the
+optional fan exercise remained correctly BLOCKED because no prior spatial intent
+and section frame were declared. Snapshot tools work without CloudCompare; live
+tools require complete acquisition.
 
 ## Features
 
