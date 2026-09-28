@@ -406,7 +406,7 @@ See the [accepted report summary](docs/WINDOWS_0_15_4_ACCEPTED.md). No DLL rebui
 See [target contracts and limits](docs/LIVE_CAD_SECTION_TARGET_ISOLATION.md),
 [focused Windows procedure](docs/WINDOWS_SECTION_TARGET_ACCEPTANCE.md), and AGENTS.md.
 
-## Python-only 0.15.5 fixed target-scale diagnostics (unmerged; Windows pending)
+## Python-only 0.15.5 fixed target-scale diagnostics (accepted)
 
 `diagnose_section_target_stability` and `diagnose_live_section_target_stability`
 compare target evidence at five fixed settings: baseline, UV x 0.75, UV x 1.25,
@@ -418,8 +418,16 @@ topology. Diagnostic fingerprints cannot authorize reconstruction. Raw arrays st
 server-side and every point remains accounted for, including summary omissions.
 
 Development CI passed 890 tests, including 125 new numerical/workflow/file/MCP tests.
-Twenty exact generated PLY fixtures exercise the new diagnostic without modifying
-the accepted solvers or native plugin. No real 0.15.5 GUI acceptance has occurred.
+Focused real Windows/CloudCompare acceptance then passed at exact feature HEAD
+`f6e2fc8a19b97da7d367abd259bed50c02a7e382`; PR #19 merged at
+`50ff06cb383cd662ddee2a1d0e7d0445f9143719`. All 20 exact fixtures, actual MCP
+stdio, visible GUI, refusal/accounting checks and limited downstream integration
+passed. The one declared fan diagnostic remained correctly BLOCKED/inconclusive:
+complete 5,605-point acquisition, baseline 19 blocked candidates, three fixed probes
+refused at the 32-target limit, and the UV-coarser panel exposed membership/reason
+sensitivity. No target, layer or profile was selected and no defect was found.
+Integrity remains metadata-only and no real-host nonunit-scale source was tested.
+qMCPBridge stays 0.12.0 / workflow revision 8; no DLL rebuild.
+
 See [diagnostic contracts](docs/LIVE_CAD_SECTION_TARGET_DIAGNOSTICS.md),
-[focused Windows gate](docs/WINDOWS_SECTION_TARGET_DIAGNOSTIC_ACCEPTANCE.md), and
-AGENTS.md. Do not merge this increment until its separate acceptance is complete.
+[accepted Windows result](docs/WINDOWS_0_15_5_ACCEPTED.md), and AGENTS.md.
