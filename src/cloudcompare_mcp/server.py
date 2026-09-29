@@ -16,7 +16,12 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, ImageContent, TextContent, Tool
 
-from .live import LiveBridgeError, request as live_request
+from .live import (
+    LiveBridgeError,
+    last_runtime_handshake,
+    request as live_request,
+    runtime_handshake,
+)
 from .datum_tools import (
     capabilities as datum_capabilities, tools as datum_tools,
     handle_analyze_feature_relationships, handle_build_live_datum_frame,
@@ -460,6 +465,22 @@ TOOLS: list[Tool] = [
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
+        name="save_live_project",
+        description=(
+            "Transactionally save the entire open CloudCompare database tree as a BIN project, "
+            "including hidden entities and hierarchy metadata, then independently read it back for verification. "
+            "This is full-scene persistence and is intentionally distinct from export_live_entity, which exports one geometry entity."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "overwrite": {"type": "boolean", "default": False},
+            },
+            "required": ["path"],
+        },
+    ),
+    Tool(
         name="list_live_entities",
         description=(
             "List entities in the currently open CloudCompare GUI database tree. "
@@ -589,6 +610,46 @@ TOOLS: list[Tool] = [
             "when visual ambiguity actually requires rendered context."
         ),
         inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="import_live_processed_geometry",
+        description=(
+            "Safely import a PLY/OBJ produced by external processing of an exported working copy. "
+            "Requires explicit source/export provenance and an affirmative global-coordinate contract. "
+            "The native bridge independently loads the file, normalizes its frame to the source without "
+            "moving the source, validates global bounds/frame preservation, and places the result in a new dedicated group."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_entity_id": {"type": "integer"},
+                "path": {"type": "string"},
+                "source_export_sha256": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64,
+                },
+                "processing_parameters": {"type": "object"},
+                "coordinate_contract": {
+                    "type": "string",
+                    "enum": ["preserve_exported_global_coordinates"],
+                },
+                "expected_result_sha256": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64,
+                },
+                "result_group_name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+            },
+            "required": [
+                "source_entity_id",
+                "path",
+                "source_export_sha256",
+                "processing_parameters",
+                "coordinate_contract",
+            ],
+        },
     ),
     Tool(
         name="get_live_workflow_capabilities",
@@ -1464,6 +1525,45 @@ TOOLS: list[Tool] = [
                 "destination_group_id": {"type": "integer"},
             },
             "required": ["data_id", "model_id", "data_points", "model_points"],
+        },
+    ),
+    Tool(
+        name="register_live_regions",
+        description=(
+            "Estimate a rigid alignment from at least three paired asymmetric regions. "
+            "Each region is queried natively and its exact all-match centroid becomes one correspondence, "
+            "so known bosses, holes, corners, or other separated features can drive alignment without whole-cloud ICP. "
+            "Sources are preserved; preview_only defaults to true."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "data_id": {"type": "integer"},
+                "model_id": {"type": "integer"},
+                "region_pairs": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 32,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "data_region": {"type": "object"},
+                            "model_region": {"type": "object"},
+                            "label": {"type": "string"},
+                        },
+                        "required": ["data_region", "model_region"],
+                    },
+                },
+                "minimum_points_per_region": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 3,
+                },
+                "preview_only": {"type": "boolean", "default": True},
+                "name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+            },
+            "required": ["data_id", "model_id", "region_pairs"],
         },
     ),
     Tool(
@@ -2365,7 +2465,21 @@ def _live_call(
 
 
 def handle_get_live_cloudcompare_info(_args: dict) -> list[TextContent]:
-    return _live_call("ping")
+    try:
+        return _ok(runtime_handshake())
+    except LiveBridgeError as exc:
+        return _err(str(exc))
+
+
+def handle_save_live_project(args: dict) -> list[TextContent]:
+    return _live_call(
+        "project.save",
+        {
+            "path": args["path"],
+            "overwrite": bool(args.get("overwrite", False)),
+        },
+        timeout=1200.0,
+    )
 
 
 def handle_list_live_entities(args: dict) -> list[TextContent]:
@@ -2438,9 +2552,55 @@ def handle_capture_live_view(_args: dict) -> list[ImageContent | TextContent]:
         return _err(str(exc))
 
 
+def handle_import_live_processed_geometry(args: dict) -> list[TextContent]:
+    params = {
+        "source_entity_id": args["source_entity_id"],
+        "path": args["path"],
+        "source_export_sha256": args["source_export_sha256"],
+        "processing_parameters": args["processing_parameters"],
+        "coordinate_contract": args["coordinate_contract"],
+    }
+    for key in (
+        "expected_result_sha256",
+        "result_group_name",
+        "destination_group_id",
+    ):
+        if key in args:
+            params[key] = args[key]
+    return _live_call(
+        "geometry.import_processed",
+        params,
+        timeout=900.0,
+    )
+
+
 def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
     try:
-        native = live_request("capabilities.get", {})
+        try:
+            native = live_request("capabilities.get", {})
+        except LiveBridgeError:
+            runtime = last_runtime_handshake()
+            if runtime is not None and not runtime.get("compatible"):
+                return _ok(
+                    {
+                        "runtime": runtime,
+                        "native_capabilities_available": False,
+                        "native_capabilities_reason": (
+                            "The loaded DLL does not expose the current capability contract. "
+                            "Current native workflow tools are intentionally blocked before execution."
+                        ),
+                    }
+                )
+            raise
+
+        if not isinstance(native, dict):
+            raise LiveBridgeError(
+                "CloudCompare returned an invalid capability response"
+            )
+        runtime = last_runtime_handshake()
+        if runtime is not None:
+            native["runtime"] = runtime
+        native["native_capabilities_available"] = True
         from .fusion_mesh import backend_capabilities
 
         native["python_backends"] = backend_capabilities()
@@ -2493,6 +2653,15 @@ def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
             "visible_overlays": overlay_available,
             "image_required": False,
             "manual_picking_required": False,
+        }
+        native["python_region_registration"] = {
+            "available": region_available,
+            "constraint_mode": "paired_region_centroids",
+            "minimum_region_pairs": 3,
+            "maximum_region_pairs": 32,
+            "exact_all_match_centroids": True,
+            "whole_cloud_icp_required": False,
+            "native_rigid_policy_applies": True,
         }
         native["live_region_fitting"] = {
             "available": region_available,
@@ -2594,6 +2763,7 @@ def _compact_region_summary(
 def handle_summarize_live_scene(args: dict) -> list[TextContent] | CallToolResult:
     try:
         native = live_request("scene.list", {"recursive": True})
+        runtime = last_runtime_handshake()
         if not isinstance(native, dict) or not isinstance(native.get("entities"), list):
             raise LiveBridgeError("CloudCompare returned an invalid scene-list response")
 
@@ -2656,6 +2826,23 @@ def handle_summarize_live_scene(args: dict) -> list[TextContent] | CallToolResul
 
         total = len(flattened)
         returned = flattened[:max_entities]
+
+        missing_fields_by_entity: list[dict] = []
+        for entity in flattened:
+            required = ["point_count", "bounds_global_native", "global_shift", "global_scale"]
+            if entity.get("kind") == "mesh":
+                required.append("triangle_count")
+            missing = [key for key in required if key not in entity]
+            if missing:
+                missing_fields_by_entity.append(
+                    {
+                        "id": entity.get("id"),
+                        "path": entity.get("path"),
+                        "missing_fields": missing,
+                    }
+                )
+
+        response_completeness = "partial" if missing_fields_by_entity else "complete"
         return _ok_compact(
             {
                 "geometry_only": geometry_only,
@@ -2664,6 +2851,9 @@ def handle_summarize_live_scene(args: dict) -> list[TextContent] | CallToolResul
                 "truncated": len(returned) < total,
                 "selected_ids": native.get("selected_ids", []),
                 "entities": returned,
+                "response_completeness": response_completeness,
+                "missing_fields_by_entity": missing_fields_by_entity,
+                **({"runtime": runtime} if runtime is not None else {}),
                 "image_required": False,
             }
         )
@@ -3676,6 +3866,120 @@ def handle_register_live_point_pairs(args: dict) -> list[TextContent]:
         if key in args:
             params[key] = args[key]
     return _live_call("cloud.register_point_pairs", params, timeout=300.0)
+
+
+def _region_centroid_correspondence(
+    result: dict,
+    *,
+    label: str,
+    minimum_points: int,
+) -> tuple[list[float], dict]:
+    matched = int(result.get("matched_count", 0))
+    if matched < minimum_points:
+        raise ValueError(
+            f"{label} matched only {matched} points; "
+            f"at least {minimum_points} are required"
+        )
+    centroid = result.get("centroid_query_space")
+    if not isinstance(centroid, list) or len(centroid) != 3:
+        raise ValueError(f"{label} returned no exact centroid")
+    try:
+        xyz = [float(value) for value in centroid]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} returned a non-numeric centroid") from exc
+    if not all(math.isfinite(value) for value in xyz):
+        raise ValueError(f"{label} returned a non-finite centroid")
+    return xyz, {
+        "label": label,
+        "matched_count": matched,
+        "centroid_global": xyz,
+        "sample_strategy": result.get("sample_strategy"),
+    }
+
+
+def handle_register_live_regions(args: dict) -> list[TextContent] | CallToolResult:
+    try:
+        data_id = int(args["data_id"])
+        model_id = int(args["model_id"])
+        pairs = args["region_pairs"]
+        if not isinstance(pairs, list) or not (3 <= len(pairs) <= 32):
+            raise ValueError("region_pairs must contain between 3 and 32 pairs")
+        minimum_points = int(args.get("minimum_points_per_region", 3))
+        if minimum_points < 1:
+            raise ValueError("minimum_points_per_region must be at least 1")
+
+        data_points: list[list[float]] = []
+        model_points: list[list[float]] = []
+        evidence: list[dict] = []
+        for index, pair in enumerate(pairs):
+            if not isinstance(pair, dict):
+                raise ValueError(f"region_pairs[{index}] must be an object")
+            if "data_region" not in pair or "model_region" not in pair:
+                raise ValueError(
+                    f"region_pairs[{index}] requires data_region and model_region"
+                )
+            label = str(pair.get("label") or f"pair_{index + 1}")
+            data_result = _request_live_region(
+                cloud_id=data_id,
+                region=pair["data_region"],
+                coordinate_space="global",
+                max_points=0,
+            )
+            model_result = _request_live_region(
+                cloud_id=model_id,
+                region=pair["model_region"],
+                coordinate_space="global",
+                max_points=0,
+            )
+            data_centroid, data_evidence = _region_centroid_correspondence(
+                data_result,
+                label=f"{label} data region",
+                minimum_points=minimum_points,
+            )
+            model_centroid, model_evidence = _region_centroid_correspondence(
+                model_result,
+                label=f"{label} model region",
+                minimum_points=minimum_points,
+            )
+            data_points.append(data_centroid)
+            model_points.append(model_centroid)
+            evidence.append(
+                {
+                    "label": label,
+                    "data": data_evidence,
+                    "model": model_evidence,
+                }
+            )
+
+        params = {
+            "data_id": data_id,
+            "model_id": model_id,
+            "data_points": data_points,
+            "model_points": model_points,
+            "coordinate_space": "global",
+            "preview_only": bool(args.get("preview_only", True)),
+        }
+        for key in ("name", "destination_group_id"):
+            if key in args:
+                params[key] = args[key]
+
+        registration = live_request(
+            "cloud.register_point_pairs",
+            params,
+            timeout=300.0,
+        )
+        if not isinstance(registration, dict):
+            raise LiveBridgeError(
+                "CloudCompare returned an invalid region-constrained registration response"
+            )
+        out = dict(registration)
+        out["constraint_mode"] = "paired_region_centroids"
+        out["constraint_pair_count"] = len(evidence)
+        out["region_constraints"] = evidence
+        out["whole_cloud_icp_used"] = False
+        return _ok(out)
+    except (KeyError, TypeError, ValueError, LiveBridgeError) as exc:
+        return _err(str(exc))
 
 
 def handle_analyze_live_c2c(args: dict) -> list[TextContent]:
@@ -4693,6 +4997,8 @@ async def call_tool(
 ) -> list[TextContent | ImageContent] | CallToolResult:
     dispatch = {
         "get_live_cloudcompare_info": handle_get_live_cloudcompare_info,
+        "save_live_project": handle_save_live_project,
+        "import_live_processed_geometry": handle_import_live_processed_geometry,
         "list_live_entities": handle_list_live_entities,
         "get_live_selection": handle_get_live_selection,
         "set_live_selection": handle_set_live_selection,
@@ -4739,6 +5045,7 @@ async def call_tool(
         "compute_live_normals": handle_compute_live_normals,
         "register_live_icp": handle_register_live_icp,
         "register_live_point_pairs": handle_register_live_point_pairs,
+        "register_live_regions": handle_register_live_regions,
         "analyze_live_c2c": handle_analyze_live_c2c,
         "analyze_live_c2m": handle_analyze_live_c2m,
         "start_live_picking": handle_start_live_picking,

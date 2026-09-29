@@ -2,17 +2,21 @@
 
 #include "qMCPFusionWorkflow.h"
 #include "qMCPOverlaySafety.h"
+#include "qMCPRegistrationPolicy.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QMainWindow>
 #include <QSet>
 #include <QTextStream>
 
+#include <BinFilter.h>
 #include <FileIOFilter.h>
 #include <PlyFilter.h>
 #include <CloudSamplingTools.h>
@@ -40,10 +44,16 @@
 #include <ccPickingListener.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <memory>
 #include <vector>
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 
 namespace
 {
@@ -355,6 +365,266 @@ QJsonArray matrixJson( const ccGLMatrix& matrix )
         out.append( static_cast<double>( values[i] ) );
     }
     return out;
+}
+
+
+template <typename MatrixT>
+qMCPRegistrationPolicy::Diagnostics registrationDiagnostics(
+    const MatrixT& rotation,
+    double scale )
+{
+    double values[3][3];
+    for ( int row = 0; row < 3; ++row )
+    {
+        for ( int column = 0; column < 3; ++column )
+        {
+            values[row][column] =
+                static_cast<double>( rotation.m_values[row][column] );
+        }
+    }
+    return qMCPRegistrationPolicy::inspect( values, scale );
+}
+
+QJsonObject registrationDiagnosticsJson(
+    const qMCPRegistrationPolicy::Diagnostics& diagnostics )
+{
+    return QJsonObject{
+        { "rotation_determinant", diagnostics.determinant },
+        { "rotation_orthogonality_max_error", diagnostics.orthogonalityMaxError },
+        { "scale", diagnostics.scale },
+        { "proper_rotation", diagnostics.properRotation },
+        { "unit_scale", diagnostics.unitScale },
+        { "rigid_transform_valid", diagnostics.rigidTransformValid },
+    };
+}
+
+
+QJsonObject projectEntityManifest( ccHObject* entity, const QString& hierarchyIndex )
+{
+    QJsonObject out;
+    if ( !entity )
+    {
+        return out;
+    }
+
+    out[ "hierarchy_index" ] = hierarchyIndex;
+    out[ "name" ] = entity->getName();
+    out[ "kind" ] = kindOf( entity );
+    out[ "class_id" ] = static_cast<int>( entity->getClassID() );
+    out[ "visible" ] = entity->isVisible();
+    out[ "enabled" ] = entity->isEnabled();
+    out[ "child_count" ] = static_cast<int>( entity->getChildrenNumber() );
+    out[ "gl_transform_enabled" ] = entity->isGLTransEnabled();
+    if ( entity->isGLTransEnabled() )
+    {
+        out[ "gl_transform_column_major" ] =
+            matrixJson( entity->getGLTransformation() );
+    }
+
+    ccGenericPointCloud* geometry = nullptr;
+    ccGenericMesh* mesh = nullptr;
+    if ( entity->isKindOf( CC_TYPES::MESH ) )
+    {
+        mesh = ccHObjectCaster::ToGenericMesh( entity );
+        if ( mesh )
+        {
+            geometry = mesh->getAssociatedCloud();
+            out[ "triangle_count" ] = static_cast<qint64>( mesh->size() );
+        }
+    }
+    else if ( entity->isKindOf( CC_TYPES::POINT_CLOUD ) )
+    {
+        geometry = ccHObjectCaster::ToGenericPointCloud( entity );
+    }
+
+    if ( geometry )
+    {
+        out[ "point_count" ] = static_cast<qint64>( geometry->size() );
+        out[ "global_shift" ] = vector3Json( geometry->getGlobalShift() );
+        out[ "global_scale" ] = geometry->getGlobalScale();
+        out[ "bounds_global_native" ] = globalBoundsJson( geometry );
+        out[ "has_normals" ] = geometry->hasNormals();
+        out[ "has_colors" ] = geometry->hasColors();
+        if ( ccPointCloud* cloud = dynamic_cast<ccPointCloud*>( geometry ) )
+        {
+            out[ "scalar_fields" ] = scalarFieldsJson( cloud );
+        }
+    }
+
+    QJsonArray children;
+    for ( unsigned i = 0; i < entity->getChildrenNumber(); ++i )
+    {
+        children.append(
+            projectEntityManifest(
+                entity->getChild( i ),
+                hierarchyIndex + "/" + QString::number( i ) ) );
+    }
+    out[ "children" ] = children;
+    return out;
+}
+
+QJsonArray projectForestManifest( ccHObject* root )
+{
+    QJsonArray manifest;
+    if ( !root )
+    {
+        return manifest;
+    }
+    for ( unsigned i = 0; i < root->getChildrenNumber(); ++i )
+    {
+        manifest.append(
+            projectEntityManifest(
+                root->getChild( i ),
+                QString::number( i ) ) );
+    }
+    return manifest;
+}
+
+struct ProjectTotals
+{
+    qint64 entities = 0;
+    qint64 pointRecords = 0;
+    qint64 triangleRecords = 0;
+    qint64 hiddenEntities = 0;
+    qint64 disabledEntities = 0;
+    qint64 pendingTransforms = 0;
+};
+
+void accumulateProjectTotals( ccHObject* entity, ProjectTotals& totals )
+{
+    if ( !entity )
+    {
+        return;
+    }
+
+    ++totals.entities;
+    if ( !entity->isVisible() )
+    {
+        ++totals.hiddenEntities;
+    }
+    if ( !entity->isEnabled() )
+    {
+        ++totals.disabledEntities;
+    }
+    if ( entity->isGLTransEnabled() )
+    {
+        ++totals.pendingTransforms;
+    }
+
+    if ( entity->isKindOf( CC_TYPES::MESH ) )
+    {
+        if ( ccGenericMesh* mesh = ccHObjectCaster::ToGenericMesh( entity ) )
+        {
+            totals.triangleRecords += static_cast<qint64>( mesh->size() );
+            if ( ccGenericPointCloud* cloud = mesh->getAssociatedCloud() )
+            {
+                totals.pointRecords += static_cast<qint64>( cloud->size() );
+            }
+        }
+    }
+    else if ( entity->isKindOf( CC_TYPES::POINT_CLOUD ) )
+    {
+        if ( ccGenericPointCloud* cloud =
+                 ccHObjectCaster::ToGenericPointCloud( entity ) )
+        {
+            totals.pointRecords += static_cast<qint64>( cloud->size() );
+        }
+    }
+
+    for ( unsigned i = 0; i < entity->getChildrenNumber(); ++i )
+    {
+        accumulateProjectTotals( entity->getChild( i ), totals );
+    }
+}
+
+ProjectTotals projectTotals( ccHObject* root )
+{
+    ProjectTotals totals;
+    if ( root )
+    {
+        for ( unsigned i = 0; i < root->getChildrenNumber(); ++i )
+        {
+            accumulateProjectTotals( root->getChild( i ), totals );
+        }
+    }
+    return totals;
+}
+
+QJsonObject projectTotalsJson( const ProjectTotals& totals )
+{
+    return QJsonObject{
+        { "entity_count", totals.entities },
+        { "geometry_point_records", totals.pointRecords },
+        { "triangle_records", totals.triangleRecords },
+        { "hidden_entity_count", totals.hiddenEntities },
+        { "disabled_entity_count", totals.disabledEntities },
+        { "pending_transform_count", totals.pendingTransforms },
+    };
+}
+
+QString sha256File( const QString& path )
+{
+    QFile file( path );
+    if ( !file.open( QIODevice::ReadOnly ) )
+    {
+        return {};
+    }
+
+    QCryptographicHash hash( QCryptographicHash::Sha256 );
+    while ( !file.atEnd() )
+    {
+        hash.addData( file.read( 1024 * 1024 ) );
+    }
+    return QString::fromLatin1( hash.result().toHex() );
+}
+
+bool atomicFinalizeProject(
+    const QString& temporaryPath,
+    const QString& finalPath,
+    bool overwrite,
+    QString& error )
+{
+    const bool finalExists = QFileInfo::exists( finalPath );
+    if ( finalExists && !overwrite )
+    {
+        error = QString( "Output already exists and overwrite=false: %1" )
+                    .arg( finalPath );
+        return false;
+    }
+
+    if ( !finalExists )
+    {
+        if ( QFile::rename( temporaryPath, finalPath ) )
+        {
+            return true;
+        }
+        error = QString( "Could not atomically finalize project: %1" )
+                    .arg( finalPath );
+        return false;
+    }
+
+#ifdef Q_OS_WIN
+    if ( MoveFileExW(
+             reinterpret_cast<LPCWSTR>( temporaryPath.utf16() ),
+             reinterpret_cast<LPCWSTR>( finalPath.utf16() ),
+             MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH ) )
+    {
+        return true;
+    }
+    error = QString( "Atomic project replacement failed with Windows error %1" )
+                .arg( static_cast<qulonglong>( GetLastError() ) );
+    return false;
+#else
+    const QByteArray source = QFile::encodeName( temporaryPath );
+    const QByteArray target = QFile::encodeName( finalPath );
+    if ( ::rename( source.constData(), target.constData() ) == 0 )
+    {
+        return true;
+    }
+    error = QString( "Atomic project replacement failed with errno %1" )
+                .arg( errno );
+    return false;
+#endif
 }
 
 bool readPointList(
@@ -1290,6 +1560,168 @@ bool compatibleFrames( const ccGenericPointCloud* a, const ccGenericPointCloud* 
     const double scaleDelta = std::abs( a->getGlobalScale() - b->getGlobalScale() );
     const double shiftDelta2 = ( a->getGlobalShift() - b->getGlobalShift() ).norm2d();
     return scaleDelta <= FRAME_EPS && shiftDelta2 <= FRAME_EPS * FRAME_EPS;
+}
+
+
+ccGenericPointCloud* geometryFrameCloud( ccHObject* entity )
+{
+    if ( !entity )
+    {
+        return nullptr;
+    }
+    if ( entity->isKindOf( CC_TYPES::MESH ) )
+    {
+        ccGenericMesh* mesh = ccHObjectCaster::ToGenericMesh( entity );
+        return mesh ? mesh->getAssociatedCloud() : nullptr;
+    }
+    if ( entity->isKindOf( CC_TYPES::POINT_CLOUD ) )
+    {
+        return ccHObjectCaster::ToGenericPointCloud( entity );
+    }
+    return nullptr;
+}
+
+void collectEditablePointClouds(
+    ccHObject* entity,
+    std::vector<ccPointCloud*>& clouds,
+    QSet<ccPointCloud*>& seen )
+{
+    if ( !entity )
+    {
+        return;
+    }
+
+    ccGenericPointCloud* generic = geometryFrameCloud( entity );
+    if ( generic )
+    {
+        if ( ccPointCloud* cloud = dynamic_cast<ccPointCloud*>( generic ) )
+        {
+            if ( !seen.contains( cloud ) )
+            {
+                seen.insert( cloud );
+                clouds.push_back( cloud );
+            }
+        }
+    }
+
+    for ( unsigned i = 0; i < entity->getChildrenNumber(); ++i )
+    {
+        collectEditablePointClouds(
+            entity->getChild( i ),
+            clouds,
+            seen );
+    }
+}
+
+bool normalizeCloudToFrame(
+    ccPointCloud* cloud,
+    const ccGenericPointCloud* reference,
+    QJsonObject& evidence,
+    QString& error )
+{
+    if ( !cloud || !reference )
+    {
+        error = "Frame normalization requires point-cloud geometry";
+        return false;
+    }
+    if ( !std::isfinite( cloud->getGlobalScale() )
+         || std::abs( cloud->getGlobalScale() ) <= FRAME_EPS
+         || !std::isfinite( reference->getGlobalScale() )
+         || std::abs( reference->getGlobalScale() ) <= FRAME_EPS )
+    {
+        error = "Frame normalization requires finite non-zero global scales";
+        return false;
+    }
+
+    const QJsonObject boundsBefore = globalBoundsJson( cloud );
+    const CCVector3d oldShift = cloud->getGlobalShift();
+    const double oldScale = cloud->getGlobalScale();
+
+    for ( unsigned i = 0; i < cloud->size(); ++i )
+    {
+        const CCVector3* point = cloud->getPointPersistentPtr( i );
+        if ( !point )
+        {
+            error = QString( "Imported cloud point %1 is unavailable" ).arg( i );
+            return false;
+        }
+
+        const CCVector3d global =
+            cloud->toGlobal3d<PointCoordinateType>( *point );
+        const CCVector3d local =
+            reference->toLocal3d<double>( global );
+        if ( !finiteVector( global ) || !finiteVector( local ) )
+        {
+            error =
+                "Imported geometry produced non-finite coordinates during frame normalization";
+            return false;
+        }
+
+        const double maxCoordinate =
+            static_cast<double>(
+                std::numeric_limits<PointCoordinateType>::max() );
+        if ( std::abs( local.x ) > maxCoordinate
+             || std::abs( local.y ) > maxCoordinate
+             || std::abs( local.z ) > maxCoordinate )
+        {
+            error =
+                "Imported geometry cannot be represented safely in the source local frame";
+            return false;
+        }
+
+        *const_cast<CCVector3*>( cloud->getPointPersistentPtr( i ) ) =
+            local.toPC();
+    }
+
+    cloud->setGlobalShift( reference->getGlobalShift() );
+    cloud->setGlobalScale( reference->getGlobalScale() );
+    cloud->invalidateBoundingBox();
+
+    const QJsonObject boundsAfter = globalBoundsJson( cloud );
+    const bool boundsPreserved =
+        boundsEquivalent( boundsBefore, boundsAfter );
+    const bool frameCompatible =
+        compatibleFrames( cloud, reference );
+
+    evidence = QJsonObject{
+        { "entity_id", static_cast<qint64>( cloud->getUniqueID() ) },
+        { "name", cloud->getName() },
+        { "point_count", static_cast<qint64>( cloud->size() ) },
+        { "input_global_shift", vector3Json( oldShift ) },
+        { "input_global_scale", oldScale },
+        { "output_global_shift", vector3Json( cloud->getGlobalShift() ) },
+        { "output_global_scale", cloud->getGlobalScale() },
+        { "bounds_global_before", boundsBefore },
+        { "bounds_global_after", boundsAfter },
+        { "global_bounds_preserved", boundsPreserved },
+        { "frame_compatible_with_source", frameCompatible },
+    };
+
+    if ( !boundsPreserved || !frameCompatible )
+    {
+        error =
+            "Imported geometry failed global-coordinate/frame compatibility validation";
+        return false;
+    }
+    return true;
+}
+
+bool isSha256Text( const QString& value )
+{
+    if ( value.size() != 64 )
+    {
+        return false;
+    }
+    for ( const QChar ch : value )
+    {
+        if ( !( ch.isDigit()
+                || ( ch >= QLatin1Char( 'a' ) && ch <= QLatin1Char( 'f' ) )
+                || ( ch >= QLatin1Char( 'A' ) && ch <= QLatin1Char( 'F' ) ) ) )
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 void attachToDestination(
@@ -2790,7 +3222,48 @@ bool registerCloudsICP(
     out[ "transformation_available" ] = hasTransform;
     out[ "transformation_matrix_column_major" ] = matrixJson( transformMatrix );
     out[ "scale" ] = hasTransform ? transform.s : 1.0;
+    out[ "final_overlap_ratio" ] =
+        dataSource->size() > 0
+            ? static_cast<double>( finalPointCount )
+                / static_cast<double>( dataSource->size() )
+            : 0.0;
+    out[ "residual_statistics" ] = QJsonObject{
+        { "rms_native", finalRMS },
+        { "sample_count", static_cast<qint64>( finalPointCount ) },
+        { "distribution_available", false },
+    };
     out[ "result_created" ] = false;
+    out[ "proposal_rejected" ] = false;
+
+    if ( hasTransform )
+    {
+        const auto diagnostics =
+            registrationDiagnostics( transform.R, transform.s );
+        const QJsonObject diagnosticsJson =
+            registrationDiagnosticsJson( diagnostics );
+        for ( auto it = diagnosticsJson.begin();
+              it != diagnosticsJson.end();
+              ++it )
+        {
+            out[ it.key() ] = it.value();
+        }
+        if ( !diagnostics.rigidTransformValid )
+        {
+            out[ "proposal_rejected" ] = true;
+            out[ "rejection_reason" ] =
+                "Rigid registration produced a reflected, scaled, or non-orthogonal transform.";
+            result = out;
+            return true;
+        }
+    }
+    else
+    {
+        out[ "rotation_determinant" ] = 1.0;
+        out[ "rotation_orthogonality_max_error" ] = 0.0;
+        out[ "proper_rotation" ] = true;
+        out[ "unit_scale" ] = true;
+        out[ "rigid_transform_valid" ] = true;
+    }
 
     if ( !previewOnly && hasTransform )
     {
@@ -2987,6 +3460,26 @@ bool registerPointPairs(
     out[ "transformation_matrix_global_column_major" ] = matrixJson( globalTransformMatrix );
     out[ "pair_residuals_global_native" ] = numericStats( residuals );
     out[ "result_created" ] = false;
+    out[ "proposal_rejected" ] = false;
+
+    const auto diagnostics =
+        registrationDiagnostics( transform.R, transform.s );
+    const QJsonObject diagnosticsJson =
+        registrationDiagnosticsJson( diagnostics );
+    for ( auto it = diagnosticsJson.begin();
+          it != diagnosticsJson.end();
+          ++it )
+    {
+        out[ it.key() ] = it.value();
+    }
+    if ( !diagnostics.rigidTransformValid )
+    {
+        out[ "proposal_rejected" ] = true;
+        out[ "rejection_reason" ] =
+            "Rigid point-pair registration produced a reflected, scaled, or non-orthogonal transform.";
+        result = out;
+        return true;
+    }
 
     if ( !previewOnly )
     {
@@ -3918,13 +4411,13 @@ QJsonObject capabilities()
 {
     QJsonObject result;
     result[ "protocol_version" ] = 1;
-    result[ "workflow_revision" ] = 9;
+    result[ "workflow_revision" ] = 10;
     result[ "units_policy" ] =
         "Coordinates are reported in native units. Units remain unknown unless supplied by the caller.";
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    result[ "plugin_version" ] = "0.13.0";
+    result[ "plugin_version" ] = "0.14.0";
 
     QJsonArray bridgeOperations{
         "ping",
@@ -3939,12 +4432,15 @@ QJsonObject capabilities()
         "view",
         "view.capture",
         "view.camera",
+        "runtime.handshake",
         "capabilities.get",
         "entity.clone",
         "cloud.merge",
         "mesh.reconstruct",
         "mesh.simplify",
         "entity.export",
+        "geometry.import_processed",
+        "project.save",
         "group.create",
         "cloud.crop",
         "cloud.subsample",
@@ -3978,6 +4474,8 @@ QJsonObject capabilities()
         "mesh.reconstruct",
         "mesh.simplify",
         "entity.export",
+        "geometry.import_processed",
+        "project.save",
         "group.create",
         "cloud.crop",
         "cloud.subsample",
@@ -4055,6 +4553,33 @@ QJsonObject capabilities()
     metrology[ "units_policy" ] =
         "Distances use CloudCompare native coordinate units; physical units remain caller-supplied.";
     result[ "metrology" ] = metrology;
+
+    result[ "external_geometry_roundtrip" ] = QJsonObject{
+        { "available", true },
+        { "import_operation", "geometry.import_processed" },
+        { "supported_formats", QJsonArray{ "ply", "obj" } },
+        { "provenance_contract", "cc-external-roundtrip-v1" },
+        { "requires_source_export_sha256", true },
+        { "requires_processing_parameters", true },
+        { "requires_explicit_global_coordinate_contract", true },
+        { "dedicated_result_group", true },
+        { "source_geometry_preserved", true },
+        { "frame_normalization_preserves_global_coordinates", true },
+    };
+
+    result[ "project_persistence" ] = QJsonObject{
+        { "available", true },
+        { "operation", "project.save" },
+        { "format", "BIN" },
+        { "scope", "full_scene" },
+        { "hidden_entities_included", true },
+        { "hierarchy_included", true },
+        { "pending_transforms_included", true },
+        { "overwrite_default", false },
+        { "temporary_write_then_finalize", true },
+        { "independent_readback_validation", true },
+        { "manifest_validation", true },
+    };
 
     QJsonObject regionQuery;
     regionQuery[ "available" ] = true;
@@ -4927,6 +5452,450 @@ bool exportEntity(
     result = out;
     return true;
 }
+
+bool importProcessedGeometry(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned sourceId = 0;
+    if ( !readId( params, "source_entity_id", sourceId ) )
+    {
+        error = "geometry.import_processed requires a numeric source_entity_id";
+        return true;
+    }
+
+    ccHObject* sourceEntity = findEntity( app, sourceId );
+    ccGenericPointCloud* sourceFrame =
+        geometryFrameCloud( sourceEntity );
+    if ( !sourceEntity || !sourceFrame )
+    {
+        error =
+            QString( "Source entity %1 is not point-cloud/mesh geometry" )
+                .arg( sourceId );
+        return true;
+    }
+
+    const QString path = params.value( "path" ).toString();
+    const QFileInfo fileInfo( path );
+    if ( path.isEmpty() || !fileInfo.isAbsolute() || !fileInfo.isFile() )
+    {
+        error =
+            "geometry.import_processed requires an existing absolute PLY/OBJ path";
+        return true;
+    }
+    const QString extension =
+        fileInfo.suffix().trimmed().toLower();
+    if ( extension != "ply" && extension != "obj" )
+    {
+        error =
+            "geometry.import_processed supports only PLY and OBJ result files";
+        return true;
+    }
+
+    const QString sourceExportSha =
+        params.value( "source_export_sha256" ).toString().trimmed();
+    if ( !isSha256Text( sourceExportSha ) )
+    {
+        error =
+            "source_export_sha256 must be a 64-character SHA-256 digest from export_live_entity";
+        return true;
+    }
+    if ( !params.value( "processing_parameters" ).isObject() )
+    {
+        error =
+            "processing_parameters must be an explicit JSON object";
+        return true;
+    }
+    const QJsonObject processingParameters =
+        params.value( "processing_parameters" ).toObject();
+
+    const QString coordinateContract =
+        params.value( "coordinate_contract" ).toString();
+    if ( coordinateContract
+         != "preserve_exported_global_coordinates" )
+    {
+        error =
+            "coordinate_contract must explicitly be 'preserve_exported_global_coordinates'";
+        return true;
+    }
+
+    const QString resultSha = sha256File( fileInfo.absoluteFilePath() );
+    if ( resultSha.isEmpty() )
+    {
+        error = "Could not hash the external result file";
+        return true;
+    }
+    if ( params.contains( "expected_result_sha256" ) )
+    {
+        const QString expected =
+            params.value( "expected_result_sha256" ).toString().trimmed();
+        if ( !isSha256Text( expected ) )
+        {
+            error = "expected_result_sha256 must be a 64-character SHA-256 digest";
+            return true;
+        }
+        if ( resultSha.compare( expected, Qt::CaseInsensitive ) != 0 )
+        {
+            error =
+                "External result file SHA-256 does not match expected_result_sha256";
+            return true;
+        }
+    }
+
+    const QJsonObject sourceBefore =
+        entityDescription( sourceEntity, true );
+    const QByteArray sourceBeforeBytes =
+        QJsonDocument( sourceBefore )
+            .toJson( QJsonDocument::Compact );
+
+    FileIOFilter::LoadParameters loadParams;
+    loadParams.alwaysDisplayLoadDialog = false;
+    loadParams.shiftHandlingMode =
+        ccGlobalShiftManager::NO_DIALOG_AUTO_SHIFT;
+    loadParams.parentWidget = app->getMainWindow();
+
+    CC_FILE_ERROR loadError = CC_FERR_NO_ERROR;
+    std::unique_ptr<ccHObject> loaded(
+        FileIOFilter::LoadFromFile(
+            fileInfo.absoluteFilePath(),
+            loadParams,
+            loadError ) );
+    if ( !loaded || loadError != CC_FERR_NO_ERROR )
+    {
+        error =
+            QString(
+                "External result read failed with CloudCompare error code %1" )
+                .arg( static_cast<int>( loadError ) );
+        return true;
+    }
+
+    std::vector<ccPointCloud*> importedClouds;
+    QSet<ccPointCloud*> seenClouds;
+    collectEditablePointClouds(
+        loaded.get(),
+        importedClouds,
+        seenClouds );
+    if ( importedClouds.empty() )
+    {
+        error =
+            "External result contained no editable point-cloud or mesh-vertex geometry";
+        return true;
+    }
+
+    QJsonArray frameEvidence;
+    for ( ccPointCloud* cloud : importedClouds )
+    {
+        QJsonObject oneEvidence;
+        if ( !normalizeCloudToFrame(
+                 cloud,
+                 sourceFrame,
+                 oneEvidence,
+                 error ) )
+        {
+            return true;
+        }
+        frameEvidence.append( oneEvidence );
+    }
+
+    const QJsonObject sourceAfter =
+        entityDescription( sourceEntity, true );
+    const bool sourcePreserved =
+        sourceBeforeBytes
+        == QJsonDocument( sourceAfter )
+               .toJson( QJsonDocument::Compact );
+    if ( !sourcePreserved )
+    {
+        error =
+            "Source geometry changed during external-result validation; import was aborted";
+        return true;
+    }
+
+    ccHObject* destination = nullptr;
+    if ( !resolveDestination(
+             app,
+             params,
+             destination,
+             error ) )
+    {
+        return true;
+    }
+
+    QString groupName =
+        params.value( "result_group_name" ).toString().trimmed();
+    if ( groupName.isEmpty() )
+    {
+        groupName =
+            QString( "MCP external result - %1" )
+                .arg( fileInfo.completeBaseName() );
+    }
+
+    std::unique_ptr<ccHObject> group(
+        new ccHObject( groupName ) );
+    group->setVisible( true );
+    group->setEnabled( true );
+    group->setMetaData(
+        "mcp.provenance.contract",
+        "cc-external-roundtrip-v1" );
+    group->setMetaData(
+        "mcp.provenance.source_entity_id",
+        QString::number( sourceId ) );
+    group->setMetaData(
+        "mcp.provenance.source_export_sha256",
+        sourceExportSha.toLower() );
+    group->setMetaData(
+        "mcp.provenance.result_file_sha256",
+        resultSha.toLower() );
+    group->setMetaData(
+        "mcp.provenance.coordinate_contract",
+        coordinateContract );
+    group->setMetaData(
+        "mcp.provenance.processing_parameters_json",
+        QString::fromUtf8(
+            QJsonDocument( processingParameters )
+                .toJson( QJsonDocument::Compact ) ) );
+    group->setMetaData(
+        "mcp.provenance.input_path",
+        QDir::toNativeSeparators(
+            fileInfo.absoluteFilePath() ) );
+
+    ccHObject* loadedRoot = loaded.release();
+    group->addChild( loadedRoot );
+    ccHObject* liveGroup = group.release();
+    attachToDestination(
+        app,
+        liveGroup,
+        destination );
+    app->refreshAll();
+    app->updateUI();
+
+    QJsonObject out;
+    out[ "contract" ] = "cc-external-roundtrip-v1";
+    out[ "source_entity_id" ] =
+        static_cast<qint64>( sourceId );
+    out[ "source_geometry_preserved" ] =
+        sourcePreserved;
+    out[ "source_export_sha256" ] =
+        sourceExportSha.toLower();
+    out[ "result_file_sha256" ] =
+        resultSha.toLower();
+    out[ "processing_parameters" ] =
+        processingParameters;
+    out[ "coordinate_contract" ] =
+        coordinateContract;
+    out[ "frame_compatibility_verified" ] = true;
+    out[ "global_coordinates_preserved_during_frame_normalization" ] = true;
+    out[ "imported_cloud_frames" ] =
+        frameEvidence;
+    out[ "result_group" ] =
+        entityDescription( liveGroup, false );
+    out[ "dedicated_result_group" ] = true;
+    out[ "source_before" ] = sourceBefore;
+    out[ "source_after" ] = sourceAfter;
+    result = out;
+    return true;
+}
+
+bool saveProject(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    ccHObject* root = app ? app->dbRootObject() : nullptr;
+    if ( !root || root->getChildrenNumber() == 0 )
+    {
+        error = "project.save requires a non-empty CloudCompare scene";
+        return true;
+    }
+
+    const QString requestedPath = params.value( "path" ).toString();
+    if ( requestedPath.isEmpty() )
+    {
+        error = "project.save requires an absolute .bin path";
+        return true;
+    }
+
+    const QFileInfo targetInfo( requestedPath );
+    if ( !targetInfo.isAbsolute() )
+    {
+        error =
+            "project.save refuses relative paths; provide an explicit absolute path";
+        return true;
+    }
+    if ( targetInfo.suffix().compare( "bin", Qt::CaseInsensitive ) != 0 )
+    {
+        error = "project.save requires a .bin destination";
+        return true;
+    }
+
+    const bool overwrite =
+        params.value( "overwrite" ).toBool( false );
+    const QString finalPath = targetInfo.absoluteFilePath();
+    if ( QFileInfo::exists( finalPath ) && !overwrite )
+    {
+        error = QString( "Output already exists and overwrite=false: %1" )
+                    .arg( finalPath );
+        return true;
+    }
+
+    QDir parentDir = targetInfo.dir();
+    if ( !parentDir.exists() )
+    {
+        error = QString( "Output directory does not exist: %1" )
+                    .arg( parentDir.absolutePath() );
+        return true;
+    }
+
+    // Keep a real .bin suffix so independent read-back selects the BIN filter.
+    const QString temporaryPath =
+        finalPath + ".mcp-partial.bin";
+    if ( QFileInfo::exists( temporaryPath )
+         && !QFile::remove( temporaryPath ) )
+    {
+        error = QString( "Could not remove stale temporary project: %1" )
+                    .arg( temporaryPath );
+        return true;
+    }
+
+    QFile probe( temporaryPath );
+    if ( !probe.open( QIODevice::WriteOnly ) )
+    {
+        error =
+            QString(
+                "CloudCompare process cannot write to output directory '%1': %2" )
+                .arg( parentDir.absolutePath(), probe.errorString() );
+        return true;
+    }
+    probe.close();
+    if ( !QFile::remove( temporaryPath ) )
+    {
+        error = QString( "Could not remove project write probe: %1" )
+                    .arg( temporaryPath );
+        return true;
+    }
+
+    const QJsonArray sourceManifest =
+        projectForestManifest( root );
+    const ProjectTotals sourceTotals =
+        projectTotals( root );
+
+    // This mirrors CloudCompare's File > Save project behavior: when the DB
+    // has one top-level entity save that entity, otherwise save the DB root.
+    ccHObject* saveTarget =
+        root->getChildrenNumber() == 1
+            ? root->getChild( 0 )
+            : root;
+
+    FileIOFilter::SaveParameters saveParams;
+    saveParams.alwaysDisplaySaveDialog = false;
+    saveParams.parentWidget = app->getMainWindow();
+    const QString binFilter = BinFilter::GetFileFilter();
+    const CC_FILE_ERROR saveError =
+        FileIOFilter::SaveToFile(
+            saveTarget,
+            temporaryPath,
+            saveParams,
+            binFilter );
+    if ( saveError != CC_FERR_NO_ERROR )
+    {
+        QFile::remove( temporaryPath );
+        error =
+            QString(
+                "CloudCompare BIN project save failed with error code %1" )
+                .arg( static_cast<int>( saveError ) );
+        return true;
+    }
+
+    // Parse the temporary BIN independently. It is never added to the active DB.
+    FileIOFilter::LoadParameters loadParams;
+    loadParams.alwaysDisplayLoadDialog = false;
+    loadParams.shiftHandlingMode =
+        ccGlobalShiftManager::NO_DIALOG_AUTO_SHIFT;
+    loadParams.parentWidget = app->getMainWindow();
+
+    CC_FILE_ERROR loadError = CC_FERR_NO_ERROR;
+    std::unique_ptr<ccHObject> loaded(
+        FileIOFilter::LoadFromFile(
+            temporaryPath,
+            loadParams,
+            loadError ) );
+    if ( !loaded || loadError != CC_FERR_NO_ERROR )
+    {
+        QFile::remove( temporaryPath );
+        error =
+            QString(
+                "Project read-back validation failed with error code %1; "
+                "temporary output was removed" )
+                .arg( static_cast<int>( loadError ) );
+        return true;
+    }
+
+    const QJsonArray readbackManifest =
+        projectForestManifest( loaded.get() );
+    const ProjectTotals readbackTotals =
+        projectTotals( loaded.get() );
+    const QByteArray sourceBytes =
+        QJsonDocument( sourceManifest )
+            .toJson( QJsonDocument::Compact );
+    const QByteArray readbackBytes =
+        QJsonDocument( readbackManifest )
+            .toJson( QJsonDocument::Compact );
+    const bool manifestVerified =
+        sourceBytes == readbackBytes;
+
+    if ( !manifestVerified )
+    {
+        QFile::remove( temporaryPath );
+        error =
+            "Project read-back manifest did not match the active scene; "
+            "temporary output was removed and the active scene was not modified.";
+        return true;
+    }
+
+    QString finalizeError;
+    if ( !atomicFinalizeProject(
+             temporaryPath,
+             finalPath,
+             overwrite,
+             finalizeError ) )
+    {
+        QFile::remove( temporaryPath );
+        error = finalizeError;
+        return true;
+    }
+
+    const QFileInfo completed( finalPath );
+    QJsonObject out;
+    out[ "operation" ] = "project.save";
+    out[ "scope" ] = "full_scene";
+    out[ "format" ] = "BIN";
+    out[ "path" ] =
+        QDir::toNativeSeparators(
+            completed.absoluteFilePath() );
+    out[ "file_size_bytes" ] = completed.size();
+    out[ "file_sha256" ] = sha256File( finalPath );
+    out[ "overwrite" ] = overwrite;
+    out[ "transactional_write" ] = true;
+    out[ "temporary_write_then_atomic_finalize" ] = true;
+    out[ "readback_verified" ] = true;
+    out[ "manifest_verified" ] = true;
+    out[ "active_scene_modified" ] = false;
+    out[ "hidden_entities_included" ] = true;
+    out[ "pending_transforms_verified" ] = true;
+    out[ "source_totals" ] =
+        projectTotalsJson( sourceTotals );
+    out[ "readback_totals" ] =
+        projectTotalsJson( readbackTotals );
+    out[ "entity_coverage" ] = sourceManifest;
+    out[ "exclusions" ] = QJsonArray();
+    out[ "scope_semantics" ] =
+        "This file covers the full open database tree. entity.export is a "
+        "separate selected-geometry export and never implies full-scene persistence.";
+    result = out;
+    return true;
+}
 }
 
 namespace qMCPFusionWorkflow
@@ -5059,6 +6028,14 @@ bool dispatch(
     if ( method == "entity.export" )
     {
         return exportEntity( app, params, result, error );
+    }
+    if ( method == "geometry.import_processed" )
+    {
+        return importProcessedGeometry( app, params, result, error );
+    }
+    if ( method == "project.save" )
+    {
+        return saveProject( app, params, result, error );
     }
     return false;
 }

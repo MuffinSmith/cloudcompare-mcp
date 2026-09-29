@@ -88,7 +88,7 @@ class PickReplayHandler(socketserver.StreamRequestHandler):
 
 
 def test_actual_installed_stdio_snapshot_exact_files_without_bridge(intent_files):
-    assert version('cloudcompare-mcp') == '0.16.3'
+    assert version('cloudcompare-mcp') == '0.17.0'
     output, manifest = intent_files
     async def exercise():
         async with stdio_client(installed_stdio_parameters('invalid-no-host')) as (read,write):
