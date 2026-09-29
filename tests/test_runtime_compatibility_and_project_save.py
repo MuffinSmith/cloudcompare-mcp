@@ -105,12 +105,14 @@ class RuntimeServerContractTests(unittest.TestCase):
             "compatibility_status": "legacy_bridge",
             "supported_operations": ["scene.list"],
         }
-        with patch.object(server, "runtime_handshake", return_value=runtime), patch.object(
-            server, "live_request"
-        ) as request:
+        with patch.object(
+            server, "live_request", side_effect=LiveBridgeError("blocked by preflight")
+        ) as request, patch.object(
+            server, "last_runtime_handshake", return_value=runtime
+        ):
             result = server.handle_get_live_workflow_capabilities({})
 
-        request.assert_not_called()
+        request.assert_called_once_with("capabilities.get", {})
         payload = json.loads(result[0].text)
         self.assertFalse(payload["native_capabilities_available"])
         self.assertEqual(payload["runtime"]["compatibility_status"], "legacy_bridge")
@@ -133,9 +135,9 @@ class RuntimeServerContractTests(unittest.TestCase):
                 }
             ],
         }
-        with patch.object(server, "runtime_handshake", return_value=runtime), patch.object(
-            server, "live_request", return_value=scene
-        ):
+        with patch.object(
+            server, "last_runtime_handshake", return_value=runtime
+        ), patch.object(server, "live_request", return_value=scene):
             result = server.handle_summarize_live_scene({})
 
         payload = json.loads(result[0].text)

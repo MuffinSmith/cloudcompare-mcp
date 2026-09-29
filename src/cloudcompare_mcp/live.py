@@ -35,6 +35,33 @@ LEGACY_BASELINE_OPERATIONS = frozenset({
 
 
 
+_RUNTIME_CACHE: dict[tuple[str, int, str | None, int], dict[str, Any]] = {}
+_LAST_RUNTIME: dict[str, Any] | None = None
+
+
+def _runtime_cache_key() -> tuple[str, int, str | None, int]:
+    host, port, _timeout, token = _config()
+    # Including the transport function identity keeps monkeypatched transport
+    # tests isolated while remaining stable for the production client.
+    return host, port, token, id(_raw_request)
+
+
+def clear_runtime_handshake_cache() -> None:
+    """Forget cached native compatibility state.
+
+    Explicit runtime inspection refreshes the cache. A failed operational
+    request also clears it so the next call re-identifies a restarted bridge.
+    """
+    global _LAST_RUNTIME
+    _RUNTIME_CACHE.clear()
+    _LAST_RUNTIME = None
+
+
+def last_runtime_handshake() -> dict[str, Any] | None:
+    """Return the most recently verified runtime identity without doing I/O."""
+    return None if _LAST_RUNTIME is None else dict(_LAST_RUNTIME)
+
+
 class LiveBridgeError(RuntimeError):
     """Raised on transport/refusal; optional bounded native diagnostics are not authority."""
     def __init__(self, message: str, details: dict | None = None):
@@ -179,6 +206,23 @@ def _legacy_runtime_info(ping: Any, handshake_error: str) -> dict[str, Any]:
     }
 
 
+def _record_runtime(runtime: dict[str, Any]) -> dict[str, Any]:
+    global _LAST_RUNTIME
+    frozen = dict(runtime)
+    _RUNTIME_CACHE[_runtime_cache_key()] = frozen
+    _LAST_RUNTIME = frozen
+    return dict(frozen)
+
+
+def _cached_runtime_handshake(*, timeout: float | None = None) -> dict[str, Any]:
+    cached = _RUNTIME_CACHE.get(_runtime_cache_key())
+    if cached is not None:
+        global _LAST_RUNTIME
+        _LAST_RUNTIME = cached
+        return dict(cached)
+    return runtime_handshake(timeout=timeout)
+
+
 def runtime_handshake(*, timeout: float | None = None) -> dict[str, Any]:
     """Return a compatibility-aware description of the loaded native bridge.
 
@@ -193,7 +237,7 @@ def runtime_handshake(*, timeout: float | None = None) -> dict[str, Any]:
         if "Unknown bridge method: runtime.handshake" not in message:
             raise
         ping = _raw_request("ping", {}, timeout=timeout)
-        return _legacy_runtime_info(ping, message)
+        return _record_runtime(_legacy_runtime_info(ping, message))
 
     if not isinstance(result, dict):
         raise LiveBridgeError("CloudCompare runtime handshake returned an unexpected response")
@@ -238,7 +282,7 @@ def runtime_handshake(*, timeout: float | None = None) -> dict[str, Any]:
                 "preserve_open_scene_first": True,
             },
         )
-    return normalized
+    return _record_runtime(normalized)
 
 
 def request(
@@ -265,9 +309,15 @@ def request(
     if method == "runtime.handshake":
         return runtime_handshake(timeout=timeout)
     if method == "ping":
+        try:
         return _raw_request(method, params, timeout=timeout)
+    except LiveBridgeError:
+        # The host may have restarted or loaded a different plugin on the same
+        # port. Do not carry compatibility state across a failed operation.
+        _RUNTIME_CACHE.pop(_runtime_cache_key(), None)
+        raise
 
-    runtime = runtime_handshake(timeout=timeout)
+    runtime = _cached_runtime_handshake(timeout=timeout)
     operations = set(runtime.get("supported_operations") or ())
     if method not in operations:
         status = runtime.get("compatibility_status", "unknown")

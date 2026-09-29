@@ -16,7 +16,12 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, ImageContent, TextContent, Tool
 
-from .live import LiveBridgeError, request as live_request, runtime_handshake
+from .live import (
+    LiveBridgeError,
+    last_runtime_handshake,
+    request as live_request,
+    runtime_handshake,
+)
 from .datum_tools import (
     capabilities as datum_capabilities, tools as datum_tools,
     handle_analyze_feature_relationships, handle_build_live_datum_frame,
@@ -2571,21 +2576,30 @@ def handle_import_live_processed_geometry(args: dict) -> list[TextContent]:
 
 def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
     try:
-        runtime = runtime_handshake()
-        if not runtime.get("compatible"):
-            return _ok(
-                {
-                    "runtime": runtime,
-                    "native_capabilities_available": False,
-                    "native_capabilities_reason": (
-                        "The loaded DLL does not expose the current capability contract. "
-                        "Current native workflow tools are intentionally blocked before execution."
-                    ),
-                }
-            )
+        try:
+            native = live_request("capabilities.get", {})
+        except LiveBridgeError:
+            runtime = last_runtime_handshake()
+            if runtime is not None and not runtime.get("compatible"):
+                return _ok(
+                    {
+                        "runtime": runtime,
+                        "native_capabilities_available": False,
+                        "native_capabilities_reason": (
+                            "The loaded DLL does not expose the current capability contract. "
+                            "Current native workflow tools are intentionally blocked before execution."
+                        ),
+                    }
+                )
+            raise
 
-        native = live_request("capabilities.get", {})
-        native["runtime"] = runtime
+        if not isinstance(native, dict):
+            raise LiveBridgeError(
+                "CloudCompare returned an invalid capability response"
+            )
+        runtime = last_runtime_handshake()
+        if runtime is not None:
+            native["runtime"] = runtime
         native["native_capabilities_available"] = True
         from .fusion_mesh import backend_capabilities
 
@@ -2748,8 +2762,8 @@ def _compact_region_summary(
 
 def handle_summarize_live_scene(args: dict) -> list[TextContent] | CallToolResult:
     try:
-        runtime = runtime_handshake()
         native = live_request("scene.list", {"recursive": True})
+        runtime = last_runtime_handshake()
         if not isinstance(native, dict) or not isinstance(native.get("entities"), list):
             raise LiveBridgeError("CloudCompare returned an invalid scene-list response")
 
@@ -2839,7 +2853,7 @@ def handle_summarize_live_scene(args: dict) -> list[TextContent] | CallToolResul
                 "entities": returned,
                 "response_completeness": response_completeness,
                 "missing_fields_by_entity": missing_fields_by_entity,
-                "runtime": runtime,
+                **({"runtime": runtime} if runtime is not None else {}),
                 "image_required": False,
             }
         )
