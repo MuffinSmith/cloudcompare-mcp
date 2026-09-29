@@ -33,6 +33,7 @@
 
 #include <cmath>
 #include <limits>
+#include <string>
 
 #ifdef Q_OS_WIN
 #include <windows.h>

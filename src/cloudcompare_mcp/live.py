@@ -158,6 +158,8 @@ def _legacy_runtime_info(ping: Any, handshake_error: str) -> dict[str, Any]:
         "process_id": ping_info.get("process_id"),
         "session_id": None,
         "port": ping_info.get("port"),
+        "selected_ids": ping_info.get("selected_ids", []),
+        "root_children": ping_info.get("root_children"),
         "loaded_module_path": None,
         "loaded_module_sha256": None,
         "supported_operations": sorted(LEGACY_BASELINE_OPERATIONS),
@@ -246,6 +248,20 @@ def request(
     timeout: float | None = None,
 ) -> Any:
     """Send a compatibility-preflighted request to the open CloudCompare instance."""
+    # Reject malformed/non-finite caller payloads before compatibility probing so
+    # invalid geometry can never cause even a handshake connection.
+    if method not in ("runtime.handshake", "ping"):
+        try:
+            json.dumps(
+                {"method": method, "params": params or {}},
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise LiveBridgeError(
+                "Live bridge request must contain finite JSON values"
+            ) from exc
+
     if method == "runtime.handshake":
         return runtime_handshake(timeout=timeout)
     if method == "ping":

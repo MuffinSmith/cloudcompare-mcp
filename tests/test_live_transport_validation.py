@@ -33,7 +33,7 @@ def test_real_loopback_json_roundtrip(monkeypatch):
     errors = []
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
-        listener.listen(1)
+        listener.listen(2)
         listener.settimeout(5)
         monkeypatch.setenv("CLOUDCOMPARE_MCP_HOST", "127.0.0.1")
         monkeypatch.setenv("CLOUDCOMPARE_MCP_PORT", str(listener.getsockname()[1]))
@@ -41,11 +41,29 @@ def test_real_loopback_json_roundtrip(monkeypatch):
         monkeypatch.delenv("CLOUDCOMPARE_MCP_TOKEN", raising=False)
         def serve():
             try:
-                with listener.accept()[0] as conn:
-                    conn.settimeout(5)
-                    with conn.makefile("rb") as stream:
-                        received.append(json.loads(stream.readline()))
-                    conn.sendall(b'{"id":1,"ok":true,"result":{"active":false}}\n')
+                for _ in range(2):
+                    with listener.accept()[0] as conn:
+                        conn.settimeout(5)
+                        with conn.makefile("rb") as stream:
+                            request = json.loads(stream.readline())
+                            received.append(request)
+                        if request["method"] == "runtime.handshake":
+                            response = {
+                                "id": 1,
+                                "ok": True,
+                                "result": {
+                                    "protocol_version": 1,
+                                    "workflow_revision": 10,
+                                    "plugin_version": "0.14.0",
+                                    "supported_operations": [
+                                        "runtime.handshake",
+                                        "fit.overlay.status",
+                                    ],
+                                },
+                            }
+                        else:
+                            response = {"id": 1, "ok": True, "result": {"active": False}}
+                        conn.sendall((json.dumps(response) + "\n").encode())
             except Exception as exc:
                 errors.append(exc)
         thread = threading.Thread(target=serve, daemon=True)
@@ -56,4 +74,7 @@ def test_real_loopback_json_roundtrip(monkeypatch):
             thread.join(timeout=6)
         assert not thread.is_alive()
         assert not errors
-    assert received == [{"id": 1, "method": "fit.overlay.status", "params": {}}]
+    assert [item["method"] for item in received] == [
+        "runtime.handshake",
+        "fit.overlay.status",
+    ]

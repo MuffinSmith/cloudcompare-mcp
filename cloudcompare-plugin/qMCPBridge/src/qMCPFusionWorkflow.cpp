@@ -4311,6 +4311,7 @@ QJsonObject capabilities()
         "mesh.reconstruct",
         "mesh.simplify",
         "entity.export",
+        "project.save",
         "group.create",
         "cloud.crop",
         "cloud.subsample",
