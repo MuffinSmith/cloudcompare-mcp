@@ -6,14 +6,17 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QMainWindow>
 #include <QSet>
 #include <QTextStream>
 
+#include <BinFilter.h>
 #include <FileIOFilter.h>
 #include <PlyFilter.h>
 #include <CloudSamplingTools.h>
@@ -41,10 +44,16 @@
 #include <ccPickingListener.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <memory>
 #include <vector>
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 
 namespace
 {
@@ -387,6 +396,235 @@ QJsonObject registrationDiagnosticsJson(
         { "unit_scale", diagnostics.unitScale },
         { "rigid_transform_valid", diagnostics.rigidTransformValid },
     };
+}
+
+
+QJsonObject projectEntityManifest( ccHObject* entity, const QString& hierarchyIndex )
+{
+    QJsonObject out;
+    if ( !entity )
+    {
+        return out;
+    }
+
+    out[ "hierarchy_index" ] = hierarchyIndex;
+    out[ "name" ] = entity->getName();
+    out[ "kind" ] = kindOf( entity );
+    out[ "class_id" ] = static_cast<int>( entity->getClassID() );
+    out[ "visible" ] = entity->isVisible();
+    out[ "enabled" ] = entity->isEnabled();
+    out[ "child_count" ] = static_cast<int>( entity->getChildrenNumber() );
+    out[ "gl_transform_enabled" ] = entity->isGLTransEnabled();
+    if ( entity->isGLTransEnabled() )
+    {
+        out[ "gl_transform_column_major" ] =
+            matrixJson( entity->getGLTransformation() );
+    }
+
+    ccGenericPointCloud* geometry = nullptr;
+    ccGenericMesh* mesh = nullptr;
+    if ( entity->isKindOf( CC_TYPES::MESH ) )
+    {
+        mesh = ccHObjectCaster::ToGenericMesh( entity );
+        if ( mesh )
+        {
+            geometry = mesh->getAssociatedCloud();
+            out[ "triangle_count" ] = static_cast<qint64>( mesh->size() );
+        }
+    }
+    else if ( entity->isKindOf( CC_TYPES::POINT_CLOUD ) )
+    {
+        geometry = ccHObjectCaster::ToGenericPointCloud( entity );
+    }
+
+    if ( geometry )
+    {
+        out[ "point_count" ] = static_cast<qint64>( geometry->size() );
+        out[ "global_shift" ] = vector3Json( geometry->getGlobalShift() );
+        out[ "global_scale" ] = geometry->getGlobalScale();
+        out[ "bounds_global_native" ] = globalBoundsJson( geometry );
+        out[ "has_normals" ] = geometry->hasNormals();
+        out[ "has_colors" ] = geometry->hasColors();
+        if ( ccPointCloud* cloud = dynamic_cast<ccPointCloud*>( geometry ) )
+        {
+            out[ "scalar_fields" ] = scalarFieldsJson( cloud );
+        }
+    }
+
+    QJsonArray children;
+    for ( unsigned i = 0; i < entity->getChildrenNumber(); ++i )
+    {
+        children.append(
+            projectEntityManifest(
+                entity->getChild( i ),
+                hierarchyIndex + "/" + QString::number( i ) ) );
+    }
+    out[ "children" ] = children;
+    return out;
+}
+
+QJsonArray projectForestManifest( ccHObject* root )
+{
+    QJsonArray manifest;
+    if ( !root )
+    {
+        return manifest;
+    }
+    for ( unsigned i = 0; i < root->getChildrenNumber(); ++i )
+    {
+        manifest.append(
+            projectEntityManifest(
+                root->getChild( i ),
+                QString::number( i ) ) );
+    }
+    return manifest;
+}
+
+struct ProjectTotals
+{
+    qint64 entities = 0;
+    qint64 pointRecords = 0;
+    qint64 triangleRecords = 0;
+    qint64 hiddenEntities = 0;
+    qint64 disabledEntities = 0;
+    qint64 pendingTransforms = 0;
+};
+
+void accumulateProjectTotals( ccHObject* entity, ProjectTotals& totals )
+{
+    if ( !entity )
+    {
+        return;
+    }
+
+    ++totals.entities;
+    if ( !entity->isVisible() )
+    {
+        ++totals.hiddenEntities;
+    }
+    if ( !entity->isEnabled() )
+    {
+        ++totals.disabledEntities;
+    }
+    if ( entity->isGLTransEnabled() )
+    {
+        ++totals.pendingTransforms;
+    }
+
+    if ( entity->isKindOf( CC_TYPES::MESH ) )
+    {
+        if ( ccGenericMesh* mesh = ccHObjectCaster::ToGenericMesh( entity ) )
+        {
+            totals.triangleRecords += static_cast<qint64>( mesh->size() );
+            if ( ccGenericPointCloud* cloud = mesh->getAssociatedCloud() )
+            {
+                totals.pointRecords += static_cast<qint64>( cloud->size() );
+            }
+        }
+    }
+    else if ( entity->isKindOf( CC_TYPES::POINT_CLOUD ) )
+    {
+        if ( ccGenericPointCloud* cloud =
+                 ccHObjectCaster::ToGenericPointCloud( entity ) )
+        {
+            totals.pointRecords += static_cast<qint64>( cloud->size() );
+        }
+    }
+
+    for ( unsigned i = 0; i < entity->getChildrenNumber(); ++i )
+    {
+        accumulateProjectTotals( entity->getChild( i ), totals );
+    }
+}
+
+ProjectTotals projectTotals( ccHObject* root )
+{
+    ProjectTotals totals;
+    if ( root )
+    {
+        for ( unsigned i = 0; i < root->getChildrenNumber(); ++i )
+        {
+            accumulateProjectTotals( root->getChild( i ), totals );
+        }
+    }
+    return totals;
+}
+
+QJsonObject projectTotalsJson( const ProjectTotals& totals )
+{
+    return QJsonObject{
+        { "entity_count", totals.entities },
+        { "geometry_point_records", totals.pointRecords },
+        { "triangle_records", totals.triangleRecords },
+        { "hidden_entity_count", totals.hiddenEntities },
+        { "disabled_entity_count", totals.disabledEntities },
+        { "pending_transform_count", totals.pendingTransforms },
+    };
+}
+
+QString sha256File( const QString& path )
+{
+    QFile file( path );
+    if ( !file.open( QIODevice::ReadOnly ) )
+    {
+        return {};
+    }
+
+    QCryptographicHash hash( QCryptographicHash::Sha256 );
+    while ( !file.atEnd() )
+    {
+        hash.addData( file.read( 1024 * 1024 ) );
+    }
+    return QString::fromLatin1( hash.result().toHex() );
+}
+
+bool atomicFinalizeProject(
+    const QString& temporaryPath,
+    const QString& finalPath,
+    bool overwrite,
+    QString& error )
+{
+    const bool finalExists = QFileInfo::exists( finalPath );
+    if ( finalExists && !overwrite )
+    {
+        error = QString( "Output already exists and overwrite=false: %1" )
+                    .arg( finalPath );
+        return false;
+    }
+
+    if ( !finalExists )
+    {
+        if ( QFile::rename( temporaryPath, finalPath ) )
+        {
+            return true;
+        }
+        error = QString( "Could not atomically finalize project: %1" )
+                    .arg( finalPath );
+        return false;
+    }
+
+#ifdef Q_OS_WIN
+    if ( MoveFileExW(
+             reinterpret_cast<LPCWSTR>( temporaryPath.utf16() ),
+             reinterpret_cast<LPCWSTR>( finalPath.utf16() ),
+             MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH ) )
+    {
+        return true;
+    }
+    error = QString( "Atomic project replacement failed with Windows error %1" )
+                .arg( static_cast<qulonglong>( GetLastError() ) );
+    return false;
+#else
+    const QByteArray source = QFile::encodeName( temporaryPath );
+    const QByteArray target = QFile::encodeName( finalPath );
+    if ( ::rename( source.constData(), target.constData() ) == 0 )
+    {
+        return true;
+    }
+    error = QString( "Atomic project replacement failed with errno %1" )
+                .arg( errno );
+    return false;
+#endif
 }
 
 bool readPointList(
@@ -4039,6 +4277,7 @@ QJsonObject capabilities()
         "mesh.reconstruct",
         "mesh.simplify",
         "entity.export",
+        "project.save",
         "group.create",
         "cloud.crop",
         "cloud.subsample",
@@ -4149,6 +4388,20 @@ QJsonObject capabilities()
     metrology[ "units_policy" ] =
         "Distances use CloudCompare native coordinate units; physical units remain caller-supplied.";
     result[ "metrology" ] = metrology;
+
+    result[ "project_persistence" ] = QJsonObject{
+        { "available", true },
+        { "operation", "project.save" },
+        { "format", "BIN" },
+        { "scope", "full_scene" },
+        { "hidden_entities_included", true },
+        { "hierarchy_included", true },
+        { "pending_transforms_included", true },
+        { "overwrite_default", false },
+        { "temporary_write_then_finalize", true },
+        { "independent_readback_validation", true },
+        { "manifest_validation", true },
+    };
 
     QJsonObject regionQuery;
     regionQuery[ "available" ] = true;
@@ -5021,6 +5274,206 @@ bool exportEntity(
     result = out;
     return true;
 }
+
+bool saveProject(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    ccHObject* root = app ? app->dbRootObject() : nullptr;
+    if ( !root || root->getChildrenNumber() == 0 )
+    {
+        error = "project.save requires a non-empty CloudCompare scene";
+        return true;
+    }
+
+    const QString requestedPath = params.value( "path" ).toString();
+    if ( requestedPath.isEmpty() )
+    {
+        error = "project.save requires an absolute .bin path";
+        return true;
+    }
+
+    const QFileInfo targetInfo( requestedPath );
+    if ( !targetInfo.isAbsolute() )
+    {
+        error =
+            "project.save refuses relative paths; provide an explicit absolute path";
+        return true;
+    }
+    if ( targetInfo.suffix().compare( "bin", Qt::CaseInsensitive ) != 0 )
+    {
+        error = "project.save requires a .bin destination";
+        return true;
+    }
+
+    const bool overwrite =
+        params.value( "overwrite" ).toBool( false );
+    const QString finalPath = targetInfo.absoluteFilePath();
+    if ( QFileInfo::exists( finalPath ) && !overwrite )
+    {
+        error = QString( "Output already exists and overwrite=false: %1" )
+                    .arg( finalPath );
+        return true;
+    }
+
+    QDir parentDir = targetInfo.dir();
+    if ( !parentDir.exists() )
+    {
+        error = QString( "Output directory does not exist: %1" )
+                    .arg( parentDir.absolutePath() );
+        return true;
+    }
+
+    // Keep a real .bin suffix so independent read-back selects the BIN filter.
+    const QString temporaryPath =
+        finalPath + ".mcp-partial.bin";
+    if ( QFileInfo::exists( temporaryPath )
+         && !QFile::remove( temporaryPath ) )
+    {
+        error = QString( "Could not remove stale temporary project: %1" )
+                    .arg( temporaryPath );
+        return true;
+    }
+
+    QFile probe( temporaryPath );
+    if ( !probe.open( QIODevice::WriteOnly ) )
+    {
+        error =
+            QString(
+                "CloudCompare process cannot write to output directory '%1': %2" )
+                .arg( parentDir.absolutePath(), probe.errorString() );
+        return true;
+    }
+    probe.close();
+    if ( !QFile::remove( temporaryPath ) )
+    {
+        error = QString( "Could not remove project write probe: %1" )
+                    .arg( temporaryPath );
+        return true;
+    }
+
+    const QJsonArray sourceManifest =
+        projectForestManifest( root );
+    const ProjectTotals sourceTotals =
+        projectTotals( root );
+
+    // This mirrors CloudCompare's File > Save project behavior: when the DB
+    // has one top-level entity save that entity, otherwise save the DB root.
+    ccHObject* saveTarget =
+        root->getChildrenNumber() == 1
+            ? root->getChild( 0 )
+            : root;
+
+    FileIOFilter::SaveParameters saveParams;
+    saveParams.alwaysDisplaySaveDialog = false;
+    saveParams.parentWidget = app->getMainWindow();
+    const QString binFilter = BinFilter::GetFileFilter();
+    const CC_FILE_ERROR saveError =
+        FileIOFilter::SaveToFile(
+            saveTarget,
+            temporaryPath,
+            saveParams,
+            binFilter );
+    if ( saveError != CC_FERR_NO_ERROR )
+    {
+        QFile::remove( temporaryPath );
+        error =
+            QString(
+                "CloudCompare BIN project save failed with error code %1" )
+                .arg( static_cast<int>( saveError ) );
+        return true;
+    }
+
+    // Parse the temporary BIN independently. It is never added to the active DB.
+    FileIOFilter::LoadParameters loadParams;
+    loadParams.alwaysDisplayLoadDialog = false;
+    loadParams.shiftHandlingMode =
+        ccGlobalShiftManager::NO_DIALOG_AUTO_SHIFT;
+    loadParams.parentWidget = app->getMainWindow();
+
+    CC_FILE_ERROR loadError = CC_FERR_NO_ERROR;
+    std::unique_ptr<ccHObject> loaded(
+        FileIOFilter::LoadFromFile(
+            temporaryPath,
+            loadParams,
+            loadError ) );
+    if ( !loaded || loadError != CC_FERR_NO_ERROR )
+    {
+        QFile::remove( temporaryPath );
+        error =
+            QString(
+                "Project read-back validation failed with error code %1; "
+                "temporary output was removed" )
+                .arg( static_cast<int>( loadError ) );
+        return true;
+    }
+
+    const QJsonArray readbackManifest =
+        projectForestManifest( loaded.get() );
+    const ProjectTotals readbackTotals =
+        projectTotals( loaded.get() );
+    const QByteArray sourceBytes =
+        QJsonDocument( sourceManifest )
+            .toJson( QJsonDocument::Compact );
+    const QByteArray readbackBytes =
+        QJsonDocument( readbackManifest )
+            .toJson( QJsonDocument::Compact );
+    const bool manifestVerified =
+        sourceBytes == readbackBytes;
+
+    if ( !manifestVerified )
+    {
+        QFile::remove( temporaryPath );
+        error =
+            "Project read-back manifest did not match the active scene; "
+            "temporary output was removed and the active scene was not modified.";
+        return true;
+    }
+
+    QString finalizeError;
+    if ( !atomicFinalizeProject(
+             temporaryPath,
+             finalPath,
+             overwrite,
+             finalizeError ) )
+    {
+        QFile::remove( temporaryPath );
+        error = finalizeError;
+        return true;
+    }
+
+    const QFileInfo completed( finalPath );
+    QJsonObject out;
+    out[ "operation" ] = "project.save";
+    out[ "scope" ] = "full_scene";
+    out[ "format" ] = "BIN";
+    out[ "path" ] =
+        QDir::toNativeSeparators(
+            completed.absoluteFilePath() );
+    out[ "file_size_bytes" ] = completed.size();
+    out[ "file_sha256" ] = sha256File( finalPath );
+    out[ "overwrite" ] = overwrite;
+    out[ "transactional_write" ] = true;
+    out[ "temporary_write_then_atomic_finalize" ] = true;
+    out[ "readback_verified" ] = true;
+    out[ "manifest_verified" ] = true;
+    out[ "active_scene_modified" ] = false;
+    out[ "hidden_entities_included" ] = true;
+    out[ "pending_transforms_verified" ] = true;
+    out[ "source_totals" ] =
+        projectTotalsJson( sourceTotals );
+    out[ "readback_totals" ] =
+        projectTotalsJson( readbackTotals );
+    out[ "entity_coverage" ] = sourceManifest;
+    out[ "exclusions" ] = QJsonArray();
+    out[ "scope_semantics" ] =
+        "This file covers the full open database tree. entity.export is a "
+        "separate selected-geometry export and never implies full-scene persistence.";
+    result = out;
+    return true;
+}
 }
 
 namespace qMCPFusionWorkflow
@@ -5153,6 +5606,10 @@ bool dispatch(
     if ( method == "entity.export" )
     {
         return exportEntity( app, params, result, error );
+    }
+    if ( method == "project.save" )
+    {
+        return saveProject( app, params, result, error );
     }
     return false;
 }
