@@ -607,6 +607,46 @@ TOOLS: list[Tool] = [
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
+        name="import_live_processed_geometry",
+        description=(
+            "Safely import a PLY/OBJ produced by external processing of an exported working copy. "
+            "Requires explicit source/export provenance and an affirmative global-coordinate contract. "
+            "The native bridge independently loads the file, normalizes its frame to the source without "
+            "moving the source, validates global bounds/frame preservation, and places the result in a new dedicated group."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_entity_id": {"type": "integer"},
+                "path": {"type": "string"},
+                "source_export_sha256": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64,
+                },
+                "processing_parameters": {"type": "object"},
+                "coordinate_contract": {
+                    "type": "string",
+                    "enum": ["preserve_exported_global_coordinates"],
+                },
+                "expected_result_sha256": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64,
+                },
+                "result_group_name": {"type": "string"},
+                "destination_group_id": {"type": "integer"},
+            },
+            "required": [
+                "source_entity_id",
+                "path",
+                "source_export_sha256",
+                "processing_parameters",
+                "coordinate_contract",
+            ],
+        },
+    ),
+    Tool(
         name="get_live_workflow_capabilities",
         description=(
             "Report the live bridge's safe reverse-engineering capabilities, application/plugin versions, "
@@ -2505,6 +2545,28 @@ def handle_capture_live_view(_args: dict) -> list[ImageContent | TextContent]:
         ]
     except (LiveBridgeError, KeyError, TypeError) as exc:
         return _err(str(exc))
+
+
+def handle_import_live_processed_geometry(args: dict) -> list[TextContent]:
+    params = {
+        "source_entity_id": args["source_entity_id"],
+        "path": args["path"],
+        "source_export_sha256": args["source_export_sha256"],
+        "processing_parameters": args["processing_parameters"],
+        "coordinate_contract": args["coordinate_contract"],
+    }
+    for key in (
+        "expected_result_sha256",
+        "result_group_name",
+        "destination_group_id",
+    ):
+        if key in args:
+            params[key] = args[key]
+    return _live_call(
+        "geometry.import_processed",
+        params,
+        timeout=900.0,
+    )
 
 
 def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
@@ -4922,6 +4984,7 @@ async def call_tool(
     dispatch = {
         "get_live_cloudcompare_info": handle_get_live_cloudcompare_info,
         "save_live_project": handle_save_live_project,
+        "import_live_processed_geometry": handle_import_live_processed_geometry,
         "list_live_entities": handle_list_live_entities,
         "get_live_selection": handle_get_live_selection,
         "set_live_selection": handle_set_live_selection,

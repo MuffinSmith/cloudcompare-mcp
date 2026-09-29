@@ -1562,6 +1562,168 @@ bool compatibleFrames( const ccGenericPointCloud* a, const ccGenericPointCloud* 
     return scaleDelta <= FRAME_EPS && shiftDelta2 <= FRAME_EPS * FRAME_EPS;
 }
 
+
+ccGenericPointCloud* geometryFrameCloud( ccHObject* entity )
+{
+    if ( !entity )
+    {
+        return nullptr;
+    }
+    if ( entity->isKindOf( CC_TYPES::MESH ) )
+    {
+        ccGenericMesh* mesh = ccHObjectCaster::ToGenericMesh( entity );
+        return mesh ? mesh->getAssociatedCloud() : nullptr;
+    }
+    if ( entity->isKindOf( CC_TYPES::POINT_CLOUD ) )
+    {
+        return ccHObjectCaster::ToGenericPointCloud( entity );
+    }
+    return nullptr;
+}
+
+void collectEditablePointClouds(
+    ccHObject* entity,
+    std::vector<ccPointCloud*>& clouds,
+    QSet<ccPointCloud*>& seen )
+{
+    if ( !entity )
+    {
+        return;
+    }
+
+    ccGenericPointCloud* generic = geometryFrameCloud( entity );
+    if ( generic )
+    {
+        if ( ccPointCloud* cloud = dynamic_cast<ccPointCloud*>( generic ) )
+        {
+            if ( !seen.contains( cloud ) )
+            {
+                seen.insert( cloud );
+                clouds.push_back( cloud );
+            }
+        }
+    }
+
+    for ( unsigned i = 0; i < entity->getChildrenNumber(); ++i )
+    {
+        collectEditablePointClouds(
+            entity->getChild( i ),
+            clouds,
+            seen );
+    }
+}
+
+bool normalizeCloudToFrame(
+    ccPointCloud* cloud,
+    const ccGenericPointCloud* reference,
+    QJsonObject& evidence,
+    QString& error )
+{
+    if ( !cloud || !reference )
+    {
+        error = "Frame normalization requires point-cloud geometry";
+        return false;
+    }
+    if ( !std::isfinite( cloud->getGlobalScale() )
+         || std::abs( cloud->getGlobalScale() ) <= FRAME_EPS
+         || !std::isfinite( reference->getGlobalScale() )
+         || std::abs( reference->getGlobalScale() ) <= FRAME_EPS )
+    {
+        error = "Frame normalization requires finite non-zero global scales";
+        return false;
+    }
+
+    const QJsonObject boundsBefore = globalBoundsJson( cloud );
+    const CCVector3d oldShift = cloud->getGlobalShift();
+    const double oldScale = cloud->getGlobalScale();
+
+    for ( unsigned i = 0; i < cloud->size(); ++i )
+    {
+        const CCVector3* point = cloud->getPointPersistentPtr( i );
+        if ( !point )
+        {
+            error = QString( "Imported cloud point %1 is unavailable" ).arg( i );
+            return false;
+        }
+
+        const CCVector3d global =
+            cloud->toGlobal3d<PointCoordinateType>( *point );
+        const CCVector3d local =
+            reference->toLocal3d<double>( global );
+        if ( !finiteVector( global ) || !finiteVector( local ) )
+        {
+            error =
+                "Imported geometry produced non-finite coordinates during frame normalization";
+            return false;
+        }
+
+        const double maxCoordinate =
+            static_cast<double>(
+                std::numeric_limits<PointCoordinateType>::max() );
+        if ( std::abs( local.x ) > maxCoordinate
+             || std::abs( local.y ) > maxCoordinate
+             || std::abs( local.z ) > maxCoordinate )
+        {
+            error =
+                "Imported geometry cannot be represented safely in the source local frame";
+            return false;
+        }
+
+        *const_cast<CCVector3*>( cloud->getPointPersistentPtr( i ) ) =
+            local.toPC();
+    }
+
+    cloud->setGlobalShift( reference->getGlobalShift() );
+    cloud->setGlobalScale( reference->getGlobalScale() );
+    cloud->invalidateBoundingBox();
+
+    const QJsonObject boundsAfter = globalBoundsJson( cloud );
+    const bool boundsPreserved =
+        boundsEquivalent( boundsBefore, boundsAfter );
+    const bool frameCompatible =
+        compatibleFrames( cloud, reference );
+
+    evidence = QJsonObject{
+        { "entity_id", static_cast<qint64>( cloud->getUniqueID() ) },
+        { "name", cloud->getName() },
+        { "point_count", static_cast<qint64>( cloud->size() ) },
+        { "input_global_shift", vector3Json( oldShift ) },
+        { "input_global_scale", oldScale },
+        { "output_global_shift", vector3Json( cloud->getGlobalShift() ) },
+        { "output_global_scale", cloud->getGlobalScale() },
+        { "bounds_global_before", boundsBefore },
+        { "bounds_global_after", boundsAfter },
+        { "global_bounds_preserved", boundsPreserved },
+        { "frame_compatible_with_source", frameCompatible },
+    };
+
+    if ( !boundsPreserved || !frameCompatible )
+    {
+        error =
+            "Imported geometry failed global-coordinate/frame compatibility validation";
+        return false;
+    }
+    return true;
+}
+
+bool isSha256Text( const QString& value )
+{
+    if ( value.size() != 64 )
+    {
+        return false;
+    }
+    for ( const QChar ch : value )
+    {
+        if ( !( ch.isDigit()
+                || ( ch >= QLatin1Char( 'a' ) && ch <= QLatin1Char( 'f' ) )
+                || ( ch >= QLatin1Char( 'A' ) && ch <= QLatin1Char( 'F' ) ) ) )
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 void attachToDestination(
     ccMainAppInterface* app,
     ccHObject* entity,
@@ -4277,6 +4439,7 @@ QJsonObject capabilities()
         "mesh.reconstruct",
         "mesh.simplify",
         "entity.export",
+        "geometry.import_processed",
         "project.save",
         "group.create",
         "cloud.crop",
@@ -4311,6 +4474,7 @@ QJsonObject capabilities()
         "mesh.reconstruct",
         "mesh.simplify",
         "entity.export",
+        "geometry.import_processed",
         "project.save",
         "group.create",
         "cloud.crop",
@@ -4389,6 +4553,19 @@ QJsonObject capabilities()
     metrology[ "units_policy" ] =
         "Distances use CloudCompare native coordinate units; physical units remain caller-supplied.";
     result[ "metrology" ] = metrology;
+
+    result[ "external_geometry_roundtrip" ] = QJsonObject{
+        { "available", true },
+        { "import_operation", "geometry.import_processed" },
+        { "supported_formats", QJsonArray{ "ply", "obj" } },
+        { "provenance_contract", "cc-external-roundtrip-v1" },
+        { "requires_source_export_sha256", true },
+        { "requires_processing_parameters", true },
+        { "requires_explicit_global_coordinate_contract", true },
+        { "dedicated_result_group", true },
+        { "source_geometry_preserved", true },
+        { "frame_normalization_preserves_global_coordinates", true },
+    };
 
     result[ "project_persistence" ] = QJsonObject{
         { "available", true },
@@ -5276,6 +5453,250 @@ bool exportEntity(
     return true;
 }
 
+bool importProcessedGeometry(
+    ccMainAppInterface* app,
+    const QJsonObject& params,
+    QJsonValue& result,
+    QString& error )
+{
+    unsigned sourceId = 0;
+    if ( !readId( params, "source_entity_id", sourceId ) )
+    {
+        error = "geometry.import_processed requires a numeric source_entity_id";
+        return true;
+    }
+
+    ccHObject* sourceEntity = findEntity( app, sourceId );
+    ccGenericPointCloud* sourceFrame =
+        geometryFrameCloud( sourceEntity );
+    if ( !sourceEntity || !sourceFrame )
+    {
+        error =
+            QString( "Source entity %1 is not point-cloud/mesh geometry" )
+                .arg( sourceId );
+        return true;
+    }
+
+    const QString path = params.value( "path" ).toString();
+    const QFileInfo fileInfo( path );
+    if ( path.isEmpty() || !fileInfo.isAbsolute() || !fileInfo.isFile() )
+    {
+        error =
+            "geometry.import_processed requires an existing absolute PLY/OBJ path";
+        return true;
+    }
+    const QString extension =
+        fileInfo.suffix().trimmed().toLower();
+    if ( extension != "ply" && extension != "obj" )
+    {
+        error =
+            "geometry.import_processed supports only PLY and OBJ result files";
+        return true;
+    }
+
+    const QString sourceExportSha =
+        params.value( "source_export_sha256" ).toString().trimmed();
+    if ( !isSha256Text( sourceExportSha ) )
+    {
+        error =
+            "source_export_sha256 must be a 64-character SHA-256 digest from export_live_entity";
+        return true;
+    }
+    if ( !params.value( "processing_parameters" ).isObject() )
+    {
+        error =
+            "processing_parameters must be an explicit JSON object";
+        return true;
+    }
+    const QJsonObject processingParameters =
+        params.value( "processing_parameters" ).toObject();
+
+    const QString coordinateContract =
+        params.value( "coordinate_contract" ).toString();
+    if ( coordinateContract
+         != "preserve_exported_global_coordinates" )
+    {
+        error =
+            "coordinate_contract must explicitly be 'preserve_exported_global_coordinates'";
+        return true;
+    }
+
+    const QString resultSha = sha256File( fileInfo.absoluteFilePath() );
+    if ( resultSha.isEmpty() )
+    {
+        error = "Could not hash the external result file";
+        return true;
+    }
+    if ( params.contains( "expected_result_sha256" ) )
+    {
+        const QString expected =
+            params.value( "expected_result_sha256" ).toString().trimmed();
+        if ( !isSha256Text( expected ) )
+        {
+            error = "expected_result_sha256 must be a 64-character SHA-256 digest";
+            return true;
+        }
+        if ( resultSha.compare( expected, Qt::CaseInsensitive ) != 0 )
+        {
+            error =
+                "External result file SHA-256 does not match expected_result_sha256";
+            return true;
+        }
+    }
+
+    const QJsonObject sourceBefore =
+        entityDescription( sourceEntity, true );
+    const QByteArray sourceBeforeBytes =
+        QJsonDocument( sourceBefore )
+            .toJson( QJsonDocument::Compact );
+
+    FileIOFilter::LoadParameters loadParams;
+    loadParams.alwaysDisplayLoadDialog = false;
+    loadParams.shiftHandlingMode =
+        ccGlobalShiftManager::NO_DIALOG_AUTO_SHIFT;
+    loadParams.parentWidget = app->getMainWindow();
+
+    CC_FILE_ERROR loadError = CC_FERR_NO_ERROR;
+    std::unique_ptr<ccHObject> loaded(
+        FileIOFilter::LoadFromFile(
+            fileInfo.absoluteFilePath(),
+            loadParams,
+            loadError ) );
+    if ( !loaded || loadError != CC_FERR_NO_ERROR )
+    {
+        error =
+            QString(
+                "External result read failed with CloudCompare error code %1" )
+                .arg( static_cast<int>( loadError ) );
+        return true;
+    }
+
+    std::vector<ccPointCloud*> importedClouds;
+    QSet<ccPointCloud*> seenClouds;
+    collectEditablePointClouds(
+        loaded.get(),
+        importedClouds,
+        seenClouds );
+    if ( importedClouds.empty() )
+    {
+        error =
+            "External result contained no editable point-cloud or mesh-vertex geometry";
+        return true;
+    }
+
+    QJsonArray frameEvidence;
+    for ( ccPointCloud* cloud : importedClouds )
+    {
+        QJsonObject oneEvidence;
+        if ( !normalizeCloudToFrame(
+                 cloud,
+                 sourceFrame,
+                 oneEvidence,
+                 error ) )
+        {
+            return true;
+        }
+        frameEvidence.append( oneEvidence );
+    }
+
+    const QJsonObject sourceAfter =
+        entityDescription( sourceEntity, true );
+    const bool sourcePreserved =
+        sourceBeforeBytes
+        == QJsonDocument( sourceAfter )
+               .toJson( QJsonDocument::Compact );
+    if ( !sourcePreserved )
+    {
+        error =
+            "Source geometry changed during external-result validation; import was aborted";
+        return true;
+    }
+
+    ccHObject* destination = nullptr;
+    if ( !resolveDestination(
+             app,
+             params,
+             destination,
+             error ) )
+    {
+        return true;
+    }
+
+    QString groupName =
+        params.value( "result_group_name" ).toString().trimmed();
+    if ( groupName.isEmpty() )
+    {
+        groupName =
+            QString( "MCP external result - %1" )
+                .arg( fileInfo.completeBaseName() );
+    }
+
+    std::unique_ptr<ccHObject> group(
+        new ccHObject( groupName ) );
+    group->setVisible( true );
+    group->setEnabled( true );
+    group->setMetaData(
+        "mcp.provenance.contract",
+        "cc-external-roundtrip-v1" );
+    group->setMetaData(
+        "mcp.provenance.source_entity_id",
+        QString::number( sourceId ) );
+    group->setMetaData(
+        "mcp.provenance.source_export_sha256",
+        sourceExportSha.toLower() );
+    group->setMetaData(
+        "mcp.provenance.result_file_sha256",
+        resultSha.toLower() );
+    group->setMetaData(
+        "mcp.provenance.coordinate_contract",
+        coordinateContract );
+    group->setMetaData(
+        "mcp.provenance.processing_parameters_json",
+        QString::fromUtf8(
+            QJsonDocument( processingParameters )
+                .toJson( QJsonDocument::Compact ) ) );
+    group->setMetaData(
+        "mcp.provenance.input_path",
+        QDir::toNativeSeparators(
+            fileInfo.absoluteFilePath() ) );
+
+    ccHObject* loadedRoot = loaded.release();
+    group->addChild( loadedRoot );
+    ccHObject* liveGroup = group.release();
+    attachToDestination(
+        app,
+        liveGroup,
+        destination );
+    app->refreshAll();
+    app->updateUI();
+
+    QJsonObject out;
+    out[ "contract" ] = "cc-external-roundtrip-v1";
+    out[ "source_entity_id" ] =
+        static_cast<qint64>( sourceId );
+    out[ "source_geometry_preserved" ] =
+        sourcePreserved;
+    out[ "source_export_sha256" ] =
+        sourceExportSha.toLower();
+    out[ "result_file_sha256" ] =
+        resultSha.toLower();
+    out[ "processing_parameters" ] =
+        processingParameters;
+    out[ "coordinate_contract" ] =
+        coordinateContract;
+    out[ "frame_compatibility_verified" ] = true;
+    out[ "global_coordinates_preserved_during_frame_normalization" ] = true;
+    out[ "imported_cloud_frames" ] =
+        frameEvidence;
+    out[ "result_group" ] =
+        entityDescription( liveGroup, false );
+    out[ "dedicated_result_group" ] = true;
+    out[ "source_before" ] = sourceBefore;
+    out[ "source_after" ] = sourceAfter;
+    result = out;
+    return true;
+}
+
 bool saveProject(
     ccMainAppInterface* app,
     const QJsonObject& params,
@@ -5607,6 +6028,10 @@ bool dispatch(
     if ( method == "entity.export" )
     {
         return exportEntity( app, params, result, error );
+    }
+    if ( method == "geometry.import_processed" )
+    {
+        return importProcessedGeometry( app, params, result, error );
     }
     if ( method == "project.save" )
     {
