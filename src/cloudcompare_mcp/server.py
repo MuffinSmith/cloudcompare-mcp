@@ -16,7 +16,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, ImageContent, TextContent, Tool
 
-from .live import LiveBridgeError, request as live_request
+from .live import LiveBridgeError, request as live_request, runtime_handshake
 from .datum_tools import (
     capabilities as datum_capabilities, tools as datum_tools,
     handle_analyze_feature_relationships, handle_build_live_datum_frame,
@@ -458,6 +458,22 @@ TOOLS: list[Tool] = [
             "Use this first when the user wants to operate on the CloudCompare window they already have open."
         ),
         inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="save_live_project",
+        description=(
+            "Transactionally save the entire open CloudCompare database tree as a BIN project, "
+            "including hidden entities and hierarchy metadata, then independently read it back for verification. "
+            "This is full-scene persistence and is intentionally distinct from export_live_entity, which exports one geometry entity."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "overwrite": {"type": "boolean", "default": False},
+            },
+            "required": ["path"],
+        },
     ),
     Tool(
         name="list_live_entities",
@@ -2365,7 +2381,21 @@ def _live_call(
 
 
 def handle_get_live_cloudcompare_info(_args: dict) -> list[TextContent]:
-    return _live_call("ping")
+    try:
+        return _ok(runtime_handshake())
+    except LiveBridgeError as exc:
+        return _err(str(exc))
+
+
+def handle_save_live_project(args: dict) -> list[TextContent]:
+    return _live_call(
+        "project.save",
+        {
+            "path": args["path"],
+            "overwrite": bool(args.get("overwrite", False)),
+        },
+        timeout=1200.0,
+    )
 
 
 def handle_list_live_entities(args: dict) -> list[TextContent]:
@@ -2440,7 +2470,22 @@ def handle_capture_live_view(_args: dict) -> list[ImageContent | TextContent]:
 
 def handle_get_live_workflow_capabilities(_args: dict) -> list[TextContent]:
     try:
+        runtime = runtime_handshake()
+        if not runtime.get("compatible"):
+            return _ok(
+                {
+                    "runtime": runtime,
+                    "native_capabilities_available": False,
+                    "native_capabilities_reason": (
+                        "The loaded DLL does not expose the current capability contract. "
+                        "Current native workflow tools are intentionally blocked before execution."
+                    ),
+                }
+            )
+
         native = live_request("capabilities.get", {})
+        native["runtime"] = runtime
+        native["native_capabilities_available"] = True
         from .fusion_mesh import backend_capabilities
 
         native["python_backends"] = backend_capabilities()
@@ -2593,6 +2638,7 @@ def _compact_region_summary(
 
 def handle_summarize_live_scene(args: dict) -> list[TextContent] | CallToolResult:
     try:
+        runtime = runtime_handshake()
         native = live_request("scene.list", {"recursive": True})
         if not isinstance(native, dict) or not isinstance(native.get("entities"), list):
             raise LiveBridgeError("CloudCompare returned an invalid scene-list response")
@@ -2656,6 +2702,23 @@ def handle_summarize_live_scene(args: dict) -> list[TextContent] | CallToolResul
 
         total = len(flattened)
         returned = flattened[:max_entities]
+
+        missing_fields_by_entity: list[dict] = []
+        for entity in flattened:
+            required = ["point_count", "bounds_global_native", "global_shift", "global_scale"]
+            if entity.get("kind") == "mesh":
+                required.append("triangle_count")
+            missing = [key for key in required if key not in entity]
+            if missing:
+                missing_fields_by_entity.append(
+                    {
+                        "id": entity.get("id"),
+                        "path": entity.get("path"),
+                        "missing_fields": missing,
+                    }
+                )
+
+        response_completeness = "partial" if missing_fields_by_entity else "complete"
         return _ok_compact(
             {
                 "geometry_only": geometry_only,
@@ -2664,6 +2727,9 @@ def handle_summarize_live_scene(args: dict) -> list[TextContent] | CallToolResul
                 "truncated": len(returned) < total,
                 "selected_ids": native.get("selected_ids", []),
                 "entities": returned,
+                "response_completeness": response_completeness,
+                "missing_fields_by_entity": missing_fields_by_entity,
+                "runtime": runtime,
                 "image_required": False,
             }
         )
@@ -4693,6 +4759,7 @@ async def call_tool(
 ) -> list[TextContent | ImageContent] | CallToolResult:
     dispatch = {
         "get_live_cloudcompare_info": handle_get_live_cloudcompare_info,
+        "save_live_project": handle_save_live_project,
         "list_live_entities": handle_list_live_entities,
         "get_live_selection": handle_get_live_selection,
         "set_live_selection": handle_set_live_selection,
