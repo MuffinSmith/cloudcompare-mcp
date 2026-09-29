@@ -1,88 +1,112 @@
-# Post-release camera ownership — Python 0.16.3 / native 0.13.2
+# Accepted main checkpoint — CloudCompare MCP 0.16.3
 
-Resume existing `feature/live-agent-visual-inspection` and stacked draft PR #22.
-PR #21 base remains `c35916d4badf5bdac815417d88cdffba56b537b7`; accepted main remains
-`2b385820ecfcb84d79aaf59ad5965e748f961466`. Neither PR may be merged without
-separate explicit authorization. Never reset/clean/force-push/recreate retained branches.
+Current accepted branch: `main`.
 
-## Preserved Windows evidence
+Accepted merge sequence:
+- PR #21 merged to main as `17803b5e94959bc7e5c3982a732ca7c36ecd4331`;
+- PR #22 merged to main as `b1b04a9b86a4b24812026076be912d7a477af9d7`.
 
-Read `docs/WINDOWS_0_16_1_PARTIAL_ACCEPTANCE.md` and
-`docs/WINDOWS_0_16_2_PARTIAL_ACCEPTANCE.md`. The 0.16.2 Windows retest at exact HEAD
-`728e37214c591187d9cb06af573f091011f940ed` passed Python/native installation,
-1,447 complete Python tests, 37/37 Qt tests and the normal disposable automatic-pivot
-cycle. The external UI re-enable probe was not executable because Windows UI
-automation could not target the isolated host; this alone is not a product failure.
+There are no open pull requests after this acceptance. Historical feature branches and
+acceptance reports are retained as recovery/provenance history; do not resume them by
+default. New work starts from the current `main` unless repository state has legitimately
+advanced.
 
-On the authorized fan, save/focus/look/capture and guarded restore reached an exact
-baseline match while the token still owned automatic-pivot suspension. No native
-request refused. Release restored CloudCompare automatic pivot to ON, after which
-the host moved camera-center Z and pivot Z by about 0.000185967 host units. The old
-0.16.2 Python policy incorrectly treated that post-release motion as a failed restore,
-so the tester correctly stopped before fan inspection/human confirmation.
+## Accepted runtime
 
-The focused Windows command contained **236**, not the earlier estimated 237, passing
-tests; two target-ROI stdio tests passed separately. The tested native 0.13.2 DLL
-SHA256 is `88D0B067D535BAFE026525D0A1CEC61836F7B91D50E870F455B2F537E2D2A154`.
+- Python package: **0.16.3**
+- Native bridge: **qMCPBridge 0.13.2 / workflow revision 9**
+- Windows-tested native DLL SHA256:
+  `88D0B067D535BAFE026525D0A1CEC61836F7B91D50E870F455B2F537E2D2A154`
+- Exact 0.16.3 runtime checkpoint:
+  `ae03248065feea07e80f8f956cfd36ce6f4ac8f6`
 
-## 0.16.3 contract correction
+Internal validation at the accepted runtime:
+- 1,449 Python tests passed, zero skips;
+- 238 focused camera/inspection tests by source count;
+- 37/37 native Qt camera-guard helper tests passed;
+- actual qMCPBridge build against CloudCompare 2.13.2 passed;
+- compileall and diff/whitespace checks passed.
 
-Native qMCPBridge 0.13.2 remains unchanged. Python 0.16.3 moves the semantic ownership
-boundary to the successful exact guarded restore *before* release. Release deliberately
-returns CloudCompare's original host control mode; subsequent host automatic-pivot or
-human motion is not agent-owned and must not trigger a second overwrite.
+## Visible Windows acceptance
 
-Bounded inspection still requires exact ownership through save/focus/look/capture and
-exact guarded restore. Only after that succeeds may release occur. Release evidence is
-retained even when its final navigation guard differs:
-- `restored_while_owned=true`;
-- `release_camera_difference`;
-- `post_release_navigation_changed`;
-- `post_release_change_scope=host_or_human_after_release` when changed;
-- original auto-pivot restoration / external-override fields.
+The focused Windows 0.16.3 acceptance at branch head
+`ca676ff0fc09f54c1e5ba381a3ce44ce92de7d11` passed:
 
-There is NO tolerance, sleep/stabilization loop, refreshed-guard retry or second
-restore after release. A stale/failed restore before release remains a hard refusal.
-The final post-release pose is not claimed equal to baseline when it is not.
+- exact source/runtime identity;
+- noneditable Python 0.16.3 installation with 34/34 module hashes;
+- full 1,449/1,449 Python suite;
+- focused 238/238 camera/inspection suite;
+- two target-ROI stdio tests separately;
+- disposable release-boundary fixture;
+- authorized fan camera-only preflight;
+- one bounded real fan inspection;
+- exact guarded restore while camera ownership was still held;
+- release back to the original CloudCompare automatic-pivot mode;
+- source/scene metadata, empty selection and fit-overlay preservation checks.
 
-Read `docs/AUTO_PIVOT_RECOVERY.md` and `docs/WINDOWS_AUTO_PIVOT_RETEST.md`.
+The real fan inspection sampled 1,024 deterministic points from 406,276 matches,
+captured top/front/isometric PNGs and ran fixed-threshold plane/cylinder discovery at
+0.15 global native units. Both discovery passes returned zero numerical candidates.
+No parameter was tuned to manufacture a result, and no unsupported semantic question
+was asked. Human semantic confirmation therefore remained pending. This is an honest
+geometry-discovery limitation, not a camera/interaction failure.
 
-## Exact internally green checkpoint
+The 0.16.3 camera ownership model is accepted:
+- exact protected state remains mandatory through guarded restore;
+- release ends agent ownership and returns the user's original host control mode;
+- post-release CloudCompare/human camera motion is evidence, not a reason for a second
+  restore;
+- there is no tolerance widening, sleep-until-stable loop, stale-guard refresh/retry,
+  or forced second restore.
 
-Runtime checkpoint: `ae03248065feea07e80f8f956cfd36ce6f4ac8f6`.
+Read the retained Windows reports and `docs/AUTO_PIVOT_RECOVERY.md` for historical
+details when diagnosing regressions.
 
-Observed exact-head validation:
-- push CI `36415703006`: SUCCESS;
-- PR integration CI `36415706720`: SUCCESS;
-- fresh Python install/full suite: **1449 passed, zero skips**, 130.06 s;
-- compileall and `git diff --check`: PASS;
-- production Qt camera-guard helper: **37/37 passed**;
-- actual qMCPBridge build against CloudCompare v2.13.2: PASS;
-- qMCPBridge source is unchanged from the Windows-tested 0.13.2 DLL;
-- the seven focused modules now contain **238 tests** by source count (the 0.16.2
-  Windows command had 236; two new 0.16.3 release-boundary regressions were added).
+## Using the tool on a new scan
 
-The first 0.16.3 CI attempt at `b987204e...` failed one new assertion because the
-successful recovery summary omitted its raw release object. That evidence object was
-then retained additively at `ae032480...`; no ownership rule was weakened.
+A new scan is a new source context. Do not reuse fan-specific entity IDs, process IDs,
+ports, bounds, fingerprints, source frame, or the fan's 0.15 threshold without new
+independent justification.
 
-CI/replay are not visible Windows fan acceptance.
+Recommended first pass:
 
-## Focused Windows continuation
+1. Verify the file/source identity and preserve the original geometry.
+2. Summarize the visible scene and rediscover the intended source cloud explicitly.
+3. Record point count, global shift/scale, bounds and any pending transforms.
+4. Save the baseline camera with automatic-pivot suspension for owned inspection.
+5. Use a small bounded set of useful views and real viewport captures.
+6. Measure point spacing/noise or other independent evidence before declaring any
+   fitting threshold for the new scan.
+7. Run bounded structured geometry discovery with fixed declared parameters.
+8. Review actual PNGs plus numerical candidates.
+9. Ask the human only simple semantic questions supported by actual candidate evidence.
+10. Bind explicit yes/no/unsure answers to proposal fingerprints and preserve evidence.
+11. Restore while ownership is held, release, and preserve any post-release host motion.
 
-Install Python 0.16.3. Reuse the already-tested qMCPBridge 0.13.2 DLL only if its exact
-SHA256 matches the value above; otherwise rebuild. Do one minimal disposable release
-boundary fixture, then repeat the bounded fan camera preflight. Post-release motion is
-reported evidence rather than failure only after exact owned restore succeeded.
+Precise point picking remains a provenance-preserving fallback, not the primary UX.
 
-If fan preflight passes, run ONE bounded inspection with explicit rediscovered cloud,
-threshold 0.15 GLOBAL native units only if frame unchanged, sample_limit 1024, views
-top/front/isometric, kinds plane/cylinder. Review real PNGs/candidates and ask only
-supported semantic questions. Bind only actual explicit human yes/no/unsure text.
+## Next development direction if the new scan exposes the same zero-candidate issue
 
-Authorized fan SHA256:
-`79ca5f9be2b80446d984bf7300fa9b9a5cda3466b2b3ab98f40fc4b61233fcc0`; retained
-count 406276. Rediscover IDs/PIDs/ports/frame; physical units remain unknown.
+Do not tune thresholds repeatedly until a fit appears. The next coherent feature should
+improve candidate discovery by using deterministic spatial/local neighborhoods or
+bounded region partitioning so manufactured planes/cylinders receive adequate local
+sample density. Keep the same separation:
 
-No fan ROI/profile reconstruction, success-driven numerical tuning, clutter removal,
-CAD IR, Fusion work, source mutation or merge is authorized in this gate.
+- viewport/vision for semantic context;
+- structured geometry for dimensions and fit evidence;
+- human answers for semantic/manufacturing intent.
+
+Any new development branch should start from current `main`, use small recoverable
+commits, keep AGENTS.md current, verify each remote SHA, and preserve the established
+camera/source safety contracts.
+
+Do not jump directly to broad CAD IR/Fusion construction solely because camera
+inspection is accepted. First obtain trustworthy geometric candidates and semantic
+intent on the current/new scan.
+
+## Recovery discipline
+
+Before writing after any chat/stream failure, inspect actual `main`, recent commits,
+open PRs/issues, CI and this file. Preserve unexpected work. Never reset, clean,
+force-push, delete/recreate retained branches or invent retry/recovery/numbered branches
+because a conversation restarted.
