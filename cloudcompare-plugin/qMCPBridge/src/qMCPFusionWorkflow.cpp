@@ -2,6 +2,7 @@
 
 #include "qMCPFusionWorkflow.h"
 #include "qMCPOverlaySafety.h"
+#include "qMCPRegistrationPolicy.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -355,6 +356,37 @@ QJsonArray matrixJson( const ccGLMatrix& matrix )
         out.append( static_cast<double>( values[i] ) );
     }
     return out;
+}
+
+
+template <typename MatrixT>
+qMCPRegistrationPolicy::Diagnostics registrationDiagnostics(
+    const MatrixT& rotation,
+    double scale )
+{
+    double values[3][3];
+    for ( int row = 0; row < 3; ++row )
+    {
+        for ( int column = 0; column < 3; ++column )
+        {
+            values[row][column] =
+                static_cast<double>( rotation.m_values[row][column] );
+        }
+    }
+    return qMCPRegistrationPolicy::inspect( values, scale );
+}
+
+QJsonObject registrationDiagnosticsJson(
+    const qMCPRegistrationPolicy::Diagnostics& diagnostics )
+{
+    return QJsonObject{
+        { "rotation_determinant", diagnostics.determinant },
+        { "rotation_orthogonality_max_error", diagnostics.orthogonalityMaxError },
+        { "scale", diagnostics.scale },
+        { "proper_rotation", diagnostics.properRotation },
+        { "unit_scale", diagnostics.unitScale },
+        { "rigid_transform_valid", diagnostics.rigidTransformValid },
+    };
 }
 
 bool readPointList(
@@ -2790,7 +2822,48 @@ bool registerCloudsICP(
     out[ "transformation_available" ] = hasTransform;
     out[ "transformation_matrix_column_major" ] = matrixJson( transformMatrix );
     out[ "scale" ] = hasTransform ? transform.s : 1.0;
+    out[ "final_overlap_ratio" ] =
+        dataSource->size() > 0
+            ? static_cast<double>( finalPointCount )
+                / static_cast<double>( dataSource->size() )
+            : 0.0;
+    out[ "residual_statistics" ] = QJsonObject{
+        { "rms_native", finalRMS },
+        { "sample_count", static_cast<qint64>( finalPointCount ) },
+        { "distribution_available", false },
+    };
     out[ "result_created" ] = false;
+    out[ "proposal_rejected" ] = false;
+
+    if ( hasTransform )
+    {
+        const auto diagnostics =
+            registrationDiagnostics( transform.R, transform.s );
+        const QJsonObject diagnosticsJson =
+            registrationDiagnosticsJson( diagnostics );
+        for ( auto it = diagnosticsJson.begin();
+              it != diagnosticsJson.end();
+              ++it )
+        {
+            out[ it.key() ] = it.value();
+        }
+        if ( !diagnostics.rigidTransformValid )
+        {
+            out[ "proposal_rejected" ] = true;
+            out[ "rejection_reason" ] =
+                "Rigid registration produced a reflected, scaled, or non-orthogonal transform.";
+            result = out;
+            return true;
+        }
+    }
+    else
+    {
+        out[ "rotation_determinant" ] = 1.0;
+        out[ "rotation_orthogonality_max_error" ] = 0.0;
+        out[ "proper_rotation" ] = true;
+        out[ "unit_scale" ] = true;
+        out[ "rigid_transform_valid" ] = true;
+    }
 
     if ( !previewOnly && hasTransform )
     {
@@ -2987,6 +3060,26 @@ bool registerPointPairs(
     out[ "transformation_matrix_global_column_major" ] = matrixJson( globalTransformMatrix );
     out[ "pair_residuals_global_native" ] = numericStats( residuals );
     out[ "result_created" ] = false;
+    out[ "proposal_rejected" ] = false;
+
+    const auto diagnostics =
+        registrationDiagnostics( transform.R, transform.s );
+    const QJsonObject diagnosticsJson =
+        registrationDiagnosticsJson( diagnostics );
+    for ( auto it = diagnosticsJson.begin();
+          it != diagnosticsJson.end();
+          ++it )
+    {
+        out[ it.key() ] = it.value();
+    }
+    if ( !diagnostics.rigidTransformValid )
+    {
+        out[ "proposal_rejected" ] = true;
+        out[ "rejection_reason" ] =
+            "Rigid point-pair registration produced a reflected, scaled, or non-orthogonal transform.";
+        result = out;
+        return true;
+    }
 
     if ( !previewOnly )
     {
