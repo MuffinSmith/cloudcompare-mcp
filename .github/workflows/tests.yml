@@ -23,8 +23,10 @@ on:
       - feature/live-cad-section-target-diagnostics
       - feature/live-cad-section-target-roi
       - feature/live-section-roi-from-picks
+      - feature/live-agent-visual-inspection
       - main
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -34,6 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -42,8 +46,7 @@ jobs:
       - run: python -m compileall -q src scripts tests
       - run: git diff --check
       - run: python -m pytest -q tests
-      # Only tracked public source is archived. Do not include the workspace,
-      # credentials, local evidence, or the user's fan_project.bin fixture.
+      # Archive tracked public source only, never credentials, local evidence or fan files.
       - name: Archive exact tested source
         if: always()
         run: git archive --format=tar --output=cloudcompare-source.tar HEAD
@@ -55,3 +58,46 @@ jobs:
           path: cloudcompare-source.tar
           if-no-files-found: error
           retention-days: 3
+
+  native-plugin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+      - uses: actions/checkout@v4
+        timeout-minutes: 3
+        with:
+          repository: CloudCompare/CloudCompare
+          ref: v2.13.2
+          path: host-source
+          # Optional plugins include external GitLab hosts unrelated to this target.
+          submodules: false
+          persist-credentials: false
+          clean: false
+      - name: Fetch only the pinned core and nested nanoflann dependencies
+        timeout-minutes: 3
+        working-directory: host-source
+        run: |
+          git submodule update --init --depth=1 -- libs/qCC_db/extern/CCCoreLib
+          test "$(git rev-parse HEAD:libs/qCC_db/extern/CCCoreLib)" = "$(git -C libs/qCC_db/extern/CCCoreLib rev-parse HEAD)"
+          git -C libs/qCC_db/extern/CCCoreLib submodule update --init --depth=1 -- extern/nanoflann
+          test "$(git -C libs/qCC_db/extern/CCCoreLib rev-parse HEAD:extern/nanoflann)" = "$(git -C libs/qCC_db/extern/CCCoreLib/extern/nanoflann rev-parse HEAD)"
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ninja-build qtbase5-dev libqt5opengl5-dev qttools5-dev libqt5svg5-dev libeigen3-dev libglew-dev
+      - name: Test production Qt camera guard contract
+        run: |
+          cmake -S tests/native/camera_guard -B guard-build -G Ninja
+          cmake --build guard-build
+          ctest --test-dir guard-build --output-on-failure
+      - name: Integrate exact bridge sources into declared host
+        run: |
+          cp -a cloudcompare-plugin/qMCPBridge host-source/plugins/core/Standard/
+          printf '\nadd_subdirectory(qMCPBridge)\n' >> host-source/plugins/core/Standard/CMakeLists.txt
+      - name: Configure CloudCompare 2.13.2
+        run: cmake -S host-source -B host-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DPLUGIN_STANDARD_QMCP_BRIDGE=ON -DOPTION_BUILD_CCVIEWER=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - name: Build actual native plugin
+        run: cmake --build host-build --target QMCP_BRIDGE_PLUGIN --parallel 2

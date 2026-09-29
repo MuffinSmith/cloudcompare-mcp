@@ -239,6 +239,10 @@ QJsonObject entityDescription( ccHObject* entity, bool recursive )
     result[ "child_count" ] = static_cast<int>( entity->getChildrenNumber() );
     result[ "units" ] = "unknown";
     result[ "units_confirmed" ] = false;
+    bool pendingTransform = false;
+    for (ccHObject* node = entity; node; node = node->getParent())
+        pendingTransform = pendingTransform || node->isGLTransEnabled();
+    result["pending_transform_in_hierarchy"] = pendingTransform;
 
     if ( ccHObject* parent = entity->getParent() )
     {
@@ -3914,13 +3918,13 @@ QJsonObject capabilities()
 {
     QJsonObject result;
     result[ "protocol_version" ] = 1;
-    result[ "workflow_revision" ] = 8;
+    result[ "workflow_revision" ] = 9;
     result[ "units_policy" ] =
         "Coordinates are reported in native units. Units remain unknown unless supplied by the caller.";
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    result[ "plugin_version" ] = "0.12.0";
+    result[ "plugin_version" ] = "0.13.0";
 
     QJsonArray bridgeOperations{
         "ping",
@@ -3934,6 +3938,7 @@ QJsonObject capabilities()
         "entity.transform",
         "view",
         "view.capture",
+        "view.camera",
         "capabilities.get",
         "entity.clone",
         "cloud.merge",
@@ -3963,6 +3968,9 @@ QJsonObject capabilities()
         "metrology.measure.picked_angle"
     };
     result[ "bridge_operations" ] = bridgeOperations;
+    result["camera"] = QJsonObject{{"available", true}, {"contract", "cc-camera-v1"},
+        {"max_saved_states", 8}, {"capture_provenance", true},
+        {"requires_object_centered_view", true}, {"stereo_bubble_supported", false}};
 
     QJsonArray workflowOperations{
         "entity.clone",

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "qMCPBridge.h"
+#include "qMCPCamera.h"
+#include "qMCPCameraGuard.h"
+#include <QCryptographicHash>
 
 #include <QAction>
 #include <QBuffer>
@@ -367,6 +370,9 @@ QJsonObject qMCPBridge::handleRequest( const QJsonObject& request )
     {
         response[ "ok" ] = false;
         response[ "error" ] = error;
+        if ((method == "view.camera" || method == "view.capture") && result.isObject()
+            && result.toObject().value("camera_diagnostics").isObject())
+            response["error_details"]=result.toObject().value("camera_diagnostics");
     }
     else
     {
@@ -390,7 +396,7 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         QJsonObject result;
         result[ "protocol_version" ] = 1;
         result[ "plugin" ] = "qMCPBridge";
-        result[ "plugin_version" ] = "0.12.0";
+        result[ "plugin_version" ] = "0.13.2";
         result[ "process_id" ] = QCoreApplication::applicationPid();
         addApplicationVersion( result );
         result[ "port" ] = static_cast<int>( m_port );
@@ -782,6 +788,9 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         return entityToJson( entity, false );
     }
 
+    if ( method == "view.camera" )
+        return qMCPCamera::dispatch(m_app, params, error);
+
     if ( method == "view" )
     {
         const QString action = params.value( "action" ).toString().toLower();
@@ -824,9 +833,31 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
             return {};
         }
 
+        const QJsonObject cameraBefore = qMCPCamera::snapshot(window);
+        for (auto it=params.begin();it!=params.end();++it)
+            if (it.key()!="expected_camera_fingerprint" && it.key()!="expected_camera_guard_fingerprint"
+                && it.key()!="native_session" && it.key()!="window_id")
+            { error="Unexpected viewport capture parameter"; return {}; }
+        if (!qMCPCameraGuard::matches(params,cameraBefore,false))
+        { error="Camera changed before viewport capture";
+          return qMCPCamera::refusal("capture.precondition",params,cameraBefore); }
+        if (qMCPCamera::autoPivotOwnershipViolated(window))
+        { error="Automatic center pivot changed during saved camera ownership";
+          return qMCPCamera::autoPivotRefusal("capture.auto_pivot_ownership",cameraBefore); }
         m_app->redrawAll();
         QCoreApplication::processEvents();
-
+        // Reacquire: event processing may close/switch the window or execute a request.
+        window = m_app->getActiveGLWindow();
+        const QJsonObject captureStart=qMCPCamera::snapshot(window);
+        const QString equalityKey=params.contains("expected_camera_fingerprint")
+            ? "camera_fingerprint" : "camera_guard_fingerprint";
+        if (!window || captureStart.value(equalityKey)!=cameraBefore.value(equalityKey))
+        { error="Camera/window changed during viewport capture";
+          return qMCPCamera::refusal("capture.after_redraw",cameraBefore,captureStart); }
+        if (qMCPCamera::autoPivotOwnershipViolated(window))
+        { error="Automatic center pivot changed during viewport capture";
+          return qMCPCamera::autoPivotRefusal("capture.after_redraw_auto_pivot",captureStart); }
+        // Styling may settle during redraw, but MUST remain stable across the grab.
         const QImage image = window->doGrabFramebuffer();
         if ( image.isNull() )
         {
@@ -842,7 +873,20 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
             return {};
         }
 
+        window = m_app->getActiveGLWindow();
+        const QJsonObject cameraAfter = qMCPCamera::snapshot(window);
+        if (cameraAfter.value("camera_fingerprint") != captureStart.value("camera_fingerprint"))
+        { error = "Camera/window changed while grabbing framebuffer";
+          return qMCPCamera::refusal("capture.after_grab",captureStart,cameraAfter); }
+        if (qMCPCamera::autoPivotOwnershipViolated(window))
+        { error="Automatic center pivot changed while grabbing framebuffer";
+          return qMCPCamera::autoPivotRefusal("capture.after_grab_auto_pivot",cameraAfter); }
         QJsonObject result;
+        result["camera_state"] = cameraAfter;
+        result["camera_before_redraw"]=cameraBefore;
+        result["redraw_difference"]=qMCPCameraGuard::difference(cameraBefore,captureStart);
+        result["png_sha256"] = QString::fromLatin1(QCryptographicHash::hash(png, QCryptographicHash::Sha256).toHex());
+        result["capture_contract"] = "cc-viewport-capture-v1";
         result[ "width" ] = image.width();
         result[ "height" ] = image.height();
         result[ "png_base64" ] = QString::fromLatin1( png.toBase64() );
@@ -852,6 +896,18 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
     QJsonValue workflowResult;
     if ( qMCPFusionWorkflow::dispatch( m_app, method, params, workflowResult, error ) )
     {
+        if (method == "capabilities.get" && workflowResult.isObject())
+        {
+            QJsonObject caps=workflowResult.toObject();
+            caps["plugin_version"]="0.13.2";
+            QJsonObject camera=caps.value("camera").toObject();
+            camera["guard_contract"]="cc-camera-guard-v1";
+            camera["diagnostics_contract"]="cc-camera-diagnostics-v1";
+            camera["auto_pivot_contract"]="cc-camera-auto-pivot-v1";
+            camera["save_can_suspend_auto_pivot"]=true;
+            caps["camera"]=camera;
+            return caps;
+        }
         return workflowResult;
     }
 
