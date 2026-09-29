@@ -8,7 +8,10 @@
 #include <QAction>
 #include <QBuffer>
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QUuid>
 #include <QHostAddress>
 #include <QImage>
 #include <QIcon>
@@ -31,9 +34,62 @@
 #include <cmath>
 #include <limits>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
 namespace
 {
 constexpr quint16 DEFAULT_PORT = 8765;
+int g_moduleAnchor = 0;
+
+QString loadedModulePath()
+{
+#ifdef Q_OS_WIN
+    HMODULE module = nullptr;
+    if ( !GetModuleHandleExW(
+             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                 | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+             reinterpret_cast<LPCWSTR>( &g_moduleAnchor ),
+             &module ) )
+    {
+        return {};
+    }
+
+    std::wstring buffer( 32768, L'\0' );
+    const DWORD length = GetModuleFileNameW(
+        module,
+        &buffer[0],
+        static_cast<DWORD>( buffer.size() ) );
+    if ( length == 0 || length >= buffer.size() )
+    {
+        return {};
+    }
+    return QDir::toNativeSeparators(
+        QString::fromWCharArray( buffer.data(), static_cast<int>( length ) ) );
+#else
+    return {};
+#endif
+}
+
+QString fileSha256( const QString& path )
+{
+    if ( path.isEmpty() )
+    {
+        return {};
+    }
+    QFile file( path );
+    if ( !file.open( QIODevice::ReadOnly ) )
+    {
+        return {};
+    }
+    QCryptographicHash hash( QCryptographicHash::Sha256 );
+    while ( !file.atEnd() )
+    {
+        hash.addData( file.read( 1024 * 1024 ) );
+    }
+    return QString::fromLatin1( hash.result().toHex() );
+}
 
 void addApplicationVersion( QJsonObject& result )
 {
@@ -166,6 +222,7 @@ qMCPBridge::qMCPBridge( QObject* parent )
     }
 
     m_token = qEnvironmentVariable( "CLOUDCOMPARE_MCP_TOKEN" );
+    m_sessionId = QUuid::createUuid().toString( QUuid::WithoutBraces );
 
     connect( m_server, &QTcpServer::newConnection, this, &qMCPBridge::onNewConnection );
 }
@@ -396,13 +453,69 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         QJsonObject result;
         result[ "protocol_version" ] = 1;
         result[ "plugin" ] = "qMCPBridge";
-        result[ "plugin_version" ] = "0.13.2";
+        result[ "plugin_version" ] = "0.14.0";
+        result[ "workflow_revision" ] = 10;
         result[ "process_id" ] = QCoreApplication::applicationPid();
+        result[ "session_id" ] = m_sessionId;
         addApplicationVersion( result );
         result[ "port" ] = static_cast<int>( m_port );
         result[ "selected_ids" ] = selectedIds( m_app );
         ccHObject* root = m_app->dbRootObject();
         result[ "root_children" ] = root ? static_cast<int>( root->getChildrenNumber() ) : 0;
+        return result;
+    }
+
+    if ( method == "runtime.handshake" )
+    {
+        QJsonValue workflowValue;
+        QString workflowError;
+        if ( !qMCPFusionWorkflow::dispatch(
+                 m_app,
+                 "capabilities.get",
+                 QJsonObject(),
+                 workflowValue,
+                 workflowError )
+             || !workflowError.isEmpty()
+             || !workflowValue.isObject() )
+        {
+            error = workflowError.isEmpty()
+                ? "Native capability catalog is unavailable"
+                : workflowError;
+            return {};
+        }
+
+        const QJsonObject capabilities = workflowValue.toObject();
+        QJsonObject result;
+        result[ "handshake_contract" ] = "cc-runtime-handshake-v1";
+        result[ "protocol_version" ] = 1;
+        result[ "plugin" ] = "qMCPBridge";
+        result[ "plugin_version" ] = "0.14.0";
+        result[ "workflow_revision" ] = capabilities.value( "workflow_revision" );
+        result[ "supported_operations" ] = capabilities.value( "bridge_operations" );
+        result[ "process_id" ] = QCoreApplication::applicationPid();
+        result[ "session_id" ] = m_sessionId;
+        result[ "port" ] = static_cast<int>( m_port );
+        result[ "selected_ids" ] = selectedIds( m_app );
+        ccHObject* root = m_app->dbRootObject();
+        result[ "root_children" ] =
+            root ? static_cast<int>( root->getChildrenNumber() ) : 0;
+        addApplicationVersion( result );
+
+        const QString modulePath = loadedModulePath();
+        const QString moduleHash = fileSha256( modulePath );
+        result[ "loaded_module_path" ] = modulePath;
+        result[ "loaded_module_sha256" ] = moduleHash;
+        result[ "loaded_module_identity_available" ] =
+            !modulePath.isEmpty() && !moduleHash.isEmpty();
+        result[ "build_identity" ] =
+            QString( "qMCPBridge/0.14.0 workflow/%1" )
+                .arg( capabilities.value( "workflow_revision" ).toInt() );
+        result[ "safe_recovery" ] = QJsonObject{
+            { "loaded_dll_change_requires_restart", true },
+            { "automatic_restart_allowed", false },
+            { "automatic_loaded_dll_replacement_allowed", false },
+            { "preserve_open_scene_first", true },
+        };
         return result;
     }
 
@@ -899,7 +1012,7 @@ QJsonValue qMCPBridge::dispatch( const QString& method, const QJsonObject& param
         if (method == "capabilities.get" && workflowResult.isObject())
         {
             QJsonObject caps=workflowResult.toObject();
-            caps["plugin_version"]="0.13.2";
+            caps["plugin_version"]="0.14.0";
             QJsonObject camera=caps.value("camera").toObject();
             camera["guard_contract"]="cc-camera-guard-v1";
             camera["diagnostics_contract"]="cc-camera-diagnostics-v1";

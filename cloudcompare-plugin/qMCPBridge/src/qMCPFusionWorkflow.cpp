@@ -3918,13 +3918,13 @@ QJsonObject capabilities()
 {
     QJsonObject result;
     result[ "protocol_version" ] = 1;
-    result[ "workflow_revision" ] = 9;
+    result[ "workflow_revision" ] = 10;
     result[ "units_policy" ] =
         "Coordinates are reported in native units. Units remain unknown unless supplied by the caller.";
     result[ "global_coordinate_export" ] =
         "CloudCompare PLY and OBJ writers emit global coordinates using stored global shift/scale.";
 
-    result[ "plugin_version" ] = "0.13.0";
+    result[ "plugin_version" ] = "0.14.0";
 
     QJsonArray bridgeOperations{
         "ping",
@@ -3939,6 +3939,7 @@ QJsonObject capabilities()
         "view",
         "view.capture",
         "view.camera",
+        "runtime.handshake",
         "capabilities.get",
         "entity.clone",
         "cloud.merge",

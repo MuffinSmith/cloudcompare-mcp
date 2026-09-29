@@ -42,4 +42,5 @@ private:
     QAction* m_action = nullptr;
     quint16 m_port = 8765;
     QString m_token;
+    QString m_sessionId;
 };
